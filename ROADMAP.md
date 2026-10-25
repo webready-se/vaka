@@ -41,8 +41,9 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [x] `server:list` and `server:label`
 - [x] Alert policies per group: immediate, after N minutes down, digest only, silent (dashboard only)
 - [x] Delivery: Slack incoming webhook, generic JSON webhook, email via `mail()`
-- [ ] Maintenance windows: one-off or recurring (e.g. every night 00:00-07:00, across midnight), per site or per group; checks still run and record; incidents inside a window show on the dashboard only; still down when it ends alerts
-- [ ] Snooze: acknowledge an ongoing incident for 1 h, 4 h or 24 h (dashboard and CLI); alerts again if still down when it ends
+- [x] Maintenance windows: one-off or recurring (e.g. every night 00:00-07:00, across midnight), per site or per group; checks still run and record; incidents inside a window show on the dashboard only; still down when it ends alerts
+- [x] Snooze from the CLI: an ongoing incident (or a whole server) for 1 h, 4 h or 24 h; alerts again if still down when it ends
+- [ ] Snooze from the dashboard
 - [x] `php vaka check <url>` and `php vaka status`
 - [x] `php vaka alert:test`
 - [ ] Auth: `user:*` commands, login with CSRF, lockout per IP in SQLite, session hardening, security headers

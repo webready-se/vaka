@@ -87,6 +87,9 @@ function alert_decision(array $state, ?array $group, int $now): string
 function notice_for(array $state, string $decision, int $recentOutages, int $now): array
 {
     if ($decision === 'baseline' || $decision === 'quiet') return ['action' => 'mark', 'kind' => null];
+    if ($decision === 'send' && $state['status'] === 'fail' && ($state['alerted_status'] ?? '') === 'snoozed') {
+        return ['action' => 'send', 'kind' => 'still_down'];
+    }
 
     if ($state['flapping_since'] !== null) {
         if ($now - strtotime($state['changed_at']) < STABLE_MINUTES * 60) return ['action' => 'none', 'kind' => null];
@@ -103,7 +106,8 @@ function notice_for(array $state, string $decision, int $recentOutages, int $now
 /** Outages (changes to down) of a check within the flapping window. */
 function recent_outages(PDO $db, int $siteId, string $check, int $now): int
 {
-    $stmt = $db->prepare("SELECT COUNT(*) FROM events WHERE site_id = ? AND check_name = ? AND status = 'fail' AND created_at >= ?");
+    // Outages during maintenance or a snooze were expected, so they do not count
+    $stmt = $db->prepare("SELECT COUNT(*) FROM events WHERE site_id = ? AND check_name = ? AND status = 'fail' AND silenced_by = '' AND created_at >= ?");
     $stmt->execute([$siteId, $check, utc_now($now - FLAP_WINDOW_MINUTES * 60)]);
     return (int) $stmt->fetchColumn();
 }
@@ -157,10 +161,15 @@ function collect_notices(PDO $db, array $config, int $now): array
             AND (c.status != c.alerted_status OR c.flapping_since IS NOT NULL)
         ORDER BY s.id")->fetchAll();
     $labels = server_labels($db);
+    $windows = load_windows($db, $now);
     $notices = [];
     $nowhere = 0;
 
     foreach ($rows as $row) {
+        // Maintenance or a snooze: nothing now; what still differs when it ends is sent then
+        $site = ['id' => $row['site_id'], 'group_id' => $row['group_id'], 'snoozed_until' => $row['snoozed_until']];
+        if (active_silence($site, $windows, $now, $config['timezone']) !== '') continue;
+
         $group = $row['group_id'] === null ? null : $row;
         $decision = alert_decision($row, $group, $now);
         if ($row['flapping_since'] !== null && in_array($group['policy'] ?? '', ['silent', 'digest'], true)) $decision = 'quiet';
@@ -256,7 +265,7 @@ function bundle_notices(array $notices, array $serverSizes): array
         }
     }
 
-    $order = ['unstable' => 0, 'down' => 1, 'up' => 2, 'stable' => 3];
+    $order = ['unstable' => 0, 'still_down' => 1, 'down' => 2, 'up' => 3, 'stable' => 4];
     $bundles = [];
     foreach ($byDestination as $bundle) {
         $groups = [];
@@ -298,6 +307,7 @@ function alert_text(array $item): array
         $after = $site['down_seconds'] > 0 ? ' after ' . human_duration($site['down_seconds']) : '';
         return match ($item['kind']) {
             'down' => ['headline' => "{$who} is down", 'details' => [$site['summary']]],
+            'still_down' => ['headline' => "{$who} is still down after the snooze", 'details' => [$site['summary']]],
             'up' => ['headline' => "{$who} is up again{$after}", 'details' => []],
             'unstable' => ['headline' => "{$who} is unstable: down {$site['outages']} times in {$window}", 'details' => [$site['summary'], $quiet]],
             'stable' => ['headline' => "{$who} is stable again: up for " . STABLE_MINUTES . ' min', 'details' => []],
@@ -315,6 +325,10 @@ function alert_text(array $item): array
     return match ($item['kind']) {
         'down' => [
             'headline' => $all ? "Server {$server} is not answering: all {$count} sites are down" : "{$count} of {$item['total']} sites on server {$server} are down",
+            'details' => site_reasons($sites, $list),
+        ],
+        'still_down' => [
+            'headline' => $all ? "Server {$server}: all {$count} sites are still down after the snooze" : "{$count} of {$item['total']} sites on server {$server} are still down after the snooze",
             'details' => site_reasons($sites, $list),
         ],
         'up' => [
@@ -375,7 +389,8 @@ function digest_text(string $group, array $events, array $stillDown, string $tim
         $details[] = 'Still down: ' . display_url($site['url']) . ' since ' . $time($site['changed_at']) . ': ' . lcfirst($site['summary']);
     }
     foreach ($events as $event) {
-        $details[] = $time($event['created_at']) . ' ' . display_url($event['url']) . ': ' . lcfirst($event['message']);
+        $during = ($event['silenced_by'] ?? '') === 'maintenance' ? ' (during maintenance)' : '';
+        $details[] = $time($event['created_at']) . ' ' . display_url($event['url']) . ': ' . lcfirst($event['message']) . $during;
     }
     return ['headline' => "Daily summary for {$group}: " . implode(', ', $parts), 'details' => $details];
 }

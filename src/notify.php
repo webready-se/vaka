@@ -13,7 +13,7 @@ function deliver(array $destination, array $bundle, array $config, int $now): bo
 function alert_emoji(string $kind): string
 {
     return match ($kind) {
-        'down' => ':red_circle:',
+        'down', 'still_down' => ':red_circle:',
         'up', 'stable' => ':large_green_circle:',
         'unstable' => ':warning:',
         'digest' => ':clipboard:',

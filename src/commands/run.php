@@ -80,7 +80,7 @@ function cmd_status(array $config, array $args, array $opts): void
     allow_options($opts, []);
     $db = get_db($config['db_path']);
     $now = time();
-    $sites = $db->query("SELECT s.*, g.name AS group_name, c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at
+    $sites = $db->query("SELECT s.*, g.name AS group_name, c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
@@ -101,6 +101,7 @@ function cmd_status(array $config, array $args, array $opts): void
 
     $counts = ['up' => 0, 'down' => 0, 'failing' => 0, 'paused' => 0, 'not checked yet' => 0];
     $rows = [];
+    $windows = load_windows($db, $now);
     foreach ($sites as $site) {
         [$word, $detail] = match (true) {
             (bool) $site['paused'] => ['paused', ''],
@@ -110,6 +111,9 @@ function cmd_status(array $config, array $args, array $opts): void
             default => ['up', (json_decode($site['details'], true)['ms'] ?? '?') . ' ms, checked ' . ago($site['checked_at'], $now)],
         };
         $counts[$word === 'DOWN' ? 'down' : $word]++;
+        $quiet = active_silence($site, $windows, $now, $config['timezone']);
+        if ($quiet === 'snooze') $detail .= '; snoozed until ' . local_time($site['snoozed_until'], $now);
+        if ($quiet === 'maintenance') $detail = trim($detail . '; in a maintenance window', '; ');
         $rows[] = [$site['group_name'] ?? 'No group', display_url($site['url']), $word, $detail];
     }
 

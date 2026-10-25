@@ -1,26 +1,5 @@
 <?php
 
-function notice(array $overrides = []): array
-{
-    return $overrides + [
-        'site_id' => 1,
-        'url' => 'https://shop.example',
-        'group' => 'Customers',
-        'kind' => 'down',
-        'summary' => 'No answer within 10 s',
-        'since' => '2026-10-25T12:00:00Z',
-        'down_seconds' => 0,
-        'server_key' => 'ip:203.0.113.10',
-        'server' => '203.0.113.10',
-        'destinations' => [['type' => 'slack', 'target' => 'https://hooks.example/a', 'key' => 'slack:https://hooks.example/a']],
-    ];
-}
-
-function down_sites(int $count, array $overrides = []): array
-{
-    return array_map(fn ($i) => notice(['site_id' => $i, 'url' => "https://site{$i}.example"] + $overrides), range(1, $count));
-}
-
 // =====================================================================
 // Servers
 // =====================================================================
