@@ -55,6 +55,14 @@ test('site:add, site:list and site:edit', function () {
         ->and($list)->toContain('Add to cart');
 });
 
+test('site:add --pause says the site is not checked until it is resumed', function () {
+    $r = vaka(['site:add', 'https://shop.example', '--pause'], $this->env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->toContain('Added https://shop.example, paused')
+        ->and($r['out'])->toContain('php vaka site:edit shop.example --resume')
+        ->and($r['out'])->not->toContain('every 5 min');
+});
+
 test('site:add refuses a URL that is already watched', function () {
     vaka(['site:add', 'https://shop.example'], $this->env);
     $r = vaka(['site:add', 'shop.example'], $this->env);

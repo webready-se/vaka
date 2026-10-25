@@ -98,6 +98,10 @@ function cmd_site_add(array $config, array $args, array $opts): void
         fail($e->getMessage() . '.');
     }
     $where = $site['group_name'] !== null ? " to {$site['group_name']}" : '';
+    if ($site['paused']) {
+        echo "Added {$site['url']}{$where}, paused: Vaka does not check it until you run `php vaka site:edit " . display_url($site['url']) . " --resume`.\n";
+        return;
+    }
     echo "Added {$site['url']}{$where}. Vaka checks it every " . site_interval($site, $config) . " min.\n";
 }
 
