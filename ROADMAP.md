@@ -30,17 +30,21 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [ ] Time budget per run for the blocking checks (SSL, DNS, RDAP)
 - [x] Parallel HTTP via `curl_multi` with a concurrency limit
 - [x] Uptime check: status code, response time, optional keyword; down after 2 consecutive failures
-- [ ] Server grouping: the IP a site answered on (curl's primary IP) puts sites on the same server together; an optional label per server
-- [ ] Sites behind a CDN (`cf-ray` or `server: cloudflare` and similar): shown as "behind CDN" instead of a server; `site:edit --server=<label>` sets the server by hand
+- [x] Server grouping: the IP a site answered on (curl's primary IP) puts sites on the same server together; an optional label per server
+- [x] Sites behind a CDN (`cf-ray` or `server: cloudflare` and similar): alerted on their own instead of with a server; `site:edit --server=<label>` sets the server by hand
+- [ ] Dashboard shows "behind CDN" instead of a server
 - [x] State per check and an event history per site
-- [ ] Alerts reconcile what was last sent with the current state (retries, delays and silences fall out of this)
-- [ ] Grouped alerts: one message per destination per run, sites on the same server folded together ("server 203.0.113.10: 23 sites down"), recoveries the same way
-- [ ] Alert policies per group: immediate, after N minutes down, digest only, silent (dashboard only)
-- [ ] Delivery: Slack incoming webhook, generic JSON webhook, email via `mail()`
+- [x] Alerts reconcile what was last sent with the current state (retries, delays and silences fall out of this)
+- [x] Grouped alerts: one message per destination per run, sites on the same server folded together ("server 203.0.113.10: 23 sites down"), recoveries the same way
+- [x] When a site starts failing, the other sites on its server are checked in the same run, so a server outage arrives as one alert
+- [x] Flapping: a second outage within 30 min sends one "unstable" alert, then nothing until 15 min without a change
+- [x] `server:list` and `server:label`
+- [x] Alert policies per group: immediate, after N minutes down, digest only, silent (dashboard only)
+- [x] Delivery: Slack incoming webhook, generic JSON webhook, email via `mail()`
 - [ ] Maintenance windows: one-off or recurring (e.g. every night 00:00-07:00, across midnight), per site or per group; checks still run and record; incidents inside a window show on the dashboard only; still down when it ends alerts
 - [ ] Snooze: acknowledge an ongoing incident for 1 h, 4 h or 24 h (dashboard and CLI); alerts again if still down when it ends
 - [x] `php vaka check <url>` and `php vaka status`
-- [ ] `php vaka alert:test`
+- [x] `php vaka alert:test`
 - [ ] Auth: `user:*` commands, login with CSRF, lockout per IP in SQLite, session hardening, security headers
 - [ ] Access per group: `groups` per user (empty = all), enforced in every endpoint and in snooze
 - [ ] Dashboard: leads with what is wrong right now and what to do about it; every site at a glance, grouped by group and server; response time and uptime history; per-site event history; maintenance and snooze state; plain language, every number explained; dark/light, accessible, mobile, and good-looking

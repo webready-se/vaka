@@ -1,11 +1,5 @@
 <?php
 
-/** A URL without its scheme, as people say it. */
-function display_url(string $url): string
-{
-    return preg_replace('#^https?://#', '', $url);
-}
-
 /** "just now", "3 min ago", "2 h ago". */
 function ago(string $utc, int $now): string
 {
@@ -42,6 +36,16 @@ function cmd_run(array $config, array $args, array $opts): void
     foreach ($summary['events'] as $event) {
         if ($event['previous'] === 'pending' && $event['status'] === 'ok') continue;
         echo '  ' . display_url($event['url']) . ": {$event['message']}\n";
+    }
+    foreach (array_merge($summary['alerts'], $summary['digests']) as $alert) {
+        foreach ($alert['headlines'] as $headline) {
+            echo $alert['ok']
+                ? "  Alert sent to {$alert['destination']}: {$headline}\n"
+                : "  Alert to {$alert['destination']} did not get through, trying again next run: {$headline}\n";
+        }
+    }
+    if ($summary['nowhere']) {
+        echo '  ' . plural($summary['nowhere'], 'change had', 'changes had') . " nowhere to be sent: set SLACK_WEBHOOK_URL in .env, or give the group a Slack webhook with `php vaka group:edit`.\n";
     }
     if ($summary['heartbeat'] === false) {
         echo "The heartbeat ping to HEARTBEAT_URL did not get through.\n";

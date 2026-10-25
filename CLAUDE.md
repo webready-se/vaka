@@ -75,6 +75,7 @@ src/import.php           parse_import_csv(), import_sites() (all or nothing, dry
 src/commands/groups.php  group:add, group:edit, group:remove, group:list
 src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:import
 src/commands/run.php     run, check, status
+src/commands/alerts.php  alert:test, server:list, server:label
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
 src/checks/uptime.php    evaluate_uptime(), next_uptime_state(), detect_cdn(), plain-words errors and durations
 src/checks/ssl.php       Peer certificate capture and expiry
@@ -84,8 +85,8 @@ src/checks/headers.php   Security header grading and regressions
 src/checks/dns.php       MX, SPF, DMARC snapshots
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
 src/silence.php          Maintenance windows (one-off, recurring) and snoozes
-src/alerts.php           Reconcile, policies, grouping by destination and server, digests
-src/notify.php           Slack, JSON webhook and mail() delivery
+src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
+src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             Sessions, CSRF, login lockout, users.json
 src/web.php              respond(), e(), security_headers()
 public/index.php         Web front controller (routing only, calls into src/)
@@ -100,12 +101,12 @@ phpunit.xml              Test configuration (Pest)
 tests/                   Pest suite: Unit/, Feature/, fixtures/
 tests/Support/helpers.php temp_dir(), load_config(), cli_env() and vaka() (CLI as a subprocess, never reads the local .env)
 tests/fixtures/import/   CSV files for site:import (example domains only)
-tests/fixtures/sites/    Fixture sites served by `php -S` in feature tests (start_site()/stop_site() in helpers)
+tests/fixtures/sites/    Fixture sites served by `php -S` in feature tests (start_site()/stop_site() in helpers); hooks/ records alert POSTs
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups and servers
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps
 scripts/hooks/pre-push   Git hook: runs Pest before push
-docs/                    install.md, configuration.md, checks.md, alerts.md
+docs/                    install.md, configuration.md, checks.md, alerts.md (alerts.md: when, where, JSON fields)
 .claude/settings.json    Project hooks (PHP lint after edit) and read denies for .env / users.json
 .claude/hooks/php-lint.sh PostToolUse hook: php -l on edited PHP files and the vaka CLI
 .claude/handoffs/        Session handoffs (gitignored)
@@ -124,15 +125,14 @@ sites        id, group_id, url (unique), name, keyword, interval_minutes, paused
              ip, cdn, server, created_at                        (ip and cdn from the last check; server set by hand)
 servers      ip, label                                           (optional label for a server)
 check_state  site_id, check_name, status, summary, details (JSON), fail_count, checked_at, next_at, changed_at,
-             alerted_status, alerted_at, snoozed_until, thresholds_sent (JSON)
+             alerted_status, alerted_at, flapping_since, snoozed_until, thresholds_sent (JSON)
 events       id, site_id, check_name, status, previous, message, silenced_by, created_at
 maintenance  id, site_id | group_id, label, starts_at, ends_at  (one-off)
              or days (weekday mask), start_time, end_time       (recurring, in TIMEZONE)
-digest       id, group_id, site_id, check, message, created_at  (queued for the daily digest)
 samples      site_id, checked_at, status_code, ms, ok, ip        (uptime only, trimmed after SAMPLES_RETENTION_DAYS)
              (`check` is an SQL keyword, hence check_name)
 audit_log    id, username, action, ip, created_at               (login lockout, trimmed after 30 days)
-meta         key, value                                          (last_run_at, last_digest_at)
+meta         key, value                                          (last_run_at, last_cleanup_on, last_digest_on, last_digest_at)
 ```
 
 Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are stored in UTC (ISO 8601); the dashboard shows local time.
@@ -173,7 +173,13 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 | `digest` | No live alerts; one summary per day at `DIGEST_TIME` |
 | `silent` | Dashboard only |
 
-**Grouping:** all notices from one run are bundled per destination (a group's Slack webhook, JSON webhook or email, falling back to `.env`). Within a destination, sites that answered on the same IP are folded into one line per server: "server 203.0.113.10: 23 sites down". Recoveries are folded the same way.
+**Grouping:** all notices from one run are bundled per destination (a group's Slack webhook, JSON webhook or email, falling back to `.env`). Within a destination, sites on the same server that changed the same way are folded into one item: "Server 203.0.113.10 is not answering: all 23 sites are down", or "3 of 10 sites on server ... are down". Recoveries are folded the same way. When a site fails for the first time in a row, `server_neighbours()` checks the other sites on its server in the same run, so a whole server is confirmed down in the same runs instead of trickling in over the sites' intervals.
+
+**Flapping:** a second outage within `FLAP_WINDOW_MINUTES` (30) sends one "unstable" notice instead of "down" and sets `flapping_since`. Nothing more is sent until the check has gone `STABLE_MINUTES` (15) without a change; then one "stable again" (or "down") closes it. At most three messages for a flapping site.
+
+**Daily digest:** `send_digests()` runs once a day after `DIGEST_TIME` in `TIMEZONE` and summarises the `events` since the last digest plus the sites still down, per digest group. No queue table: the events are the record.
+
+**Delivery:** a notice counts as told when at least one of its destinations accepted the message; otherwise it is retried on the next run. Slack text is escaped (`&`, `<`, `>`), email headers never carry line breaks, and the JSON webhook fields are documented in `docs/alerts.md`.
 
 **Sites behind a CDN** answer on the CDN's IPs, which are shared by sites on different servers, so grouping by IP would be wrong. The uptime check detects a CDN from response headers (`cf-ray` or `server: cloudflare`, and the equivalents of other CDNs), and such a site shows "behind CDN" instead of a server and is alerted on its own. `site:edit --server=<label>` sets a site's server by hand and wins over both. Keep it simple: no IP range lists.
 
@@ -230,10 +236,11 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka site:remove [<url>]` / `site:list` | Remove a site and its history / list sites |
 | `php vaka site:import [<file.csv>]` | Import sites from CSV (`group,url,enabled`) |
 | `php vaka group:add [<name>]` / `group:edit` / `group:remove` / `group:list` | Groups: policy, delay, Slack webhook, JSON webhook, email |
-| `php vaka server:label [<ip> <label>]` | Name a server (or set one by hand for CDN sites) |
+| `php vaka server:label [<ip> <label>]` | Name a server's IP, so alerts say "web-1 (203.0.113.10)" (empty label removes it) |
 | `php vaka maintenance:add` / `maintenance:list` / `maintenance:remove` | Maintenance windows per site or group |
 | `php vaka snooze [<url>] [--for=1h\|4h\|24h]` / `unsnooze` | Snooze an incident |
-| `php vaka alert:test [<group>]` | Send a test alert to a group's destinations |
+| `php vaka alert:test [<group>]` | Send a test alert to a group's destinations (no group: the defaults in .env) |
+| `php vaka server:list` | Servers (by IP or hand-set name) and their sites; CDN sites counted apart |
 | `php vaka user:add [<name>]` / `user:edit` / `user:remove` / `user:list` | Manage dashboard users |
 
 ## Development

@@ -20,3 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Sites behind Cloudflare, CloudFront, Fastly, Akamai or Bunny are recognised from their response headers.
 - `php vaka check <url>` checks a URL once without saving anything; `php vaka status` shows every site by group, and warns when Vaka has not run for more than five minutes.
 - `HEARTBEAT_URL`: every run pings it, so a dead man's switch such as Healthchecks.io can alert you when the runs stop.
+- Alerts to Slack, a JSON webhook and email, sent when a site goes down or comes back, once. All alerts from one run go out as one message per destination, and sites on the same server are folded into one line: "Server web-1 (203.0.113.10) is not answering: all 10 sites are down", or "3 of 10 sites on server ... are down". When a site starts failing, the other sites on its server are checked right away, so a server outage arrives as one alert. A message that cannot be delivered is sent again on the next run.
+- A site that keeps going down and up sends at most three messages: down, up, then "unstable" on the second outage within 30 minutes, and nothing more until it has gone 15 minutes without a change ("stable again").
+- Alert policies per group work: right away, only after a number of minutes down (shorter outages send nothing), a daily summary at `DIGEST_TIME`, or nothing at all.
+- `php vaka alert:test [<group>]` sends a test message. `php vaka server:list` shows the servers and their sites; `php vaka server:label <ip> <name>` names a server for the alerts.
+- Changing a site's URL, keyword or interval, or resuming it, checks it on the next run instead of after its old interval.
+- A site can be named by its domain with the port, and without typing `http://`; a bare domain means the site without a path when there are several.
+- `docs/alerts.md`: when alerts go out, where they go, and the JSON webhook's fields.

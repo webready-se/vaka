@@ -127,6 +127,9 @@ function migrations(): array
                 label TEXT NOT NULL DEFAULT ''
             )",
         ],
+        4 => [
+            'ALTER TABLE check_state ADD COLUMN flapping_since TEXT',
+        ],
     ];
 }
 

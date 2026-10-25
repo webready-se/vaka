@@ -74,6 +74,12 @@ function site_host(string $url): string
     return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
 }
 
+/** A URL without its scheme, as people say it. */
+function display_url(string $url): string
+{
+    return preg_replace('#^https?://#', '', $url);
+}
+
 /** Number of characters (not bytes) in a UTF-8 string, without needing mbstring. */
 function text_length(string $text): int
 {
@@ -149,7 +155,9 @@ function clean_group_fields(array $input): array
     }
     if (array_key_exists('slack_webhook', $input)) {
         $url = trim((string) $input['slack_webhook']);
-        if ($url !== '' && (!str_starts_with(strtolower($url), 'https://') || !filter_var($url, FILTER_VALIDATE_URL))) {
+        // Plain http only to this machine, for testing against a local receiver
+        $local = in_array(parse_url($url, PHP_URL_HOST), ['127.0.0.1', 'localhost', '[::1]'], true);
+        if ($url !== '' && ((!str_starts_with(strtolower($url), 'https://') && !$local) || !filter_var($url, FILTER_VALIDATE_URL))) {
             throw new InvalidArgumentException('The Slack webhook must be an https URL');
         }
         $fields['slack_webhook'] = $url;
