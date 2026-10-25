@@ -130,6 +130,7 @@ test('the overview lists sites with their state, and a restricted user only sees
     $now = time();
     save_check_state($this->db, $shop, 'uptime', ['status' => 'fail', 'summary' => 'No answer within 10 s', 'details' => ['ip' => '192.0.2.10', 'problem' => 'timeout', 'status_code' => 0], 'fail_count' => 3, 'changed_at' => utc_now($now - 600)], utc_now($now - 30), utc_now($now + 30));
     $this->db->exec("UPDATE sites SET ip = '192.0.2.10' WHERE id = {$shop}");
+    save_check_state($this->db, $shop, 'ssl', ['status' => 'warn', 'summary' => 'The certificate expires in 6 days (31 Oct 2026)', 'details' => ['days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z', 'problem' => 'expiring'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
     set_meta($this->db, 'last_run_at', utc_now($now - 30));
 
     $admin = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
@@ -139,7 +140,10 @@ test('the overview lists sites with their state, and a restricted user only sees
     $site = $admin['groups'][0]['sites'][0];
     expect($site)->toMatchArray(['id' => $shop, 'label' => 'shop.example', 'status' => 'down', 'summary' => 'No answer within 10 s', 'server' => '192.0.2.10'])
         ->and($site['since'])->toBe(utc_now($now - 600))
-        ->and($site['advice'])->toStartWith('No answer in time');
+        ->and($site['advice'])->toStartWith('No answer in time')
+        ->and($site['ssl'])->toMatchArray(['status' => 'warn', 'summary' => 'The certificate expires in 6 days (31 Oct 2026)', 'days_left' => 6])
+        ->and($site['ssl']['advice'])->toStartWith('Renew the certificate');
+    expect($admin['groups'][1]['sites'][0]['ssl'])->toBeNull();
     expect($admin['groups'][1]['sites'][0]['advice'])->toBe('');
 
     $anna = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('anna', 'anna password')['jar']])['json'];

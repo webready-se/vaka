@@ -177,7 +177,9 @@ async function main() {
     expect(/2 need you, 1 is snoozed/.test(q('.hero p')?.textContent || ''), 'hero says how many of them are snoozed');
     expect(/Checked/.test(q('[data-region="run-state"]').textContent), 'top bar says when Vaka last checked');
     const incidents = all('.incident');
-    expect(incidents.length === 4, `four incidents need attention (got ${incidents.length})`);
+    expect(incidents.length === 5, `five incidents need attention (got ${incidents.length})`);
+    expect(/booking\.example:\s*the SSL certificate expires in 6 days/.test(incidents[4]?.querySelector('h3')?.textContent || ''), 'an expiring certificate comes after the outages');
+    expect(all('.site-row').some((r) => /booking\.example/.test(r.textContent) && /certificate expires in 6 days/.test(r.textContent)), 'the row says the certificate expires soon');
     expect(/shop\.example is down/.test(incidents[0]?.querySelector('h3')?.textContent || ''), 'an unsnoozed outage comes first');
     expect(/The site itself answers with an error/.test(incidents[0]?.textContent || ''), 'advice under the outage');
     expect(incidents.some((i) => /Snoozed until/.test(i.textContent)), 'a snoozed incident says until when');
