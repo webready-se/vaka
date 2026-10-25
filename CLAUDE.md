@@ -11,6 +11,14 @@ Vaka replaces an older uptime monitor built on a full framework stack that becam
 
 Uptime is the main job: knowing when a site goes down, and saying so once (not fifty times) to the right people. SSL certificates come second, the other checks after. The dashboard should look good, not just work.
 
+Free tools (Uptime Kuma, Gatus) already cover plain uptime, SSL, domain expiry, maintenance windows, groups and Slack. Vaka must not become "Uptime Kuma in PHP". Its reasons to exist, which lead the README and the roadmap:
+
+1. **One alert per server** instead of one per site. Others alert per endpoint; grouping exists only in paid tools or external alert routers.
+2. **Snooze / acknowledge** an incident, with a new alert if it is still down when the snooze ends.
+3. **Alert policy per group:** immediate, after N minutes, digest only, silent.
+4. **Continuous external security hygiene** that alerts when something gets worse: exposed files, headers that disappear, DNS changes. Elsewhere this is a one-off test, a pentest scanner without alert state, or paid SaaS.
+5. **UX:** a busy site owner understands it in five seconds.
+
 Built for our own need first. Open sourced (MIT, like Puls) once it works.
 
 ## Never store sensitive data in git
@@ -26,6 +34,15 @@ This repository will be public. Nothing about the user, the company, its custome
 
 ## Principles
 
+- **Great UI/UX is the USP** (for every Webready tool). Design for a busy site owner, not an ops expert:
+  - plain language instead of jargon, and every number explained
+  - lead with what is wrong right now and what to do about it, with detail one click away
+  - good empty states and onboarding (the first site added in under a minute)
+  - calm, good-looking, fast, mobile and accessible, in dark and light
+  - the same goes for CLI output and alert messages
+
+  Test every screen, message and command output with: would someone understand this in five seconds?
+- **Never on the same server it watches.** If that server goes down, nobody gets an alert. The install docs say so, and Vaka watches itself: every run pings `HEARTBEAT_URL` (a dead man's switch such as Healthchecks.io's free tier, which alerts when pings stop), `/?health` returns 503 when cron has stopped, and the dashboard shows when Vaka last ran and warns when that is more than a few minutes ago.
 - **No dependencies at runtime.** PHP 8.3+ with built-in extensions only: `pdo_sqlite`, `curl`, `openssl` (`intl` optional). No Composer runtime packages, no framework, no build step, no CDN. Deploy = copy the files. Must run on Laravel Forge and on shared hosting wherever cron exists.
 - **"No dependencies", not "one file".** A few files loaded with plain `require` are fine. Code lives in `src/` as plain functions, so tests load it with `require` (no regex extraction or `eval`, unlike Puls's test bootstrap).
 - **SQLite in WAL mode** with a schema version (`PRAGMA user_version`) and lazy migrations, like Puls's `run_migrations()` / `migrate_schema()`.
@@ -52,8 +69,11 @@ config.php               Configuration: loads .env, resolves paths (Forge zero-d
 src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines functions only, no side effects
 src/config.php           parse_env(), load_env(), resolve_path(), int_list()
 src/db.php               get_db(), enable_wal(), migrations(), run_migrations()
-src/cli.php              parse_args(), prompt(), fail()
-src/sites.php            normalize_url(), sites, groups, servers
+src/cli.php              parse_args(), allow_options(), prompt(), ask(), confirm(), choose(), print_table(), fail()
+src/sites.php            CHECKS, POLICIES, normalize_url(), groups and sites (validation, storage, plain-words descriptions)
+src/import.php           parse_import_csv(), import_sites() (all or nothing, dry run)
+src/commands/groups.php  group:add, group:edit, group:remove, group:list
+src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:import
 src/http.php             fetch_many(): parallel requests over curl_multi
 src/checks/uptime.php    Uptime + response time + keyword
 src/checks/ssl.php       Peer certificate capture and expiry
@@ -77,7 +97,8 @@ data/vaka.lock           Run lock (flock)
 composer.json            Platform requirements (PHP 8.3+, pdo_sqlite, curl, openssl) + Pest (dev only)
 phpunit.xml              Test configuration (Pest)
 tests/                   Pest suite: Unit/, Feature/, fixtures/
-tests/Support/helpers.php temp_dir(), load_config() and vaka() (CLI as a subprocess, never reads the local .env)
+tests/Support/helpers.php temp_dir(), load_config(), cli_env() and vaka() (CLI as a subprocess, never reads the local .env)
+tests/fixtures/import/   CSV files for site:import (example domains only)
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups and servers
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps
@@ -97,7 +118,8 @@ Only `public/` is web-served. `src/`, `data/`, `users.json` and `.env` must stay
 
 ```text
 groups       id, name, policy, delay_minutes, slack_webhook, webhook_url, email, created_at
-sites        id, group_id, url (unique), name, keyword, interval_minutes, paused, disabled_checks, ip, created_at
+sites        id, group_id, url (unique), name, keyword, interval_minutes, paused, disabled_checks,
+             ip, cdn, server, created_at                        (ip and cdn from the last check; server set by hand)
 servers      ip, label                                           (optional label for a server)
 check_state  site_id, check, status, summary, details (JSON), fail_count, checked_at, next_at, changed_at,
              alerted_status, alerted_at, snoozed_until, thresholds_sent (JSON)
@@ -148,7 +170,9 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 | `digest` | No live alerts; one summary per day at `DIGEST_TIME` |
 | `silent` | Dashboard only |
 
-**Grouping:** all notices from one run are bundled per destination (a group's Slack webhook, JSON webhook or email, falling back to `.env`). Within a destination, sites that answered on the same IP are folded into one line per server: "server 203.0.113.10: 23 sites down". Recoveries are folded the same way. Sites behind a CDN share the CDN's IPs, so a server label can be set by hand.
+**Grouping:** all notices from one run are bundled per destination (a group's Slack webhook, JSON webhook or email, falling back to `.env`). Within a destination, sites that answered on the same IP are folded into one line per server: "server 203.0.113.10: 23 sites down". Recoveries are folded the same way.
+
+**Sites behind a CDN** answer on the CDN's IPs, which are shared by sites on different servers, so grouping by IP would be wrong. The uptime check detects a CDN from response headers (`cf-ray` or `server: cloudflare`, and the equivalents of other CDNs), and such a site shows "behind CDN" instead of a server and is alerted on its own. `site:edit --server=<label>` sets a site's server by hand and wins over both. Keep it simple: no IP range lists.
 
 ### Run flow (`php vaka run`, every minute from cron)
 
@@ -159,6 +183,7 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 5. Store results and new states; a change writes an event.
 6. Reconcile alerts, apply silences and policies, bundle per destination and server, send. Send the daily digest when it is due.
 7. Trim old samples and audit log rows (once a day), then store `last_run_at`.
+8. Ping `HEARTBEAT_URL` if set (short timeout; a failed ping never fails the run).
 
 Checks take their inputs as arguments (resolver functions, base URLs, clocks), so tests can feed fixtures instead of the network.
 
@@ -198,7 +223,7 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka check [<url>]` | Run every check once against a URL and print the result (no state, no alerts) |
 | `php vaka status` | Overview of every site in the terminal |
 | `php vaka site:add [<url>] [--group=] [--name=] [--keyword=] [--interval=]` | Add a site |
-| `php vaka site:edit [<url>]` | Change group, name, keyword, interval, paused, disabled checks |
+| `php vaka site:edit [<url>]` | Change group, name, keyword, interval, paused, disabled checks, server (`--server=<label>`) |
 | `php vaka site:remove [<url>]` / `site:list` | Remove a site and its history / list sites |
 | `php vaka site:import [<file.csv>]` | Import sites from CSV (`group,url,enabled`) |
 | `php vaka group:add [<name>]` / `group:edit` / `group:remove` / `group:list` | Groups: policy, delay, Slack webhook, JSON webhook, email |
@@ -259,8 +284,9 @@ Pest, dev dependency only. **No real network in tests.** Fixtures use reserved e
 
 - Conventional commits: `type(scope): short description` with types feat, fix, docs, test, chore, refactor, style.
 - One logical change per commit. Stage files explicitly (never `git add .` or `-A`).
-- **Always ask the user before committing or pushing.**
+- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. **Ask before merging to main.**
 - Feature branches, never push straight to main. Tests must pass before pushing (pre-push hook).
+- Before every commit, scan the staged diff for real names, domains, IPs and URLs.
 
 ## Roadmap
 

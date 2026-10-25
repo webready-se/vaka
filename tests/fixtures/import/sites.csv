@@ -1,0 +1,5 @@
+group,url,enabled
+Customers,https://shop.example,1
+Customers,https://www.example.se/,1
+Own sites,blog.example.com,0
+,https://example.org,true

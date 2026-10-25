@@ -58,7 +58,40 @@ function migrations(): array
                 value TEXT NOT NULL
             )',
         ],
+        2 => [
+            "CREATE TABLE groups (
+                id INTEGER PRIMARY KEY,
+                name TEXT NOT NULL UNIQUE COLLATE NOCASE,
+                policy TEXT NOT NULL DEFAULT 'immediate',
+                delay_minutes INTEGER NOT NULL DEFAULT 0,
+                slack_webhook TEXT NOT NULL DEFAULT '',
+                webhook_url TEXT NOT NULL DEFAULT '',
+                email TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )",
+            "CREATE TABLE sites (
+                id INTEGER PRIMARY KEY,
+                group_id INTEGER REFERENCES groups (id) ON DELETE SET NULL,
+                url TEXT NOT NULL UNIQUE,
+                name TEXT NOT NULL DEFAULT '',
+                keyword TEXT NOT NULL DEFAULT '',
+                interval_minutes INTEGER,
+                paused INTEGER NOT NULL DEFAULT 0,
+                disabled_checks TEXT NOT NULL DEFAULT '',
+                ip TEXT NOT NULL DEFAULT '',
+                cdn TEXT NOT NULL DEFAULT '',
+                server TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )",
+            'CREATE INDEX idx_sites_group ON sites (group_id)',
+        ],
     ];
+}
+
+/** The current time in UTC, as stored in the database. */
+function utc_now(): string
+{
+    return gmdate('Y-m-d\TH:i:s\Z');
 }
 
 /**

@@ -8,6 +8,8 @@
  */
 
 require __DIR__ . '/src/bootstrap.php';
+require __DIR__ . '/src/commands/groups.php';
+require __DIR__ . '/src/commands/sites.php';
 $config = require __DIR__ . '/config.php';
 date_default_timezone_set($config['timezone']);
 
@@ -15,6 +17,15 @@ date_default_timezone_set($config['timezone']);
 $command = $args[0] ?? 'help';
 
 match ($command) {
+    'site:add' => cmd_site_add($config, $args, $opts),
+    'site:edit' => cmd_site_edit($config, $args, $opts),
+    'site:remove' => cmd_site_remove($config, $args, $opts),
+    'site:list' => cmd_site_list($config, $args, $opts),
+    'site:import' => cmd_site_import($config, $args, $opts),
+    'group:add' => cmd_group_add($config, $args, $opts),
+    'group:edit' => cmd_group_edit($config, $args, $opts),
+    'group:remove' => cmd_group_remove($config, $args, $opts),
+    'group:list' => cmd_group_list($config, $args, $opts),
     'help', '--help', '-h' => print_help(),
     'version' => print_version(),
     default => fail("Unknown command: {$command}\nRun `php vaka help` to see every command."),
@@ -26,12 +37,32 @@ function print_help(): void
     Vaka - keeps watch while you sleep
 
     Usage: php vaka <command> [arguments] [--options]
+    Commands called without their arguments ask for what they need.
 
-    Commands:
-      help       Show this help
-      version    Show the Vaka version
+    Sites (<site> is a URL or a domain)
+      site:add <url>       Start watching a site
+                           --group=<name> --name= --keyword=<text on the page>
+                           --interval=<minutes> --disable=ssl,dns --pause
+      site:edit <site>     Change a site
+                           --url= --group=<name|none> --name= --keyword= --interval=
+                           --pause --resume --disable=<checks> --enable=<checks>
+                           --server=<label> (for sites behind a CDN)
+      site:remove <site>   Stop watching a site and delete its history  --force
+      site:list            List every site  --group=<name>
+      site:import <file>   Add sites from a CSV file: a url column, and optionally
+                           group, enabled, name, keyword, interval  --dry-run
 
-    Commands called without their arguments ask for them interactively.
+    Groups (each with its own alert rules)
+      group:add <name>     Add a group
+                           --policy=immediate|delayed|digest|silent --delay=<minutes>
+                           --slack=<webhook url> --webhook=<url> --email=<a,b>
+      group:edit <name>    Change a group (same options, plus --name=)
+      group:remove <name>  Remove a group; its sites stay, without a group  --force
+      group:list           List groups: when they alert and where
+
+    Other
+      help                 Show this help
+      version              Show the Vaka version
 
     TXT;
 }

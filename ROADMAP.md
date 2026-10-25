@@ -2,6 +2,14 @@
 
 Uptime comes first: knowing when a site goes down is the main job. SSL certificates come second, the other checks after. Every check is built test-first.
 
+What makes Vaka worth building, since free tools already cover plain uptime, SSL and domain expiry:
+
+1. One alert per server instead of one per site
+2. Snooze an incident, with a new alert if it is still down when the snooze ends
+3. Alert policy per group: immediate, after N minutes, digest only, silent
+4. Continuous external security hygiene that alerts when something gets worse: exposed files, headers that disappear, DNS changes
+5. A dashboard a busy site owner understands in five seconds
+
 ## Milestone 0: Foundation
 
 - [x] Repository skeleton: LICENSE (MIT), CHANGELOG.md, SECURITY.md, CONTRIBUTING.md, .editorconfig
@@ -15,13 +23,14 @@ Uptime comes first: knowing when a site goes down is the main job. SSL certifica
 
 ## Milestone 1: Uptime
 
-- [ ] Groups: `group:add`, `group:edit`, `group:remove`, `group:list`; each group has an alert policy and its own Slack webhook, JSON webhook and email
-- [ ] Sites: `site:add`, `site:edit`, `site:remove`, `site:list` with URL normalization; a site belongs to one group
-- [ ] `site:import <file.csv>` (`group,url,enabled`), read from wherever the file lives
+- [x] Groups: `group:add`, `group:edit`, `group:remove`, `group:list`; each group has an alert policy and its own Slack webhook, JSON webhook and email
+- [x] Sites: `site:add`, `site:edit`, `site:remove`, `site:list` with URL normalization; a site belongs to one group (or none)
+- [x] `site:import <file.csv>` (`group,url,enabled`), read from wherever the file lives
 - [ ] Runner: `php vaka run` with a lock file, due-check scheduling and a time budget
 - [ ] Parallel HTTP via `curl_multi` with a concurrency limit
 - [ ] Uptime check: status code, response time, optional keyword; down after 2 consecutive failures
 - [ ] Server grouping: the IP a site answered on (curl's primary IP) puts sites on the same server together; an optional label per server
+- [ ] Sites behind a CDN (`cf-ray` or `server: cloudflare` and similar): shown as "behind CDN" instead of a server; `site:edit --server=<label>` sets the server by hand
 - [ ] State per check and an event history per site
 - [ ] Alerts reconcile what was last sent with the current state (retries, delays and silences fall out of this)
 - [ ] Grouped alerts: one message per destination per run, sites on the same server folded together ("server 203.0.113.10: 23 sites down"), recoveries the same way
@@ -32,17 +41,20 @@ Uptime comes first: knowing when a site goes down is the main job. SSL certifica
 - [ ] `php vaka check <url>`, `php vaka status` and `php vaka alert:test`
 - [ ] Auth: `user:*` commands, login with CSRF, lockout per IP in SQLite, session hardening, security headers
 - [ ] Access per group: `groups` per user (empty = all), enforced in every endpoint and in snooze
-- [ ] Dashboard: every site at a glance, grouped by group and server; response time and uptime history; per-site event history; maintenance and snooze state; dark/light, accessible, mobile, and good-looking
+- [ ] Dashboard: leads with what is wrong right now and what to do about it; every site at a glance, grouped by group and server; response time and uptime history; per-site event history; maintenance and snooze state; plain language, every number explained; dark/light, accessible, mobile, and good-looking
+- [ ] Empty states and onboarding: the first site added in under a minute
+- [ ] Dashboard shows when Vaka last ran and warns when it is older than a few minutes (cron stopped)
 - [ ] Strict CSP (`script-src 'self'`, `style-src 'self'`), event delegation in `app.js`
 - [ ] Dashboard smoke test (`scripts/smoke.mjs`): fails on JS errors and CSP violations, renders hostile values as text
 - [ ] `/?health` that reports a stopped cron
+- [ ] Dead man's switch: every run pings `HEARTBEAT_URL` (e.g. Healthchecks.io's free tier), which alerts when the pings stop
 - [ ] Seed script with fake sites (example.com, shop.example, 192.0.2.x) for demos, screenshots and the smoke test
 
 ## Milestone 2: SSL certificates
 
 - [ ] SSL check: peer certificate via stream context and `openssl_x509_parse`
 - [ ] Alerts at 14, 7 and 1 days before expiry, and when a certificate turns invalid
-- [ ] Docs: install (Forge, shared hosting cron), configuration, checks, alerts (honest about `mail()` needing an MTA)
+- [ ] Docs: install (Forge, shared hosting cron; never on the same server as the sites it watches), configuration, checks, alerts (honest about `mail()` needing an MTA)
 - [ ] Run in production next to the previous monitor for a week, then switch over
 
 ## Milestone 3: More checks
