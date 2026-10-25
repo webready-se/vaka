@@ -284,7 +284,7 @@ Pest, dev dependency only. **No real network in tests.** Fixtures use reserved e
 
 - Conventional commits: `type(scope): short description` with types feat, fix, docs, test, chore, refactor, style.
 - One logical change per commit. Stage files explicitly (never `git add .` or `-A`).
-- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. **Ask before merging to main.**
+- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. During the MVP (until the first tagged release, 0.1.0), merge a PR to main yourself once CI is green. **After 0.1.0, ask before merging to main.**
 - Feature branches, never push straight to main. Tests must pass before pushing (pre-push hook).
 - Before every commit, scan the staged diff for real names, domains, IPs and URLs.
 
