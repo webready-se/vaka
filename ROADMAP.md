@@ -27,7 +27,7 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [x] Sites: `site:add`, `site:edit`, `site:remove`, `site:list` with URL normalization; a site belongs to one group (or none)
 - [x] `site:import <file.csv>` (`group,url,enabled`), read from wherever the file lives
 - [x] Runner: `php vaka run` with a lock file and due-check scheduling
-- [ ] Time budget per run for the blocking checks (SSL, DNS, RDAP)
+- [x] Time budget per run for the blocking checks (SSL, DNS, RDAP)
 - [x] Parallel HTTP via `curl_multi` with a concurrency limit
 - [x] Uptime check: status code, response time, optional keyword; down after 2 consecutive failures
 - [x] Server grouping: the IP a site answered on (curl's primary IP) puts sites on the same server together; an optional label per server
@@ -60,8 +60,9 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 
 ## Milestone 2: SSL certificates
 
-- [ ] SSL check: peer certificate via stream context and `openssl_x509_parse`
-- [ ] Alerts at 14, 7 and 1 days before expiry, and when a certificate turns invalid
+- [x] SSL check: peer certificate via stream context and `openssl_x509_parse`
+- [x] Alerts at 14, 7 and 1 days before expiry, and when a certificate turns invalid
+- [x] Certificates in the dashboard (attention list, rows, detail) and in `check` and `status`
 - [ ] Docs: install (Forge, shared hosting cron; never on the same server as the sites it watches), configuration, checks, alerts (honest about `mail()` needing an MTA)
 - [ ] Run in production next to the previous monitor for a week, then switch over
 - [ ] Read API right after go-live, named like Puls: `share:create <site|group> [--label=...] [--expires=YYYY-MM-DD]`, `share:list`, `share:revoke`; read with `GET /?api&share=TOKEN` (JSON, CSV where it helps). Read-only, scoped to one site or group, stored hashed, optional expiry. Returns status per check, incidents and response-time history

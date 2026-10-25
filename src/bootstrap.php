@@ -13,6 +13,7 @@ require_once __DIR__ . '/sites.php';
 require_once __DIR__ . '/import.php';
 require_once __DIR__ . '/http.php';
 require_once __DIR__ . '/checks/uptime.php';
+require_once __DIR__ . '/checks/ssl.php';
 require_once __DIR__ . '/runner.php';
 require_once __DIR__ . '/silence.php';
 require_once __DIR__ . '/alerts.php';

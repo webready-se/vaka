@@ -13,9 +13,9 @@ function deliver(array $destination, array $bundle, array $config, int $now): bo
 function alert_emoji(string $kind): string
 {
     return match ($kind) {
-        'down', 'still_down' => ':red_circle:',
-        'up', 'stable' => ':large_green_circle:',
-        'unstable' => ':warning:',
+        'down', 'still_down', 'ssl_invalid' => ':red_circle:',
+        'up', 'stable', 'ssl_fixed', 'ssl_renewed' => ':large_green_circle:',
+        'unstable', 'ssl_expiring' => ':warning:',
         'digest' => ':clipboard:',
         default => ':bell:',
     };

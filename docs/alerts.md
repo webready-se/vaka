@@ -10,6 +10,16 @@ Vaka tells you when something changes, once, in as few messages as it can. This 
 
 If a message cannot be delivered (Slack is down, the webhook answers an error, `mail()` fails), Vaka tries again on the next run.
 
+## Certificates
+
+Every https site's certificate is checked every six hours, the way a browser sees it:
+
+- **Expiring**: an alert at 14, 7 and 1 days before it expires (`SSL_ALERT_DAYS`), each once per certificate. When the certificate is renewed, you hear that too, and the countdown starts over.
+- **Not valid**: expired, issued for another name, self-signed, or missing its intermediate certificates. The alert says which, and what to do about it.
+- **Valid again**: once it is fixed.
+
+A site that does not answer at all is not checked for its certificate (the uptime alert covers it); a site that is down because of its certificate is, since that is what explains it. For certificates from an internal authority, point `SSL_CA_FILE` at a CA bundle that includes it.
+
 ## One message, not fifty
 
 All alerts from one run go out together: one message per destination.
@@ -113,7 +123,7 @@ Every message is a `POST` with `Content-Type: application/json`. The fields are 
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `digest` or `test` |
+| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `digest` or `test` |
 | `headline` | The alert in one sentence, as Slack and email show it |
 | `details` | Further lines: the sites and the reason |
 | `server` | The server's name or IP when sites were folded together, otherwise `null` |

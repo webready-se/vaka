@@ -40,6 +40,9 @@ return [
 
     'user_agent' => $env('USER_AGENT'),
 
+    // A CA bundle to verify certificates against instead of the system's (internal authorities)
+    'ssl_ca_file' => $env('SSL_CA_FILE'),
+
     // Dead man's switch pinged at the end of every run
     'heartbeat_url' => $env('HEARTBEAT_URL'),
 
