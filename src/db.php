@@ -154,6 +154,10 @@ function migrations(): array
             )',
             'CREATE INDEX idx_audit_ip ON audit_log (ip, action, created_at)',
         ],
+        7 => [
+            // What a change check (exposed files, later headers and DNS) last told, to compare against
+            "ALTER TABLE check_state ADD COLUMN alerted_snapshot TEXT NOT NULL DEFAULT '[]'",
+        ],
     ];
 }
 

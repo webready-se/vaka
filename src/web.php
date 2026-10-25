@@ -257,11 +257,13 @@ function overview_rows(PDO $db, string $where): array
 {
     return $db->query("SELECT s.*, g.name AS group_name, g.policy, g.delay_minutes,
             c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until, c.flapping_since,
-            cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details
+            cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details,
+            ce.status AS exposed_status, ce.summary AS exposed_summary, ce.details AS exposed_details, ce.changed_at AS exposed_changed_at
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
         LEFT JOIN check_state cs ON cs.site_id = s.id AND cs.check_name = 'ssl'
+        LEFT JOIN check_state ce ON ce.site_id = s.id AND ce.check_name = 'exposed'
         WHERE {$where}
         ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
 }
@@ -294,6 +296,17 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'advice' => $row['ssl_status'] === 'ok' ? '' : advice_for($sslDetails['problem'] ?? '', 0),
         ];
     }
+    $exposed = null;
+    if (in_array($row['exposed_status'], ['ok', 'warn', 'fail'], true)) {
+        $exposedDetails = json_decode((string) $row['exposed_details'], true) ?: [];
+        $exposed = [
+            'status' => $row['exposed_status'],
+            'summary' => $row['exposed_summary'],
+            'found' => $exposedDetails['found'] ?? [],
+            'since' => $row['exposed_changed_at'],
+            'advice' => advice_for($exposedDetails['problem'] ?? '', 0),
+        ];
+    }
     $serverKey = server_key($row);
 
     return [
@@ -314,6 +327,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'maintenance' => $quiet === 'maintenance',
         'unstable' => $row['flapping_since'] !== null,
         'ssl' => $ssl,
+        'exposed' => $exposed,
         'uptime_24h' => site_uptime($db, $row, 86400, $now),
         'uptime_30d' => site_uptime($db, $row, 30 * 86400, $now),
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),

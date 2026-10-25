@@ -20,6 +20,15 @@ Every https site's certificate is checked every six hours, the way a browser see
 
 A site that does not answer at all is not checked for its certificate (the uptime alert covers it); a site that is down because of its certificate is, since that is what explains it. For certificates from an internal authority, point `SSL_CA_FILE` at a CA bundle that includes it.
 
+## Exposed files
+
+Every site is checked once a day for files that should never be public (see [Checks](checks.md#exposed-files)):
+
+- **Public**: an alert the first time a file is found, with what it holds and what to do. A file with secrets, source code or data is red; one that only tells versions and paths is amber. Every file is alerted once; a new one is alerted when it turns up, with the ones still public.
+- **Private again**: once nothing is public any more. When one file of several is taken down, nothing is sent; if it comes back, it is alerted again.
+
+These alerts go out right away under the `delayed` policy too: the delay is for outages.
+
 ## One message, not fifty
 
 All alerts from one run go out together: one message per destination.
@@ -123,7 +132,7 @@ Every message is a `POST` with `Content-Type: application/json`. The fields are 
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `digest` or `test` |
+| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `digest` or `test` |
 | `headline` | The alert in one sentence, as Slack and email show it |
 | `details` | Further lines: the sites and the reason |
 | `server` | The server's name or IP when sites were folded together, otherwise `null` |

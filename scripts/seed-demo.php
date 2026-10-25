@@ -99,6 +99,24 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         $db->prepare("UPDATE check_state SET alerted_status = ?, thresholds_sent = ? WHERE site_id = ? AND check_name = 'ssl'")
             ->execute([$ssl['status'], json_encode(['valid_to' => utc_now($validTo), 'sent' => $days <= 7 ? [14, 7] : []]), $id]);
     }
+    // Exposed files: one site has left its .env and Git repository public
+    if (!in_array($story, ['paused', 'hostile'], true)) {
+        $leaks = $url === 'https://cafe.example' ? ['.env', '.git/'] : [];
+        $found = [];
+        foreach (EXPOSED_FILES as $file) {
+            if (in_array($file['label'], $leaks, true)) $found[$file['label']] ??= ['label' => $file['label'], 'what' => $file['what'], 'severity' => $file['severity'], 'url' => $url . '/' . $file['path']];
+        }
+        $found = array_values($found);
+        $checked = count(EXPOSED_FILES);
+        $exposed = $found
+            ? ['status' => 'fail', 'summary' => count($found) . ' files that should be private are public: ' . list_words(array_column($found, 'label')), 'changed_at' => utc_now($now - 3 * 3600), 'details' => ['found' => $found, 'checked' => $checked, 'problem' => 'exposed']]
+            : ['status' => 'ok', 'summary' => "Nothing that should be private is public ({$checked} files checked)", 'changed_at' => utc_now($month), 'details' => ['found' => [], 'checked' => $checked, 'problem' => '']];
+        save_check_state($db, $id, 'exposed', ['fail_count' => 0] + $exposed, utc_now($now - 1800), utc_now($now + 1800));
+        $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_snapshot = ? WHERE site_id = ? AND check_name = 'exposed'")
+            ->execute([$exposed['status'], json_encode(array_column($found, 'label')), $id]);
+        if ($found) add_event($db, $id, 'exposed', ['status' => 'fail', 'previous' => 'ok', 'message' => $exposed['summary']], $exposed['changed_at']);
+    }
+
     $alerted = in_array($story, ['down', 'snoozed', 'hostile'], true) ? 'fail' : 'ok';
     $db->prepare("UPDATE check_state SET alerted_status = ?, flapping_since = ?, snoozed_until = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([
         $story === 'snoozed' ? 'snoozed' : $alerted,

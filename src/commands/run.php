@@ -75,6 +75,9 @@ function cmd_check(array $config, array $args, array $opts): void
     if (str_starts_with($url, 'https://') && !in_array($result['problem'], ['timeout', 'dns', 'refused', 'connect'], true)) {
         echo '  Certificate: ' . lcfirst(check_certificate($url, $config, time())['summary']) . "\n";
     }
+    if ($result['ok']) {
+        echo '  Exposed files: ' . lcfirst(check_exposed(['check' => $url], $config)['check']['summary']) . "\n";
+    }
     if (!$result['ok']) exit(1);
 }
 
@@ -84,11 +87,12 @@ function cmd_status(array $config, array $args, array $opts): void
     $db = get_db($config['db_path']);
     $now = time();
     $sites = $db->query("SELECT s.*, g.name AS group_name, c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until,
-            cs.status AS ssl_status, cs.summary AS ssl_summary
+            cs.status AS ssl_status, cs.summary AS ssl_summary, ce.status AS exposed_status, ce.summary AS exposed_summary
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
         LEFT JOIN check_state cs ON cs.site_id = s.id AND cs.check_name = 'ssl'
+        LEFT JOIN check_state ce ON ce.site_id = s.id AND ce.check_name = 'exposed'
         ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
 
     $lastRun = get_meta($db, 'last_run_at');
@@ -120,6 +124,7 @@ function cmd_status(array $config, array $args, array $opts): void
         if ($quiet === 'snooze') $detail .= '; snoozed until ' . local_time($site['snoozed_until'], $now);
         if ($quiet === 'maintenance') $detail = trim($detail . '; in a maintenance window', '; ');
         if (in_array($site['ssl_status'], ['warn', 'fail'], true)) $detail = trim($detail . '; ' . lcfirst($site['ssl_summary']), '; ');
+        if (in_array($site['exposed_status'], ['warn', 'fail'], true)) $detail = trim($detail . '; ' . lcfirst($site['exposed_summary']), '; ');
         $rows[] = [$site['group_name'] ?? 'No group', display_url($site['url']), $word, $detail];
     }
 

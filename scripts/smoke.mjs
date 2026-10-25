@@ -181,18 +181,21 @@ async function main() {
     // Needs your attention: one compact row each, outages first, the quiet ones folded away last
     const rows = all('.attention > .incidents > .incident');
     const summary = (row) => row?.querySelector('summary')?.textContent || '';
-    expect(rows.length === 5, `five rows need attention (got ${rows.length})`);
+    expect(rows.length === 6, `six rows need attention (got ${rows.length})`);
     expect(/shop\.example\s*is down/.test(summary(rows[0])), 'an outage comes first');
     expect(/The site answered 503/.test(summary(rows[0])), 'the row says why in one line');
     expect(/The site itself answers with an error/.test(rows[0]?.textContent || ''), 'the advice is inside the row');
     expect(/blog\.example\s*failed a check/.test(summary(rows[2])), 'a failing check comes after the outages');
-    expect(/booking\.example\s*certificate expires in 6 days/.test(summary(rows[3])), 'an expiring certificate comes after them');
-    expect(/1 site is down, snoozed/.test(summary(rows[4])) && /deals2\.example/.test(rows[4].textContent), 'snoozed outages are folded into one row at the end');
+    expect(/cafe\.example\s*2 private files are public/.test(summary(rows[3])) && /\.env, \.git\//.test(summary(rows[3])), 'public files come after them, and say which');
+    expect(/the environment file/.test(rows[3]?.textContent || '') && /change every password and key/.test(rows[3]?.textContent || ''), 'the row says what each file holds and what to do');
+    expect(/booking\.example\s*certificate expires in 6 days/.test(summary(rows[4])), 'an expiring certificate comes after what is broken now');
+    expect(/1 site is down, snoozed/.test(summary(rows[5])) && /deals2\.example/.test(rows[5].textContent), 'snoozed outages are folded into one row at the end');
+    expect(/2\s*Exposed files/.test(q('.watch-stats')?.textContent || ''), 'the watch counts the exposed files');
     expect(!q('.attention details[open]'), 'with two outages, every row starts closed');
     expect(rows.every((row) => row.getBoundingClientRect().height < 90), 'closed rows are compact');
 
     // A row opens on click and stays open across a refresh
-    rows[3].querySelector('summary').click();
+    rows[4].querySelector('summary').click();
     expect(q('.attention details[data-key^="cert:"]').open, 'a click opens the row');
     document.dispatchEvent(new Event('visibilitychange'));
     await sleep(400);
@@ -205,6 +208,7 @@ async function main() {
     expect(all('.site-row .days i').length === 15 * 30, 'thirty days of bars on every row');
     expect(all('.site-row .days i.is-partial, .site-row .days i.is-down').length > 0, 'days with downtime stand out');
     expect(all('.site-row').some((r) => /behind Cloudflare/.test(r.textContent)), 'a CDN site says so');
+    expect(all('.site-row').some((r) => /cafe\.example\s*2 private files are public/.test(r.textContent)), 'a site with public files says so in its row');
 
     // Hostile names and messages are text, never markup
     expect(!q('#app [onerror]') && !q('#app img') && !q('#app script'), 'no markup from the data in the page');

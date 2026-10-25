@@ -20,7 +20,7 @@ beforeEach(function () {
         $stmt->execute([normalize_url($url)]);
         return $stmt->fetch();
     };
-    $this->events = fn () => $this->db->query("SELECT e.status, e.previous, e.message FROM events e ORDER BY e.id")->fetchAll();
+    $this->events = fn () => $this->db->query("SELECT e.status, e.previous, e.message FROM events e WHERE e.check_name = 'uptime' ORDER BY e.id")->fetchAll();
 });
 
 test('a site that answers is up, with its response time and IP recorded', function () {

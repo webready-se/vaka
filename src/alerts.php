@@ -210,10 +210,11 @@ function collect_notices(PDO $db, array $config, int $now): array
     return ['notices' => $notices, 'nowhere' => $nowhere];
 }
 
-function mark_alerted(PDO $db, int $siteId, string $check, string $status, ?string $flappingSince, int $now, ?string $thresholds = null): void
+function mark_alerted(PDO $db, int $siteId, string $check, string $status, ?string $flappingSince, int $now, ?string $thresholds = null, ?string $snapshot = null): void
 {
-    $db->prepare('UPDATE check_state SET alerted_status = ?, alerted_at = ?, flapping_since = ?, thresholds_sent = COALESCE(?, thresholds_sent) WHERE site_id = ? AND check_name = ?')
-        ->execute([$status, utc_now($now), $flappingSince, $thresholds, $siteId, $check]);
+    $db->prepare('UPDATE check_state SET alerted_status = ?, alerted_at = ?, flapping_since = ?, thresholds_sent = COALESCE(?, thresholds_sent),
+            alerted_snapshot = COALESCE(?, alerted_snapshot) WHERE site_id = ? AND check_name = ?')
+        ->execute([$status, utc_now($now), $flappingSince, $thresholds, $snapshot, $siteId, $check]);
 }
 
 /**
@@ -269,6 +270,58 @@ function collect_ssl_notices(PDO $db, array $config, int $now): array
 }
 
 /**
+ * Exposed-file notices that are due (see exposed_notice()). Maintenance
+ * windows hold them back like any other alert; a snooze is for outages only.
+ *
+ * @return array{notices: list<array>, nowhere: int}
+ */
+function collect_exposed_notices(PDO $db, array $config, int $now): array
+{
+    $rows = $db->query("SELECT c.*, s.url, s.group_id, g.name AS group_name, g.policy, g.slack_webhook, g.webhook_url, g.email
+        FROM check_state c
+        JOIN sites s ON s.id = c.site_id
+        LEFT JOIN groups g ON g.id = s.group_id
+        WHERE c.check_name = 'exposed' AND s.paused = 0 AND c.status IN ('ok', 'warn', 'fail')
+        ORDER BY s.id")->fetchAll();
+    $windows = load_windows($db, $now);
+    $notices = [];
+    $nowhere = 0;
+
+    foreach ($rows as $row) {
+        if (active_silence(['id' => $row['site_id'], 'group_id' => $row['group_id'], 'snoozed_until' => null], $windows, $now, $config['timezone']) !== '') continue;
+        $group = $row['group_id'] === null ? null : $row;
+        $notice = exposed_notice(['details' => json_decode($row['details'], true) ?: []] + $row, $group);
+        if ($notice['action'] === 'none') continue;
+
+        $destinations = $notice['action'] === 'send' ? alert_destinations($group, $config) : [];
+        if (!$destinations) {
+            mark_alerted($db, $row['site_id'], 'exposed', $row['status'], null, $now, null, $notice['snapshot']);
+            if ($notice['action'] === 'send') $nowhere++;
+            continue;
+        }
+        $notices[] = [
+            'site_id' => $row['site_id'],
+            'check' => 'exposed',
+            'status' => $row['status'],
+            'url' => $row['url'],
+            'group' => $row['group_name'],
+            'kind' => $notice['kind'],
+            'summary' => $row['summary'],
+            'since' => $row['changed_at'],
+            'down_seconds' => 0,
+            'outages' => 0,
+            'new' => $notice['new'],
+            'still' => $notice['still'],
+            'snapshot' => $notice['snapshot'],
+            'server_key' => null,
+            'server' => null,
+            'destinations' => $destinations,
+        ];
+    }
+    return ['notices' => $notices, 'nowhere' => $nowhere];
+}
+
+/**
  * Send what is due: one message per destination, sites on the same server
  * folded together. A notice counts as told when at least one of its
  * destinations took it; otherwise it is tried again on the next run.
@@ -279,7 +332,11 @@ function process_alerts(PDO $db, array $config, int $now): array
 {
     $collected = collect_notices($db, $config, $now);
     $ssl = collect_ssl_notices($db, $config, $now);
-    $collected = ['notices' => [...$collected['notices'], ...$ssl['notices']], 'nowhere' => $collected['nowhere'] + $ssl['nowhere']];
+    $exposed = collect_exposed_notices($db, $config, $now);
+    $collected = [
+        'notices' => [...$collected['notices'], ...$ssl['notices'], ...$exposed['notices']],
+        'nowhere' => $collected['nowhere'] + $ssl['nowhere'] + $exposed['nowhere'],
+    ];
     $results = [];
     $told = [];
     foreach (bundle_notices($collected['notices'], server_sizes($db)) as $bundle) {
@@ -295,7 +352,7 @@ function process_alerts(PDO $db, array $config, int $now): array
         }
     }
     foreach ($told as $notice) {
-        mark_alerted($db, $notice['site_id'], $notice['check'], $notice['status'], $notice['kind'] === 'unstable' ? utc_now($now) : null, $now, $notice['thresholds'] ?? null);
+        mark_alerted($db, $notice['site_id'], $notice['check'], $notice['status'], $notice['kind'] === 'unstable' ? utc_now($now) : null, $now, $notice['thresholds'] ?? null, $notice['snapshot'] ?? null);
     }
     return ['alerts' => $results, 'nowhere' => $collected['nowhere']];
 }
@@ -319,7 +376,8 @@ function bundle_notices(array $notices, array $serverSizes): array
         }
     }
 
-    $order = ['unstable' => 0, 'still_down' => 1, 'down' => 2, 'up' => 3, 'stable' => 4, 'ssl_invalid' => 5, 'ssl_expiring' => 6, 'ssl_fixed' => 7, 'ssl_renewed' => 8];
+    $order = ['unstable' => 0, 'still_down' => 1, 'down' => 2, 'up' => 3, 'stable' => 4, 'ssl_invalid' => 5, 'ssl_expiring' => 6, 'ssl_fixed' => 7, 'ssl_renewed' => 8,
+        'exposed' => 9, 'exposed_minor' => 10, 'exposed_fixed' => 11];
     $bundles = [];
     foreach ($byDestination as $bundle) {
         $groups = [];
@@ -376,6 +434,8 @@ function alert_text(array $item): array
             ],
             'ssl_fixed' => ['headline' => "{$who}: the SSL certificate is valid again", 'details' => [$site['summary']]],
             'ssl_renewed' => ['headline' => "{$who}: the SSL certificate was renewed", 'details' => [$site['summary']]],
+            'exposed', 'exposed_minor' => exposed_text($who, $site),
+            'exposed_fixed' => ['headline' => "{$who}: nothing that should be private is public any more", 'details' => []],
         };
     }
 
@@ -409,6 +469,16 @@ function alert_text(array $item): array
             'details' => $all ? [] : [$list],
         ],
     };
+}
+
+/** The files that were found public: each with what it holds, those told before, and what to do. */
+function exposed_text(string $who, array $notice): array
+{
+    $labels = array_column($notice['new'], 'label');
+    $details = array_map(fn (array $file) => "{$file['label']}: {$file['what']}", $notice['new']);
+    if ($notice['still']) $details[] = 'Still public: ' . list_words($notice['still']);
+    $details[] = advice_for($notice['kind'], 0);
+    return ['headline' => "{$who}: " . list_words($labels) . (count($labels) === 1 ? ' is public' : ' are public'), 'details' => $details];
 }
 
 /** "a.example, b.example and 5 more" */
@@ -475,7 +545,7 @@ function send_digests(PDO $db, array $config, int $now): array
     $results = [];
     foreach ($db->query("SELECT * FROM groups WHERE policy = 'digest' ORDER BY name")->fetchAll() as $group) {
         $events = $db->prepare("SELECT e.*, s.url FROM events e JOIN sites s ON s.id = e.site_id
-            WHERE s.group_id = ? AND e.check_name IN ('uptime', 'ssl') AND e.created_at > ? AND e.created_at <= ?
+            WHERE s.group_id = ? AND e.check_name IN ('uptime', 'ssl', 'exposed') AND e.created_at > ? AND e.created_at <= ?
                 AND NOT (e.previous = 'pending' AND e.status = 'ok')
             ORDER BY e.created_at, e.id");
         $events->execute([$group['id'], $since, utc_now($now)]);

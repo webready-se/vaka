@@ -64,6 +64,7 @@
     pending: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 7.5V12l3 2'],
     quiet: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'],
     shield: ['M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z', 'M12 8v4.5', 'M12 15.8v.1'],
+    file: ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5', 'M12 11.5v3.5', 'M12 18.3v.1'],
     bell: ['M18 16H6l1.5-2.2V10a4.5 4.5 0 0 1 9 0v3.8z', 'M10 19a2 2 0 0 0 4 0'],
     server: ['M4 4.5h16v6H4zM4 13.5h16v6H4z', 'M8 7.5h.01M8 16.5h.01'],
     bulb: ['M9 18h6M10 21h4', 'M12 3a6 6 0 0 0-3.6 10.8c.6.5.6 1.1.6 1.7v.5h6v-.5c0-.6 0-1.2.6-1.7A6 6 0 0 0 12 3z'],
@@ -218,6 +219,13 @@
     });
   }
 
+  /** Sites with files that anyone can download but that should be private. */
+  function exposedIssues() {
+    return allSites().filter(function (site) {
+      return site.exposed && (site.exposed.status === 'fail' || site.exposed.status === 'warn');
+    });
+  }
+
   function render() {
     renderRunState();
     renderBanner();
@@ -280,6 +288,8 @@
     var downNow = sites.filter(function (site) { return site.status === 'down' && !isQuiet(site); }).length;
     var downQuiet = t.down - downNow;
     var certs = certIssues().length;
+    var exposed = exposedIssues();
+    var exposedFiles = exposed.reduce(function (sum, site) { return sum + site.exposed.found.length; }, 0);
     var watched = t.sites - t.paused;
     var kind, kicker, title, line;
 
@@ -307,12 +317,16 @@
       title = 'Waiting for the first checks';
       line = 'Results show up here after the next run.';
     } else {
-      kind = certs ? 'watch' : 'calm';
+      // Up, but not all quiet while a file is public or a certificate is about to run out
+      var notes = [];
+      if (exposed.length) notes.push(plural(exposed.length, 'site has', 'sites have') + ' private files that anyone can download.');
+      if (certs) notes.push(plural(certs, 'certificate needs', 'certificates need') + ' renewing soon.');
+      var up = t.up === watched ? (watched === 1 ? 'Your site is up' : 'All ' + watched + ' sites are up') : plural(t.up, 'site is up', 'sites are up');
+      kind = notes.length ? 'watch' : 'calm';
       kicker = 'Keeping watch';
-      title = 'All quiet.';
-      line = t.up === watched ? (watched === 1 ? 'Your site is up.' : 'All ' + watched + ' sites are up.') : plural(t.up, 'site is up.', 'sites are up.');
-      if (certs) line += ' ' + plural(certs, 'certificate needs', 'certificates need') + ' renewing soon.';
-      else if (state.data.last_incident) line += ' The last outage was ' + ago(state.data.last_incident.at) + ', on ' + state.data.last_incident.label + '.';
+      title = notes.length ? up : 'All quiet.';
+      line = notes.length ? notes.join(' ') : up + '.';
+      if (!notes.length && state.data.last_incident) line += ' The last outage was ' + ago(state.data.last_incident.at) + ', on ' + state.data.last_incident.label + '.';
     }
 
     var ms = median(sites.filter(function (site) { return site.ms !== null && site.ms !== undefined; }).map(function (site) { return site.ms; }));
@@ -323,6 +337,10 @@
     if (t.down) stats.push(h('li', { class: 'is-down' }, [h('b', {}, String(t.down)), h('span', {}, 'Down')]));
     if (t.failing) stats.push(h('li', { class: 'is-warn' }, [h('b', {}, String(t.failing)), h('span', {}, 'Checking')]));
     if (certs) stats.push(h('li', { class: 'is-warn' }, [h('b', {}, String(certs)), h('span', {}, 'Certificates')]));
+    if (exposedFiles) {
+      var red = exposed.some(function (site) { return site.exposed.status === 'fail'; });
+      stats.push(h('li', { class: red ? 'is-down' : 'is-warn' }, [h('b', {}, String(exposedFiles)), h('span', {}, 'Exposed files')]));
+    }
     if (ms !== null) stats.push(h('li', {}, [h('b', {}, ms + ' ms'), h('span', {}, 'Typical response')]));
     if (average !== null) stats.push(h('li', {}, [h('b', {}, average + '%'), h('span', {}, 'Up, 30 days')]));
     if (t.paused) stats.push(h('li', {}, [h('b', {}, String(t.paused)), h('span', {}, 'Paused')]));
@@ -376,7 +394,8 @@
     clear(node);
     var problems = allSites().filter(function (site) { return site.status === 'down' || site.status === 'failing'; });
     var certs = certIssues().sort(function (a, b) { return (a.ssl.status === 'fail' ? 0 : 1) - (b.ssl.status === 'fail' ? 0 : 1) || (a.ssl.days_left || 0) - (b.ssl.days_left || 0); });
-    node.hidden = problems.length + certs.length === 0;
+    var exposed = exposedIssues();
+    node.hidden = problems.length + certs.length + exposed.length === 0;
     if (node.hidden) return;
 
     var rank = function (site) { return site.status === 'failing' ? 1 : 0; };
@@ -399,9 +418,14 @@
     var outages = items.filter(function (item) { return item.sites[0].status === 'down'; });
     state.autoOpen = outages.length === 1 ? itemKey(outages[0]) : null;
 
+    // Certificates and exposed files after the outages: what is broken now before what is about to be
+    var checks = certs.map(function (site) { return { rank: site.ssl.status === 'fail' ? 0 : 1, row: certIncident(site) }; })
+      .concat(exposed.map(function (site) { return { rank: site.exposed.status === 'fail' ? 0 : 1, row: exposedIncident(site) }; }))
+      .sort(function (a, b) { return a.rank - b.rank; });
+
     var rows = items.map(function (item) {
       return item.sites.length > 1 ? serverIncident(item) : siteIncident(item.sites[0]);
-    }).concat(certs.map(certIncident));
+    }).concat(checks.map(function (check) { return check.row; }));
     if (quiet.length) rows.push(quietGroup(quiet));
 
     append(node, h('h2', { class: 'section-title', id: 'attention-title' }, 'Needs your attention'));
@@ -481,6 +505,25 @@
       site.ssl.status === 'fail' ? timeBox('Invalid', 'Certificate') : timeBox(plural(site.ssl.days_left, 'day', 'days'), 'Expires in'), [
         h('p', { class: 'incident-meta' }, site.group || 'No group'),
         advice(site.ssl.advice),
+        h('div', { class: 'actions' }, siteActions(site, false))
+      ]);
+  }
+
+  function exposedWords(exposed) {
+    return exposed.found.length === 1 ? exposed.found[0].label + ' is public' : exposed.found.length + ' private files are public';
+  }
+
+  function exposedIncident(site) {
+    var exposed = site.exposed;
+    var found = exposed.found;
+    return incident('exposed:' + site.id, exposed.status === 'fail' ? 'down' : 'warn', 'file', site.label, exposedWords(exposed),
+      found.length === 1 ? found[0].what : found.map(function (file) { return file.label; }).join(', '),
+      timeBox(exposed.since ? shortDuration(secondsSince(exposed.since)) : '–', 'Public for'), [
+        h('p', { class: 'incident-meta' }, site.group || 'No group'),
+        h('ul', { class: 'incident-files', 'aria-label': 'Public files' }, found.map(function (file) {
+          return h('li', {}, [h('code', {}, file.label), h('span', {}, file.what)]);
+        })),
+        advice(exposed.advice),
         h('div', { class: 'actions' }, siteActions(site, false))
       ]);
   }
@@ -589,6 +632,8 @@
     if (site.maintenance) notes.push('in maintenance');
     var subtitle = notes.join(' · ');
     var cert = site.ssl && site.ssl.status !== 'ok' ? h('span', { class: site.ssl.status === 'fail' ? 'is-down' : 'is-warn' }, certificateWords(site.ssl)) : null;
+    var files = site.exposed && site.exposed.status !== 'ok' ? h('span', { class: site.exposed.status === 'fail' ? 'is-down' : 'is-warn' }, exposedWords(site.exposed)) : null;
+    var small = [subtitle, cert, files].filter(Boolean).reduce(function (list, part) { return list.length ? list.concat([' · ', part]) : [part]; }, []);
 
     return h('li', {}, h('button', {
       type: 'button',
@@ -598,7 +643,7 @@
       'aria-label': site.label + ': ' + STATUS_WORDS[site.status] + (site.status === 'up' ? ', ' + ms + ', ' + month + ' up over 30 days' : '. ' + site.summary)
     }, [
       statusLabel(site.status),
-      h('span', { class: 'site-name' }, [h('strong', {}, site.label), subtitle || cert ? h('small', {}, [subtitle, subtitle && cert ? ' · ' : null, cert]) : null]),
+      h('span', { class: 'site-name' }, [h('strong', {}, site.label), small.length ? h('small', {}, small) : null]),
       days(site.days, false, site.status === 'paused'),
       h('span', { class: 'site-figures' }, [
         h('span', { class: 'site-figure' }, [ms, h('small', {}, 'now')]),
@@ -650,7 +695,8 @@
       ['Group', (site.group || 'No group')],
       ['Checked every', site.interval_minutes + ' min'],
       ['Server', site.cdn ? 'Behind ' + site.cdn : (site.server || 'Not known yet')],
-      ['Certificate', site.ssl ? site.ssl.summary : (/^https:/.test(site.url) ? 'Not checked yet' : 'No https')]
+      ['Certificate', site.ssl ? site.ssl.summary : (/^https:/.test(site.url) ? 'Not checked yet' : 'No https')],
+      ['Exposed files', site.exposed ? site.exposed.summary : 'Not checked yet']
     ];
     if (site.keyword) settings.splice(2, 0, ['Looks for the text', '"' + site.keyword + '"']);
     d.maintenance.forEach(function (w) {
@@ -666,6 +712,7 @@
       site.summary ? h('p', { class: 'incident-summary' }, site.summary) : null,
       advice(site.advice),
       site.ssl && site.ssl.advice ? advice(site.ssl.summary + '. ' + site.ssl.advice) : null,
+      site.exposed && site.exposed.advice ? advice(site.exposed.summary + '. ' + site.exposed.advice) : null,
       badges(site),
       h('div', { class: 'actions' }, siteActions(site, true).filter(function (n) { return n.getAttribute('data-action') !== 'open'; })),
       h('dl', { class: 'facts' }, [

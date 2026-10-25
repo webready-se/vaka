@@ -6,20 +6,21 @@ const MAX_BODY_BYTES = 1048576;
 /**
  * GET many URLs at once over curl_multi, at most $concurrency at a time.
  * Follows up to 5 redirects (http and https only); the headers returned are
- * the final response's. A failed request comes back with errno and error set
- * and status 0, never as an exception.
+ * the final response's. At most $maxBytes of each body is read. A failed
+ * request comes back with errno and error set and status 0, never as an
+ * exception.
  *
  * @param array<array-key, string> $urls
  * @return array<array-key, array{status: int, headers: array<string, list<string>>, body: string, ms: int, ip: string, errno: int, error: string, url: string}>
  */
-function fetch_many(array $urls, int $timeout, string $userAgent, int $concurrency = 20, string $caFile = ''): array
+function fetch_many(array $urls, int $timeout, string $userAgent, int $concurrency = 20, string $caFile = '', int $maxBytes = MAX_BODY_BYTES): array
 {
     $multi = curl_multi_init();
     $pending = $urls;
     $running = [];
     $results = [];
 
-    $start = function () use (&$pending, &$running, $multi, $timeout, $userAgent, $caFile): void {
+    $start = function () use (&$pending, &$running, $multi, $timeout, $userAgent, $caFile, $maxBytes): void {
         $key = array_key_first($pending);
         $transfer = (object) ['key' => $key, 'headers' => [], 'body' => '', 'truncated' => false];
         $handle = curl_init($pending[$key]);
@@ -45,8 +46,8 @@ function fetch_many(array $urls, int $timeout, string $userAgent, int $concurren
                 }
                 return strlen($line);
             },
-            CURLOPT_WRITEFUNCTION => function ($handle, string $chunk) use ($transfer): int {
-                $room = MAX_BODY_BYTES - strlen($transfer->body);
+            CURLOPT_WRITEFUNCTION => function ($handle, string $chunk) use ($transfer, $maxBytes): int {
+                $room = $maxBytes - strlen($transfer->body);
                 if ($room <= 0) {
                     // Enough read: stop the download (curl reports a write error, see below)
                     $transfer->truncated = true;
