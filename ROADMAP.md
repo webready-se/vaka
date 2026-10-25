@@ -1,0 +1,77 @@
+# Roadmap
+
+Uptime comes first: knowing when a site goes down is the main job. SSL certificates come second, the other checks after. Every check is built test-first.
+
+## Milestone 0: Foundation
+
+- [ ] Repository skeleton: LICENSE (MIT), CHANGELOG.md, SECURITY.md, CONTRIBUTING.md, .editorconfig
+- [ ] .gitignore before the first commit: `data/`, `.env`, `users.json`, `*.sqlite`, `.private/`
+- [ ] composer.json: platform requirements (PHP 8.3+, pdo_sqlite, curl, openssl) and Pest as the only dev dependency
+- [ ] `config.php` with optional `.env`, Forge zero-downtime path detection
+- [ ] `src/bootstrap.php` and `tests/bootstrap.php` loading code with plain `require`
+- [ ] SQLite in WAL mode, `PRAGMA user_version` and lazy migrations
+- [ ] `php vaka` CLI skeleton: help, readline prompts as fallback for missing arguments
+- [ ] Pre-push hook and GitHub Actions CI (PHP 8.3, 8.4, 8.5)
+
+## Milestone 1: Uptime
+
+- [ ] Groups: `group:add`, `group:edit`, `group:remove`, `group:list`; each group has an alert policy and its own Slack webhook, JSON webhook and email
+- [ ] Sites: `site:add`, `site:edit`, `site:remove`, `site:list` with URL normalization; a site belongs to one group
+- [ ] `site:import <file.csv>` (`group,url,enabled`), read from wherever the file lives
+- [ ] Runner: `php vaka run` with a lock file, due-check scheduling and a time budget
+- [ ] Parallel HTTP via `curl_multi` with a concurrency limit
+- [ ] Uptime check: status code, response time, optional keyword; down after 2 consecutive failures
+- [ ] Server grouping: the IP a site answered on (curl's primary IP) puts sites on the same server together; an optional label per server
+- [ ] State per check and an event history per site
+- [ ] Alerts reconcile what was last sent with the current state (retries, delays and silences fall out of this)
+- [ ] Grouped alerts: one message per destination per run, sites on the same server folded together ("server 203.0.113.10: 23 sites down"), recoveries the same way
+- [ ] Alert policies per group: immediate, after N minutes down, digest only, silent (dashboard only)
+- [ ] Delivery: Slack incoming webhook, generic JSON webhook, email via `mail()`
+- [ ] Maintenance windows: one-off or recurring (e.g. every night 00:00-07:00, across midnight), per site or per group; checks still run and record; incidents inside a window show on the dashboard only; still down when it ends alerts
+- [ ] Snooze: acknowledge an ongoing incident for 1 h, 4 h or 24 h (dashboard and CLI); alerts again if still down when it ends
+- [ ] `php vaka check <url>`, `php vaka status` and `php vaka alert:test`
+- [ ] Auth: `user:*` commands, login with CSRF, lockout per IP in SQLite, session hardening, security headers
+- [ ] Access per group: `groups` per user (empty = all), enforced in every endpoint and in snooze
+- [ ] Dashboard: every site at a glance, grouped by group and server; response time and uptime history; per-site event history; maintenance and snooze state; dark/light, accessible, mobile, and good-looking
+- [ ] Strict CSP (`script-src 'self'`, `style-src 'self'`), event delegation in `app.js`
+- [ ] Dashboard smoke test (`scripts/smoke.mjs`): fails on JS errors and CSP violations, renders hostile values as text
+- [ ] `/?health` that reports a stopped cron
+- [ ] Seed script with fake sites (example.com, shop.example, 192.0.2.x) for demos, screenshots and the smoke test
+
+## Milestone 2: SSL certificates
+
+- [ ] SSL check: peer certificate via stream context and `openssl_x509_parse`
+- [ ] Alerts at 14, 7 and 1 days before expiry, and when a certificate turns invalid
+- [ ] Docs: install (Forge, shared hosting cron), configuration, checks, alerts (honest about `mail()` needing an MTA)
+- [ ] Run in production next to the previous monitor for a week, then switch over
+
+## Milestone 3: More checks
+
+- [ ] Exposed files: `.env`, `.git/HEAD`, `.git/config`, `composer.json`/`.lock`, `package.json`, `phpinfo.php`/`info.php`, `.DS_Store`, backups (`backup.zip`, `site.zip`, `db.sql`, `*.sql.gz`), `wp-config.php.bak`, `server-status`; content signatures plus a soft-404 baseline
+- [ ] Security headers: HSTS, CSP, X-Content-Type-Options, frame-ancestors/X-Frame-Options, Referrer-Policy, Permissions-Policy; grade A-F; alert when one disappears or weakens
+- [ ] Mail DNS: MX, SPF and DMARC via `dns_get_record`; alert on change
+- [ ] Domain expiry via RDAP (IANA bootstrap, cached); "unknown" where the registry has no RDAP
+
+## Milestone 4: Open source
+
+- [ ] Release zip with runtime files only, first tagged release (0.1.0)
+- [ ] README screenshots generated from the seeded demo database
+- [ ] Make the repository public
+
+## Ideas
+
+- [ ] Tags on sites, if one group per site proves too narrow
+- [ ] Snooze straight from Slack (needs a Slack app instead of an incoming webhook)
+- [ ] Connect sibling tools: each tool keeps its own small JSON API with a token; paste another tool's URL and token in Settings, e.g. to show Puls traffic next to a site's uptime. No shared database, no shared code library
+- [ ] A read API with tokens for Vaka itself
+- [ ] CSP report endpoint (`report-to` / `report-uri`) that collects violations from the sites
+- [ ] Read-only share link per group (like Puls share tokens), e.g. for a customer
+- [ ] Public status pages
+- [ ] DKIM (selectors are site specific)
+- [ ] SMTP delivery for email alerts
+- [ ] Reminder alerts while a site stays down
+- [ ] Manage sites and groups from the dashboard
+- [ ] Heartbeat monitoring: cron jobs and queues ping Vaka, alert when a ping is missing
+- [ ] Slow-response alerts (response time over a threshold)
+- [ ] TLS details: protocol versions, chain completeness
+- [ ] TOTP two-factor login
