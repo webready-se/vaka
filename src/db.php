@@ -130,6 +130,20 @@ function migrations(): array
         4 => [
             'ALTER TABLE check_state ADD COLUMN flapping_since TEXT',
         ],
+        5 => [
+            "CREATE TABLE maintenance (
+                id INTEGER PRIMARY KEY,
+                site_id INTEGER REFERENCES sites (id) ON DELETE CASCADE,
+                group_id INTEGER REFERENCES groups (id) ON DELETE CASCADE,
+                label TEXT NOT NULL DEFAULT '',
+                days TEXT NOT NULL DEFAULT '',
+                start_time TEXT,
+                end_time TEXT,
+                starts_at TEXT,
+                ends_at TEXT,
+                created_at TEXT NOT NULL
+            )",
+        ],
     ];
 }
 

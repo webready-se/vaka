@@ -44,7 +44,7 @@ function run(PDO $db, array $config, ?int $now = null): array
 function uptime_sites(PDO $db, string $where, array $params): array
 {
     $stmt = $db->prepare("SELECT s.*, c.status AS state_status, c.summary AS state_summary, c.details AS state_details,
-            c.fail_count AS state_fail_count, c.changed_at AS state_changed_at
+            c.fail_count AS state_fail_count, c.changed_at AS state_changed_at, c.snoozed_until AS snoozed_until
         FROM sites s
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
         WHERE s.paused = 0
@@ -90,9 +90,10 @@ function run_uptime(PDO $db, array $config, int $now): array
     $sites = due_uptime_sites($db, utc_now($now));
     if (!$sites) return $summary;
 
-    $failing = check_uptime($db, $config, $sites, $now, $summary);
+    $windows = load_windows($db, $now);
+    $failing = check_uptime($db, $config, $sites, $now, $windows, $summary);
     $neighbours = server_neighbours($db, $failing, array_column($sites, 'id'));
-    if ($neighbours) check_uptime($db, $config, $neighbours, $now, $summary);
+    if ($neighbours) check_uptime($db, $config, $neighbours, $now, $windows, $summary);
 
     return $summary;
 }
@@ -101,7 +102,7 @@ function run_uptime(PDO $db, array $config, int $now): array
  * Check $sites in parallel, store the results and add them to $summary.
  * Returns the sites that failed for the first time in a row.
  */
-function check_uptime(PDO $db, array $config, array $sites, int $now, array &$summary): array
+function check_uptime(PDO $db, array $config, array $sites, int $now, array $windows, array &$summary): array
 {
     $responses = fetch_many(array_column($sites, 'url', 'id'), $config['uptime_timeout'], user_agent($config));
     $checkedAt = utc_now($now);
@@ -120,6 +121,10 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array &$su
         // A failing site is checked again on the next run, a healthy one after its interval
         $wait = $next['state']['fail_count'] > 0 ? 60 : site_interval($site, $config) * 60;
         save_check_state($db, $site['id'], 'uptime', $next['state'], $checkedAt, utc_now($now + $wait));
+        // A recovery ends a snooze
+        if ($next['state']['status'] === 'ok' && $next['state']['fail_count'] === 0 && $site['snoozed_until'] !== null) {
+            $db->prepare("UPDATE check_state SET snoozed_until = NULL WHERE site_id = ? AND check_name = 'uptime'")->execute([$site['id']]);
+        }
         $sample->execute([$site['id'], $checkedAt, $result['status_code'], $result['ms'], $result['ok'] ? 1 : 0, $result['ip']]);
         // Keep the last known IP when a request gets none (DNS failure), so a down server still groups its sites
         $site['ip'] = $result['ip'] !== '' ? $result['ip'] : $site['ip'];
@@ -128,7 +133,7 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array &$su
         if ($next['state']['fail_count'] === 1) $failing[] = $site;
 
         if ($next['event']) {
-            add_event($db, $site['id'], 'uptime', $next['event'], $checkedAt);
+            add_event($db, $site['id'], 'uptime', $next['event'], $checkedAt, active_silence($site, $windows, $now, $config['timezone']));
             $summary['events'][] = ['url' => $site['url']] + $next['event'];
         }
         $summary['checked']++;
@@ -154,10 +159,11 @@ function save_check_state(PDO $db, int $siteId, string $check, array $state, str
         ->execute([$siteId, $check, $state['status'], $state['summary'], json_encode($state['details']), $state['fail_count'], $checkedAt, $nextAt, $state['changed_at']]);
 }
 
-function add_event(PDO $db, int $siteId, string $check, array $event, string $createdAt): void
+/** Record a change in a site's history; $silencedBy says whether it happened during maintenance or a snooze. */
+function add_event(PDO $db, int $siteId, string $check, array $event, string $createdAt, string $silencedBy = ''): void
 {
-    $db->prepare('INSERT INTO events (site_id, check_name, status, previous, message, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        ->execute([$siteId, $check, $event['status'], $event['previous'], $event['message'], $createdAt]);
+    $db->prepare('INSERT INTO events (site_id, check_name, status, previous, message, silenced_by, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        ->execute([$siteId, $check, $event['status'], $event['previous'], $event['message'], $silencedBy, $createdAt]);
 }
 
 /** Once a day: drop uptime samples older than SAMPLES_RETENTION_DAYS. */

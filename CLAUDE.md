@@ -54,6 +54,7 @@ This repository will be public. Nothing about the user, the company, its custome
 - **Store as little as possible.** No personal data. Uptime samples are trimmed after `SAMPLES_RETENTION_DAYS`; the login audit log after 30 days.
 - **Quiet alerts.** Alert on state changes and expiry thresholds only, grouped into one message per destination per run.
 - **Standalone.** Other tools (like Puls) are reached through their own small JSON API with a token, never through a shared database or a shared code library. Copy patterns, don't depend on each other.
+- **A read API from v1 (every Webready tool).** A read-only token per site or group lets the AI assistant in a site's own project read Vaka's data and act on it, and the same API serves links between the tools. Same names as Puls: `share:create`, `share:list`, `share:revoke`, `GET /?api&share=TOKEN`. Stable field names documented in `docs/api.md`; text that came from the sites is marked as untrusted data there. Planned right after go-live (see ROADMAP).
 - **No new monthly running costs.** Raise any that come up.
 - **Prefer established standards** (RDAP, Keep a Changelog, SemVer, Slack incoming webhooks) over custom extras.
 
@@ -76,6 +77,7 @@ src/commands/groups.php  group:add, group:edit, group:remove, group:list
 src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:import
 src/commands/run.php     run, check, status
 src/commands/alerts.php  alert:test, server:list, server:label
+src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, snooze, unsnooze
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
 src/checks/uptime.php    evaluate_uptime(), next_uptime_state(), detect_cdn(), plain-words errors and durations
 src/checks/ssl.php       Peer certificate capture and expiry
@@ -84,7 +86,7 @@ src/checks/exposed.php   Exposed file paths and content signatures
 src/checks/headers.php   Security header grading and regressions
 src/checks/dns.php       MX, SPF, DMARC snapshots
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
-src/silence.php          Maintenance windows (one-off, recurring) and snoozes
+src/silence.php          Maintenance windows (parse, window_active() in local time, describe), active_silence(), snooze_site()
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             Sessions, CSRF, login lockout, users.json
@@ -127,8 +129,8 @@ servers      ip, label                                           (optional label
 check_state  site_id, check_name, status, summary, details (JSON), fail_count, checked_at, next_at, changed_at,
              alerted_status, alerted_at, flapping_since, snoozed_until, thresholds_sent (JSON)
 events       id, site_id, check_name, status, previous, message, silenced_by, created_at
-maintenance  id, site_id | group_id, label, starts_at, ends_at  (one-off)
-             or days (weekday mask), start_time, end_time       (recurring, in TIMEZONE)
+maintenance  id, site_id | group_id, label, starts_at, ends_at  (one-off, UTC)
+             or days ("1,2,3" ISO weekdays), start_time, end_time (recurring, HH:MM in TIMEZONE)
 samples      site_id, checked_at, status_code, ms, ok, ip        (uptime only, trimmed after SAMPLES_RETENTION_DAYS)
              (`check` is an SQL keyword, hence check_name)
 audit_log    id, username, action, ip, created_at               (login lockout, trimmed after 30 days)
@@ -162,7 +164,8 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 **Silences** (recorded in the event history as `silenced_by`, checks keep running):
 
 - **Maintenance window:** one-off (from, to) or recurring (weekdays plus a time range, e.g. every night 00:00-07:00, may cross midnight), per site or per group. Incidents that start and end inside a window are never sent; the dashboard shows them in the history and as a quiet summary ("2 outages during maintenance, 14 min"). A site still down when the window ends alerts then.
-- **Snooze:** acknowledge an ongoing incident for 1 h, 4 h or 24 h. There is no open-ended snooze, so nothing is forgotten: still down when it ends means a new alert. A recovery clears it. Planned long outages use a maintenance window or pause the site.
+- **Snooze:** acknowledge an ongoing incident for 1 h, 4 h or 24 h. There is no open-ended snooze, so nothing is forgotten: still down when it ends means a new alert. A recovery clears it. Planned long outages use a maintenance window or pause the site. Snoozing sets `alerted_status = 'snoozed'` (when the site is down), so the end of the snooze differs from what was told and sends "still down after the snooze" (`kind = still_down`).
+- While silenced, `collect_notices()` skips the check entirely; events written then carry `silenced_by`, and `recent_outages()` ignores them, so planned work never makes a site look unstable.
 
 **Policies per group:**
 
@@ -237,8 +240,9 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka site:import [<file.csv>]` | Import sites from CSV (`group,url,enabled`) |
 | `php vaka group:add [<name>]` / `group:edit` / `group:remove` / `group:list` | Groups: policy, delay, Slack webhook, JSON webhook, email |
 | `php vaka server:label [<ip> <label>]` | Name a server's IP, so alerts say "web-1 (203.0.113.10)" (empty label removes it) |
-| `php vaka maintenance:add` / `maintenance:list` / `maintenance:remove` | Maintenance windows per site or group |
-| `php vaka snooze [<url>] [--for=1h\|4h\|24h]` / `unsnooze` | Snooze an incident |
+| `php vaka maintenance:add [<group\|site>] --at=HH:MM-HH:MM [--days=] \| --from= --to= [--label=]` | Maintenance window per group or site (a group name wins) |
+| `php vaka maintenance:list` / `maintenance:remove [<#>]` | List or remove maintenance windows |
+| `php vaka snooze [<site\|server>] [--for=1h\|4h\|24h]` / `unsnooze` | Snooze an incident, or every failing site on a server (IP or name) |
 | `php vaka alert:test [<group>]` | Send a test alert to a group's destinations (no group: the defaults in .env) |
 | `php vaka server:list` | Servers (by IP or hand-set name) and their sites; CDN sites counted apart |
 | `php vaka user:add [<name>]` / `user:edit` / `user:remove` / `user:list` | Manage dashboard users |

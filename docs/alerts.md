@@ -36,6 +36,30 @@ A site that flaps does not flood the channel:
 
 That is at most three messages for an unstable site, however long it keeps at it. Everything is still recorded in the site's history.
 
+## Quiet times
+
+**Maintenance windows** keep planned work quiet. Checks keep running and everything is recorded, but an outage that starts and ends inside the window is never alerted. A site that is still down when the window ends is alerted then.
+
+```bash
+php vaka maintenance:add Nightly --at=00:00-07:00                  # a group, every night
+php vaka maintenance:add shop.example --at=22:00-02:00 --days=sat  # one site, Saturday nights
+php vaka maintenance:add shop.example --from="2026-11-01 22:00" --to="2026-11-02 02:00"
+php vaka maintenance:list
+php vaka maintenance:remove 2
+```
+
+Times are local (`TIMEZONE`) and keep their hours across daylight saving changes. A window that runs past midnight belongs to the day it starts. Outages during maintenance do not count towards "unstable".
+
+**Snooze** quiets an incident you already know about, for 1, 4 or 24 hours:
+
+```bash
+php vaka snooze shop.example --for=4h
+php vaka snooze 203.0.113.10        # every site that is down on that server
+php vaka unsnooze shop.example
+```
+
+There is no snooze without an end, so nothing is forgotten: if the site is still down when the snooze ends, you get "shop.example is still down after the snooze". A recovery ends the snooze and is alerted as usual.
+
 ## Rules per group
 
 Each group has an alert policy (`php vaka group:edit <name> --policy=...`):
@@ -89,7 +113,7 @@ Every message is a `POST` with `Content-Type: application/json`. The fields are 
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | `down`, `up`, `unstable`, `stable`, `digest` or `test` |
+| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `digest` or `test` |
 | `headline` | The alert in one sentence, as Slack and email show it |
 | `details` | Further lines: the sites and the reason |
 | `server` | The server's name or IP when sites were folded together, otherwise `null` |

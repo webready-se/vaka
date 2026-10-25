@@ -12,6 +12,7 @@ require __DIR__ . '/src/commands/groups.php';
 require __DIR__ . '/src/commands/sites.php';
 require __DIR__ . '/src/commands/run.php';
 require __DIR__ . '/src/commands/alerts.php';
+require __DIR__ . '/src/commands/silence.php';
 $config = require __DIR__ . '/config.php';
 date_default_timezone_set($config['timezone']);
 
@@ -34,6 +35,11 @@ match ($command) {
     'alert:test' => cmd_alert_test($config, $args, $opts),
     'server:list' => cmd_server_list($config, $args, $opts),
     'server:label' => cmd_server_label($config, $args, $opts),
+    'maintenance:add' => cmd_maintenance_add($config, $args, $opts),
+    'maintenance:list' => cmd_maintenance_list($config, $args, $opts),
+    'maintenance:remove' => cmd_maintenance_remove($config, $args, $opts),
+    'snooze' => cmd_snooze($config, $args, $opts),
+    'unsnooze' => cmd_unsnooze($config, $args, $opts),
     'help', '--help', '-h' => print_help(),
     'version' => print_version(),
     default => fail("Unknown command: {$command}\nRun `php vaka help` to see every command."),
@@ -73,6 +79,17 @@ function print_help(): void
       group:edit <name>    Change a group (same options, plus --name=)
       group:remove <name>  Remove a group; its sites stay, without a group  --force
       group:list           List groups: when they alert and where
+
+    Quiet times
+      maintenance:add <group|site>  A window without alerts; checks keep running
+                           every day: --at=00:00-07:00  some days: add --days=weekdays
+                           once: --from="2026-11-01 22:00" --to="2026-11-02 02:00"
+                           --label=<text>
+      maintenance:list     Every maintenance window
+      maintenance:remove <#>  Remove a maintenance window
+      snooze <site|server> Quiet an ongoing incident  --for=1h|4h|24h (default 1h);
+                           alerts again if it is still down when the snooze ends
+      unsnooze <site|server>  End a snooze early
 
     Alerts and servers
       alert:test [<group>] Send a test alert to a group's destinations
