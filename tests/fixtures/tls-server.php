@@ -17,6 +17,9 @@ while (true) {
     // A failed handshake (a client that rejects the certificate) is expected; keep serving
     $client = @stream_socket_accept($server, -1);
     if (!$client) continue;
+    // Read the request first: closing with it unread makes Linux reset the connection
+    stream_set_timeout($client, 2);
+    while (($line = fgets($client)) !== false && trim($line) !== '');
     fwrite($client, "HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\nok");
     fclose($client);
 }

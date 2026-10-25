@@ -134,7 +134,7 @@ test('the time budget stops new SSL checks, and what is left stays due', functio
 
 test('php vaka check shows the certificate too', function () {
     $r = vaka(['check', 'https://127.0.0.1:8800'], cli_env() + ['SSL_CA_FILE' => realpath(__DIR__ . '/../fixtures/certs/ca.pem')]);
-    expect($r['out'])->toContain('Up: answered 200 OK')
+    expect($r['out'])->toContain('Up: answered 200 OK', $r['out'] . $r['err'])
         ->and($r['out'])->toContain('Certificate: valid until')
         ->and($r['out'])->toContain('issued by Vaka Test CA');
 });
