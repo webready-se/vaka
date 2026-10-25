@@ -50,4 +50,4 @@ Then run `php vaka run` every minute from cron and point a web server at `public
 
 ## License
 
-MIT, made by [Webready](https://webready.se). Sibling of [Puls](https://github.com/webready-se/puls).
+MIT. Made by [Webready](https://webready.se) in Sweden. Sibling of [Puls](https://github.com/webready-se/puls).
