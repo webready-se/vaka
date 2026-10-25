@@ -1,0 +1,35 @@
+{
+    "name": "webready/vaka",
+    "description": "Keeps watch while you sleep. Uptime, certificates and more for every site. PHP + SQLite, no dependencies.",
+    "keywords": ["monitoring", "uptime", "ssl", "security-headers", "sqlite", "self-hosted"],
+    "homepage": "https://github.com/webready-se/vaka",
+    "license": "MIT",
+    "type": "project",
+    "authors": [
+        {
+            "name": "Nicklas Jarnesjö",
+            "email": "nicklas@webready.se"
+        }
+    ],
+    "require": {
+        "php": ">=8.3",
+        "ext-curl": "*",
+        "ext-openssl": "*",
+        "ext-pdo_sqlite": "*"
+    },
+    "require-dev": {
+        "pestphp/pest": "*"
+    },
+    "scripts": {
+        "post-install-cmd": "git config core.hooksPath scripts/hooks",
+        "post-update-cmd": "git config core.hooksPath scripts/hooks"
+    },
+    "config": {
+        "allow-plugins": {
+            "pestphp/pest-plugin": true
+        },
+        "platform": {
+            "php": "8.3"
+        }
+    }
+}

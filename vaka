@@ -1,0 +1,42 @@
+#!/usr/bin/env php
+<?php
+/**
+ * Vaka CLI
+ *
+ * Usage: php vaka <command> [arguments] [--options]
+ * Commands called without their arguments ask for them interactively.
+ */
+
+require __DIR__ . '/src/bootstrap.php';
+$config = require __DIR__ . '/config.php';
+date_default_timezone_set($config['timezone']);
+
+[$args, $opts] = parse_args(array_slice($argv, 1));
+$command = $args[0] ?? 'help';
+
+match ($command) {
+    'help', '--help', '-h' => print_help(),
+    'version' => print_version(),
+    default => fail("Unknown command: {$command}\nRun `php vaka help` to see every command."),
+};
+
+function print_help(): void
+{
+    echo <<<TXT
+    Vaka - keeps watch while you sleep
+
+    Usage: php vaka <command> [arguments] [--options]
+
+    Commands:
+      help       Show this help
+      version    Show the Vaka version
+
+    Commands called without their arguments ask for them interactively.
+
+    TXT;
+}
+
+function print_version(): void
+{
+    echo 'Vaka ' . VAKA_VERSION . "\n";
+}
