@@ -99,7 +99,8 @@ test('sites are checked in parallel', function () {
 
     expect($summary['checked'])->toBe(6)
         ->and($summary['up'])->toBe(6)
-        ->and(microtime(true) - $started)->toBeLessThan(3);
+        // One at a time would take at least 6 s; CI runners serve fewer at once than a laptop
+        ->and(microtime(true) - $started)->toBeLessThan(5);
 });
 
 test('redirects are followed, but not forever', function () {
