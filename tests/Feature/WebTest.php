@@ -128,7 +128,7 @@ test('the overview lists sites with their state, and a restricted user only sees
     add_site($this->db, ['url' => 'https://blog.example', 'group' => 'Own']);
     add_site($this->db, ['url' => 'https://loose.example']);
     $now = time();
-    save_check_state($this->db, $shop, 'uptime', ['status' => 'fail', 'summary' => 'No answer within 10 s', 'details' => ['ip' => '192.0.2.10'], 'fail_count' => 3, 'changed_at' => utc_now($now - 600)], utc_now($now - 30), utc_now($now + 30));
+    save_check_state($this->db, $shop, 'uptime', ['status' => 'fail', 'summary' => 'No answer within 10 s', 'details' => ['ip' => '192.0.2.10', 'problem' => 'timeout', 'status_code' => 0], 'fail_count' => 3, 'changed_at' => utc_now($now - 600)], utc_now($now - 30), utc_now($now + 30));
     $this->db->exec("UPDATE sites SET ip = '192.0.2.10' WHERE id = {$shop}");
     set_meta($this->db, 'last_run_at', utc_now($now - 30));
 
@@ -138,7 +138,9 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and(array_column($admin['groups'], 'name'))->toBe(['Customers', 'Own', null]);
     $site = $admin['groups'][0]['sites'][0];
     expect($site)->toMatchArray(['id' => $shop, 'label' => 'shop.example', 'status' => 'down', 'summary' => 'No answer within 10 s', 'server' => '192.0.2.10'])
-        ->and($site['since'])->toBe(utc_now($now - 600));
+        ->and($site['since'])->toBe(utc_now($now - 600))
+        ->and($site['advice'])->toStartWith('No answer in time');
+    expect($admin['groups'][1]['sites'][0]['advice'])->toBe('');
 
     $anna = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('anna', 'anna password')['jar']])['json'];
     expect($anna['totals']['sites'])->toBe(1)
