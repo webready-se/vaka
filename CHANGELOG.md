@@ -24,7 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A site that keeps going down and up sends at most three messages: down, up, then "unstable" on the second outage within 30 minutes, and nothing more until it has gone 15 minutes without a change ("stable again").
 - Alert policies per group work: right away, only after a number of minutes down (shorter outages send nothing), a daily summary at `DIGEST_TIME`, or nothing at all.
 - `php vaka alert:test [<group>]` sends a test message. `php vaka server:list` shows the servers and their sites; `php vaka server:label <ip> <name>` names a server for the alerts.
-- Changing a site's URL, keyword or interval, or resuming it, checks it on the next run instead of after its old interval.
+- Changing a site's URL, keyword or interval, or resuming it, checks it on the next run instead of after its old interval. A new URL is checked by every check on the next run.
 - A site can be named by its domain with the port, and without typing `http://`; a bare domain means the site without a path when there are several.
 - `docs/alerts.md`: when alerts go out, where they go, and the JSON webhook's fields.
 - Maintenance windows: `maintenance:add <group or site>` with `--at=00:00-07:00` (every day, or `--days=weekdays`, `--days=mon,wed`) or `--from` and `--to` for a single window, plus `maintenance:list` and `maintenance:remove`. Checks keep running; an outage that starts and ends inside a window is never alerted, and a site still down when it ends is alerted then. Windows use local time, keep their hours across daylight saving changes, and may run past midnight. Outages during maintenance do not count towards "unstable".
