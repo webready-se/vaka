@@ -13,7 +13,7 @@
     regions[node.getAttribute('data-region')] = node;
   });
   var filterInput = document.querySelector('[data-filter]');
-  var state = { data: null, filter: '', detailId: null, detail: null, timezone: undefined, failed: false };
+  var state = { data: null, filter: '', detailId: null, detail: null, timezone: undefined, failed: false, open: {}, autoOpen: null };
 
   // =================================================================
   // DOM helpers
@@ -72,7 +72,8 @@
     copy: ['M9 9h10v10H9z', 'M5 15V5h10'],
     sun: ['M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4'],
     moon: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'],
-    monitor: ['M4 5h16v11H4z', 'M9 20h6M12 16v4']
+    monitor: ['M4 5h16v11H4z', 'M9 20h6M12 16v4'],
+    chevron: ['M9 6l6 6-6 6']
   };
 
   function icon(name) {
@@ -366,7 +367,8 @@
   }
 
   // -----------------------------------------------------------------
-  // Needs your attention: outages first, sites on one server together
+  // Needs your attention: one compact row per problem, details on demand.
+  // Outages first, sites on one server together, the quiet ones last.
   // -----------------------------------------------------------------
 
   function renderAttention() {
@@ -377,27 +379,51 @@
     node.hidden = problems.length + certs.length === 0;
     if (node.hidden) return;
 
-    var rank = function (site) { return (isQuiet(site) ? 2 : 0) + (site.status === 'failing' ? 1 : 0); };
+    var rank = function (site) { return site.status === 'failing' ? 1 : 0; };
     problems.sort(function (a, b) { return rank(a) - rank(b) || String(a.since).localeCompare(String(b.since)); });
 
     // Several sites down on one server are one incident, as in the alerts
     var items = [];
+    var quiet = [];
     var byServer = {};
     problems.forEach(function (site) {
-      var key = site.status === 'down' && !isQuiet(site) && site.server ? site.server : null;
-      if (key && byServer[key]) {
-        byServer[key].sites.push(site);
-        return;
-      }
+      if (isQuiet(site)) return quiet.push(site);
+      var key = site.status === 'down' && site.server ? site.server : null;
+      if (key && byServer[key]) return byServer[key].sites.push(site);
       var item = { server: key, sites: [site] };
       if (key) byServer[key] = item;
       items.push(item);
     });
 
-    append(node, h('h2', { class: 'section-title', id: 'attention-title' }, 'Needs your attention'));
-    append(node, h('ul', { class: 'incidents' }, items.map(function (item) {
+    // A single outage opens by itself: it is the one thing to look at
+    var outages = items.filter(function (item) { return item.sites[0].status === 'down'; });
+    state.autoOpen = outages.length === 1 ? itemKey(outages[0]) : null;
+
+    var rows = items.map(function (item) {
       return item.sites.length > 1 ? serverIncident(item) : siteIncident(item.sites[0]);
-    }).concat(certs.map(certIncident))));
+    }).concat(certs.map(certIncident));
+    if (quiet.length) rows.push(quietGroup(quiet));
+
+    append(node, h('h2', { class: 'section-title', id: 'attention-title' }, 'Needs your attention'));
+    append(node, h('ul', { class: 'incidents' }, rows));
+  }
+
+  function itemKey(item) {
+    return item.sites.length > 1 ? 'server:' + item.server : 'site:' + item.sites[0].id;
+  }
+
+  /** A row that opens: what is wrong at a glance, the rest one click away. Open rows stay open across refreshes. */
+  function incident(key, kind, iconName, title, what, reason, time, body) {
+    var open = key in state.open ? state.open[key] : state.autoOpen === key;
+    return h('li', { class: 'incident is-' + kind }, h('details', { 'data-key': key, open: open }, [
+      h('summary', {}, [
+        h('span', { class: 'medallion' }, icon(iconName)),
+        h('span', { class: 'incident-title' }, [h('b', {}, title), ' ', h('span', { class: 'incident-what' }, what), reason ? h('small', {}, reason) : null]),
+        time,
+        icon('chevron')
+      ]),
+      h('div', { class: 'incident-body' }, body)
+    ]));
   }
 
   function advice(text) {
@@ -405,29 +431,23 @@
   }
 
   function timeBox(big, small) {
-    return h('div', { class: 'incident-time' }, [h('span', {}, small), h('b', {}, big)]);
+    return h('span', { class: 'incident-time' }, [h('span', {}, small), h('b', {}, big)]);
   }
 
   function siteIncident(site) {
     var quiet = isQuiet(site);
     var kind = quiet ? 'quiet' : site.status;
-    var what = site.status === 'down' ? 'is down' : 'failed a check, checking again';
+    var what = site.status === 'down' ? 'is down' : 'failed a check';
     var time = site.snoozed_until
       ? timeBox(clock(site.snoozed_until), 'Snoozed until')
-      : timeBox(site.since ? shortDuration(secondsSince(site.since)) : '–', site.status === 'down' ? (site.maintenance ? 'Down, in maintenance' : 'Down for') : 'Failing for');
+      : timeBox(site.since ? shortDuration(secondsSince(site.since)) : '–', site.status === 'down' ? (site.maintenance ? 'In maintenance' : 'Down for') : 'Failing for');
     var meta = [site.group || 'No group', site.since ? 'since ' + clock(site.since) : null].filter(Boolean).join(' · ');
 
-    return h('li', { class: 'incident is-' + kind }, [
-      h('div', { class: 'medallion' }, icon(quiet ? 'quiet' : site.status)),
-      h('h3', {}, [site.label, ' ', h('span', { class: 'incident-what' }, what)]),
-      time,
+    return incident('site:' + site.id, kind, quiet ? 'quiet' : site.status, site.label, what, site.summary, time, [
       h('p', { class: 'incident-meta' }, meta),
-      h('div', { class: 'incident-body' }, [
-        h('p', { class: 'incident-summary' }, site.summary),
-        advice(site.advice),
-        badges(site, true),
-        h('div', { class: 'actions' }, siteActions(site, true))
-      ])
+      advice(site.advice),
+      badges(site, true),
+      h('div', { class: 'actions' }, siteActions(site, true))
     ]);
   }
 
@@ -437,20 +457,16 @@
     var same = reasons.every(function (reason) { return reason === reasons[0]; });
     var earliest = sites.map(function (site) { return site.since; }).filter(Boolean).sort()[0];
 
-    return h('li', { class: 'incident is-down' }, [
-      h('div', { class: 'medallion' }, icon('server')),
-      h('h3', {}, ['Server ' + item.server, ' ', h('span', { class: 'incident-what' }, plural(sites.length, 'site is', 'sites are') + ' down')]),
-      timeBox(earliest ? shortDuration(secondsSince(earliest)) : '–', 'Down for'),
-      h('p', { class: 'incident-meta' }, earliest ? 'since ' + clock(earliest) : ''),
-      h('div', { class: 'incident-body' }, [
-        h('p', { class: 'incident-summary' }, same ? reasons[0] : 'The sites fail in different ways: open one to see why.'),
+    return incident('server:' + item.server, 'down', 'server', 'Server ' + item.server, plural(sites.length, 'site is', 'sites are') + ' down',
+      same ? reasons[0] : 'The sites fail in different ways',
+      timeBox(earliest ? shortDuration(secondsSince(earliest)) : '–', 'Down for'), [
+        h('p', { class: 'incident-meta' }, earliest ? 'Since ' + clock(earliest) + '. Open a site to see its history.' : ''),
         same ? advice(sites[0].advice) : null,
         h('ul', { class: 'incident-sites', 'aria-label': 'Sites on this server' }, sites.map(function (site) {
           return h('li', {}, h('button', { type: 'button', class: 'chip', 'data-action': 'open', 'data-site': site.id }, site.label));
         })),
         h('div', { class: 'actions' }, [snoozeGroup(sites, 'Snooze all')])
-      ])
-    ]);
+      ]);
   }
 
   function certificateWords(ssl) {
@@ -461,16 +477,21 @@
 
   function certIncident(site) {
     var kind = site.ssl.status === 'fail' ? 'down' : 'warn';
-    return h('li', { class: 'incident is-' + kind }, [
-      h('div', { class: 'medallion' }, icon('shield')),
-      h('h3', {}, [site.label, ' ', h('span', { class: 'incident-what' }, certificateWords(site.ssl))]),
-      site.ssl.status === 'fail' ? timeBox('Invalid', 'Certificate') : timeBox(plural(site.ssl.days_left, 'day', 'days'), 'Expires in'),
-      h('p', { class: 'incident-meta' }, site.group || 'No group'),
-      h('div', { class: 'incident-body' }, [
-        h('p', { class: 'incident-summary' }, site.ssl.summary),
+    return incident('cert:' + site.id, kind, 'shield', site.label, certificateWords(site.ssl), site.ssl.summary,
+      site.ssl.status === 'fail' ? timeBox('Invalid', 'Certificate') : timeBox(plural(site.ssl.days_left, 'day', 'days'), 'Expires in'), [
+        h('p', { class: 'incident-meta' }, site.group || 'No group'),
         advice(site.ssl.advice),
         h('div', { class: 'actions' }, siteActions(site, false))
-      ])
+      ]);
+  }
+
+  /** Snoozed and maintenance outages, folded into one row: known, and quiet for now. */
+  function quietGroup(sites) {
+    var snoozed = sites.filter(function (site) { return site.snoozed_until; }).length;
+    var words = snoozed === sites.length ? 'snoozed' : snoozed ? 'snoozed or in maintenance' : 'in maintenance';
+    var again = sites.length === 1 ? 'Vaka alerts again if it is still down when that ends' : 'Vaka alerts again for each that is still down when that ends';
+    return incident('quiet', 'quiet', 'quiet', plural(sites.length, 'site is', 'sites are') + ' down, ' + words, '', again, null, [
+      h('ul', { class: 'incidents is-nested' }, sites.map(siteIncident))
     ]);
   }
 
@@ -811,6 +832,12 @@
   regions.detail.addEventListener('close', function () {
     if (state.detailId) closeDetail();
   });
+
+  // Remember which rows people opened or closed, so a refresh does not undo it
+  document.addEventListener('toggle', function (event) {
+    var key = event.target.getAttribute && event.target.getAttribute('data-key');
+    if (key) state.open[key] = event.target.open;
+  }, true);
 
   filterInput.addEventListener('input', function () {
     state.filter = filterInput.value;

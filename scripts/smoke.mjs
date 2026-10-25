@@ -178,14 +178,25 @@ async function main() {
     expect(document.title === '(2) Vaka', `the tab title counts the outages (got "${document.title}")`);
     expect(/favicon-alert\.svg$/.test(q('[data-favicon]').getAttribute('href')), 'the favicon turns to the alarmed owl');
     expect(/Watching 14 sites · checked/.test(q('[data-region="run-state"]').textContent), 'top bar says how many sites Vaka watches and when it checked');
-    const incidents = all('.incident');
-    expect(incidents.length === 5, `five incidents need attention (got ${incidents.length})`);
-    expect(/booking\.example\s*certificate expires in 6 days/.test(incidents[4]?.querySelector('h3')?.textContent || ''), 'an expiring certificate comes after the outages');
-    expect(all('.site-row').some((r) => /booking\.example/.test(r.textContent) && /certificate expires in 6 days/.test(r.textContent)), 'the row says the certificate expires soon');
-    expect(/shop\.example is down/.test(incidents[0]?.querySelector('h3')?.textContent || ''), 'an unsnoozed outage comes first');
-    expect(/The site itself answers with an error/.test(incidents[0]?.textContent || ''), 'advice under the outage');
-    expect(incidents.some((i) => /Snoozed until/.test(i.textContent)), 'a snoozed incident says until when');
-    expect(incidents.some((i) => /checking again/.test(i.textContent)), 'a failing site says it is being checked again');
+    // Needs your attention: one compact row each, outages first, the quiet ones folded away last
+    const rows = all('.attention > .incidents > .incident');
+    const summary = (row) => row?.querySelector('summary')?.textContent || '';
+    expect(rows.length === 5, `five rows need attention (got ${rows.length})`);
+    expect(/shop\.example\s*is down/.test(summary(rows[0])), 'an outage comes first');
+    expect(/The site answered 503/.test(summary(rows[0])), 'the row says why in one line');
+    expect(/The site itself answers with an error/.test(rows[0]?.textContent || ''), 'the advice is inside the row');
+    expect(/blog\.example\s*failed a check/.test(summary(rows[2])), 'a failing check comes after the outages');
+    expect(/booking\.example\s*certificate expires in 6 days/.test(summary(rows[3])), 'an expiring certificate comes after them');
+    expect(/1 site is down, snoozed/.test(summary(rows[4])) && /deals2\.example/.test(rows[4].textContent), 'snoozed outages are folded into one row at the end');
+    expect(!q('.attention details[open]'), 'with two outages, every row starts closed');
+    expect(rows.every((row) => row.getBoundingClientRect().height < 90), 'closed rows are compact');
+
+    // A row opens on click and stays open across a refresh
+    rows[3].querySelector('summary').click();
+    expect(q('.attention details[data-key^="cert:"]').open, 'a click opens the row');
+    document.dispatchEvent(new Event('visibilitychange'));
+    await sleep(400);
+    expect(q('.attention details[data-key^="cert:"]')?.open, 'an open row stays open when the page refreshes');
 
     // Every site, by group, with its numbers
     expect(all('.site-row').length === 15, `15 site rows (got ${all('.site-row').length})`);
@@ -235,13 +246,16 @@ async function main() {
     expect(document.fonts.check('16px Figtree'), 'Figtree is loaded');
 
     // Snooze from the dashboard
-    const snoozeButton = all('.incident')[0]?.querySelector('[data-action="snooze"][data-for="1h"]');
+    const first = all('.attention > .incidents > .incident')[0];
+    first?.querySelector('summary').click();
+    const snoozeButton = first?.querySelector('[data-action="snooze"][data-for="1h"]');
     if (snoozeButton) {
       snoozeButton.click();
       await waitFor(() => /Snoozed shop\.example until/.test(q('[data-region="toast"]').textContent), 'a toast after snoozing');
-      await waitFor(() => all('.incident').some((i) => /shop\.example/.test(i.textContent) && /Snoozed until/.test(i.textContent)), 'the incident shows its snooze');
+      await waitFor(() => /2 sites are down, snoozed/.test(q('.attention details[data-key="quiet"] summary')?.textContent || ''), 'the snoozed outage joins the quiet row');
+      await waitFor(() => q('.attention details[data-key^="site:"]:not([data-key="site:1"])')?.open, 'the one outage left opens by itself');
     } else {
-      fails.push('a snooze button on the first incident');
+      fails.push('a snooze button in the first row');
     }
 
     // Theme: system, light, dark, and back
@@ -257,6 +271,12 @@ async function main() {
     expect(!window.__csp.length, `no CSP violations: ${window.__csp.join(', ')}`);
     return fails;
   };
+
+  // What people see first, before anything is clicked
+  await evaluate(async () => {
+    for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
+  });
+  await screenshot('first-view');
 
   const fails = await evaluate(steps);
   await screenshot('dashboard-light');
