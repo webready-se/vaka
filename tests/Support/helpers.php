@@ -42,13 +42,20 @@ function start_site(string $name, int $port): mixed
         null,
         ['PHP_CLI_SERVER_WORKERS' => '8', 'PATH' => getenv('PATH')],
     );
-    for ($i = 0; $i < 100; $i++) {
-        $sock = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.1);
-        if ($sock) {
-            fclose($sock);
-            return $proc;
+    // Refused connections are expected until the server is up; keep them from
+    // reaching the test runner's error handler (which sees past @)
+    set_error_handler(fn () => true);
+    try {
+        for ($i = 0; $i < 100; $i++) {
+            $sock = fsockopen('127.0.0.1', $port, $errno, $errstr, 0.1);
+            if ($sock) {
+                fclose($sock);
+                return $proc;
+            }
+            usleep(50_000);
         }
-        usleep(50_000);
+    } finally {
+        restore_error_handler();
     }
     throw new RuntimeException("Fixture site {$name} did not start on port {$port}");
 }

@@ -93,14 +93,26 @@ test('a site that does not answer in time fails without holding up the run', fun
 });
 
 test('sites are checked in parallel', function () {
-    for ($i = 1; $i <= 6; $i++) add_site($this->db, ['url' => "http://127.0.0.1:8791/?sleep=1&n={$i}"]);
-    $started = microtime(true);
-    $summary = run($this->db, $this->config, $this->now);
+    // One slow request per server: a php -S worker may queue several
+    // connections and serve them one by one, which would hide whether Vaka
+    // itself runs the requests at the same time
+    $servers = [];
+    foreach ([8793, 8794, 8795, 8796] as $port) {
+        $servers[] = start_site('good', $port);
+        add_site($this->db, ['url' => "http://127.0.0.1:{$port}/?sleep=1"]);
+    }
+    try {
+        $started = microtime(true);
+        $summary = run($this->db, $this->config, $this->now);
+        $elapsed = microtime(true) - $started;
+    } finally {
+        array_map('stop_site', $servers);
+    }
 
-    expect($summary['checked'])->toBe(6)
-        ->and($summary['up'])->toBe(6)
-        // One at a time would take at least 6 s; CI runners serve fewer at once than a laptop
-        ->and(microtime(true) - $started)->toBeLessThan(5);
+    // One at a time would take at least 4 s
+    expect($summary['checked'])->toBe(4)
+        ->and($summary['up'])->toBe(4)
+        ->and($elapsed)->toBeLessThan(2.5);
 });
 
 test('redirects are followed, but not forever', function () {
