@@ -40,6 +40,9 @@ return [
 
     'user_agent' => $env('USER_AGENT'),
 
+    // Dead man's switch pinged at the end of every run
+    'heartbeat_url' => $env('HEARTBEAT_URL'),
+
     // Alerts: defaults for groups without destinations of their own
     'digest_time' => $env('DIGEST_TIME', '08:00'),
 

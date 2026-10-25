@@ -383,6 +383,12 @@ function update_site(PDO $db, int $id, array $input): void
     $db->prepare("UPDATE sites SET {$set} WHERE id = ?")->execute([...array_values($fields), $id]);
 }
 
+/** Minutes between uptime checks for a site. */
+function site_interval(array $site, array $config): int
+{
+    return $site['interval_minutes'] ?? $config['uptime_interval'];
+}
+
 function remove_site(PDO $db, int $id): void
 {
     $db->prepare('DELETE FROM sites WHERE id = ?')->execute([$id]);

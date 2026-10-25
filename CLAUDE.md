@@ -74,14 +74,15 @@ src/sites.php            CHECKS, POLICIES, normalize_url(), groups and sites (va
 src/import.php           parse_import_csv(), import_sites() (all or nothing, dry run)
 src/commands/groups.php  group:add, group:edit, group:remove, group:list
 src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:import
-src/http.php             fetch_many(): parallel requests over curl_multi
-src/checks/uptime.php    Uptime + response time + keyword
+src/commands/run.php     run, check, status
+src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
+src/checks/uptime.php    evaluate_uptime(), next_uptime_state(), detect_cdn(), plain-words errors and durations
 src/checks/ssl.php       Peer certificate capture and expiry
 src/checks/domain.php    Domain expiry via RDAP (IANA bootstrap)
 src/checks/exposed.php   Exposed file paths and content signatures
 src/checks/headers.php   Security header grading and regressions
 src/checks/dns.php       MX, SPF, DMARC snapshots
-src/runner.php           run(): lock, due checks, state transitions, events
+src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
 src/silence.php          Maintenance windows (one-off, recurring) and snoozes
 src/alerts.php           Reconcile, policies, grouping by destination and server, digests
 src/notify.php           Slack, JSON webhook and mail() delivery
@@ -99,6 +100,7 @@ phpunit.xml              Test configuration (Pest)
 tests/                   Pest suite: Unit/, Feature/, fixtures/
 tests/Support/helpers.php temp_dir(), load_config(), cli_env() and vaka() (CLI as a subprocess, never reads the local .env)
 tests/fixtures/import/   CSV files for site:import (example domains only)
+tests/fixtures/sites/    Fixture sites served by `php -S` in feature tests (start_site()/stop_site() in helpers)
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups and servers
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps
@@ -121,13 +123,14 @@ groups       id, name, policy, delay_minutes, slack_webhook, webhook_url, email,
 sites        id, group_id, url (unique), name, keyword, interval_minutes, paused, disabled_checks,
              ip, cdn, server, created_at                        (ip and cdn from the last check; server set by hand)
 servers      ip, label                                           (optional label for a server)
-check_state  site_id, check, status, summary, details (JSON), fail_count, checked_at, next_at, changed_at,
+check_state  site_id, check_name, status, summary, details (JSON), fail_count, checked_at, next_at, changed_at,
              alerted_status, alerted_at, snoozed_until, thresholds_sent (JSON)
-events       id, site_id, check, status, previous, message, silenced_by, created_at
+events       id, site_id, check_name, status, previous, message, silenced_by, created_at
 maintenance  id, site_id | group_id, label, starts_at, ends_at  (one-off)
              or days (weekday mask), start_time, end_time       (recurring, in TIMEZONE)
 digest       id, group_id, site_id, check, message, created_at  (queued for the daily digest)
 samples      site_id, checked_at, status_code, ms, ok, ip        (uptime only, trimmed after SAMPLES_RETENTION_DAYS)
+             (`check` is an SQL keyword, hence check_name)
 audit_log    id, username, action, ip, created_at               (login lockout, trimmed after 30 days)
 meta         key, value                                          (last_run_at, last_digest_at)
 ```
@@ -284,7 +287,7 @@ Pest, dev dependency only. **No real network in tests.** Fixtures use reserved e
 
 - Conventional commits: `type(scope): short description` with types feat, fix, docs, test, chore, refactor, style.
 - One logical change per commit. Stage files explicitly (never `git add .` or `-A`).
-- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. **Ask before merging to main.**
+- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. During the MVP (until the first tagged release, 0.1.0), merge a PR to main yourself once CI is green. **After 0.1.0, ask before merging to main.**
 - Feature branches, never push straight to main. Tests must pass before pushing (pre-push hook).
 - Before every commit, scan the staged diff for real names, domains, IPs and URLs.
 

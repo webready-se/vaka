@@ -12,12 +12,6 @@ function site_options(array $opts): array
     return $fields;
 }
 
-/** Minutes between uptime checks for a site. */
-function site_interval(array $site, array $config): int
-{
-    return $site['interval_minutes'] ?? $config['uptime_interval'];
-}
-
 /** "Customers, every 5 min, paused" */
 function describe_site(array $site, array $config): string
 {
@@ -104,6 +98,10 @@ function cmd_site_add(array $config, array $args, array $opts): void
         fail($e->getMessage() . '.');
     }
     $where = $site['group_name'] !== null ? " to {$site['group_name']}" : '';
+    if ($site['paused']) {
+        echo "Added {$site['url']}{$where}, paused: Vaka does not check it until you run `php vaka site:edit " . display_url($site['url']) . " --resume`.\n";
+        return;
+    }
     echo "Added {$site['url']}{$where}. Vaka checks it every " . site_interval($site, $config) . " min.\n";
 }
 
