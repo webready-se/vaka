@@ -1,0 +1,149 @@
+<?php
+
+/**
+ * What one uptime request says about a site, in plain words. Up means a
+ * status below 400 and, when a keyword is set, the keyword on the page.
+ *
+ * @return array{ok: bool, summary: string, status_code: int, ms: int, ip: string, cdn: string}
+ */
+function evaluate_uptime(array $response, string $keyword, int $timeout): array
+{
+    $result = [
+        'ok' => false,
+        'summary' => '',
+        'status_code' => $response['status'],
+        'ms' => $response['ms'],
+        'ip' => $response['ip'],
+        'cdn' => detect_cdn($response['headers']),
+    ];
+
+    if ($response['errno']) {
+        $result['summary'] = connection_problem($response['errno'], $response['error'], $timeout);
+        return $result;
+    }
+
+    $status = $response['status'];
+    $answered = trim($status . ' ' . status_text($status));
+    if ($status < 100 || $status >= 400) {
+        $result['summary'] = "The site answered {$answered}";
+    } elseif ($keyword !== '' && !page_contains($response['body'], $keyword)) {
+        $result['summary'] = "Answered {$answered}, but the page does not contain \"{$keyword}\"";
+    } else {
+        $result['ok'] = true;
+        $result['summary'] = "Answered {$answered} in {$response['ms']} ms";
+    }
+    return $result;
+}
+
+/** A curl error as something a site owner understands. */
+function connection_problem(int $errno, string $error, int $timeout): string
+{
+    return match ($errno) {
+        CURLE_OPERATION_TIMEDOUT => "No answer within {$timeout} s",
+        CURLE_COULDNT_RESOLVE_HOST => 'The domain does not resolve (DNS lookup failed)',
+        CURLE_COULDNT_CONNECT => str_contains(strtolower($error), 'refused') ? 'The server refused the connection' : 'Could not connect to the server',
+        CURLE_SSL_CACERT, CURLE_SSL_PEER_CERTIFICATE, CURLE_SSL_CERTPROBLEM, CURLE_SSL_CACERT_BADFILE, 83, 90, 91 => "The certificate is not accepted: {$error}",
+        CURLE_SSL_CONNECT_ERROR => "The secure connection failed: {$error}",
+        CURLE_TOO_MANY_REDIRECTS => 'Too many redirects (more than 5)',
+        default => "Could not reach the site: {$error}",
+    };
+}
+
+/** The reason phrase for the status codes a monitored site is likely to answer. */
+function status_text(int $code): string
+{
+    return [
+        200 => 'OK', 201 => 'Created', 202 => 'Accepted', 203 => 'Non-Authoritative Information', 204 => 'No Content',
+        301 => 'Moved Permanently', 302 => 'Found', 303 => 'See Other', 304 => 'Not Modified', 307 => 'Temporary Redirect', 308 => 'Permanent Redirect',
+        400 => 'Bad Request', 401 => 'Unauthorized', 403 => 'Forbidden', 404 => 'Not Found', 405 => 'Method Not Allowed',
+        408 => 'Request Timeout', 410 => 'Gone', 429 => 'Too Many Requests',
+        500 => 'Internal Server Error', 501 => 'Not Implemented', 502 => 'Bad Gateway', 503 => 'Service Unavailable', 504 => 'Gateway Timeout',
+        520 => 'Web Server Returned an Unknown Error', 521 => 'Web Server Is Down', 522 => 'Connection Timed Out', 523 => 'Origin Is Unreachable', 524 => 'A Timeout Occurred',
+    ][$code] ?? '';
+}
+
+/** Whether the page shows $keyword: any letter case, HTML entities decoded. */
+function page_contains(string $body, string $keyword): bool
+{
+    $text = html_entity_decode($body, ENT_QUOTES | ENT_HTML5, 'UTF-8');
+    $find = function_exists('mb_stripos') ? 'mb_stripos' : 'stripos';
+    return $find($text, $keyword) !== false || $find($body, $keyword) !== false;
+}
+
+/**
+ * The CDN in front of a site, from its response headers, or ''. Sites behind
+ * a CDN answer on the CDN's shared IPs, so they are not grouped by server.
+ */
+function detect_cdn(array $headers): string
+{
+    $server = strtolower(implode(' ', $headers['server'] ?? []));
+    if (isset($headers['cf-ray']) || str_contains($server, 'cloudflare')) return 'Cloudflare';
+    if (isset($headers['x-amz-cf-id']) || isset($headers['x-amz-cf-pop'])) return 'CloudFront';
+    if (isset($headers['x-fastly-request-id']) || preg_match('/\bcache-[a-z0-9-]+/', strtolower(implode(' ', $headers['x-served-by'] ?? [])))) return 'Fastly';
+    if (str_contains($server, 'akamai')) return 'Akamai';
+    if (str_contains($server, 'bunnycdn')) return 'Bunny';
+    return '';
+}
+
+/**
+ * The uptime state after one more result. A site is down after $downAfter
+ * failures in a row, counted from the first of them; until then it keeps
+ * its status and is checked again soon. Returns the new state and the event
+ * to record, if the status changed.
+ *
+ * @return array{state: array, event: ?array{status: string, previous: string, message: string}}
+ */
+function next_uptime_state(array $state, array $result, int $downAfter, string $now): array
+{
+    $previous = $state['status'];
+    $details = $state['details'] ?? [];
+    $next = [
+        'status' => $previous,
+        'summary' => $result['summary'],
+        'fail_count' => 0,
+        'changed_at' => $state['changed_at'],
+        'details' => ['status_code' => $result['status_code'], 'ms' => $result['ms'], 'ip' => $result['ip'], 'cdn' => $result['cdn']],
+    ];
+
+    if ($result['ok']) {
+        $next['status'] = 'ok';
+        if ($previous === 'ok') return ['state' => $next, 'event' => null];
+
+        $next['changed_at'] = $now;
+        $message = $previous === 'fail'
+            ? 'Up again after ' . human_duration(strtotime($now) - strtotime($details['failing_since'] ?? $state['changed_at'])) . ': '
+            : 'First check: ';
+        return ['state' => $next, 'event' => ['status' => 'ok', 'previous' => $previous, 'message' => $message . lcfirst($result['summary'])]];
+    }
+
+    $next['fail_count'] = $state['fail_count'] + 1;
+    $next['details']['failing_since'] = $details['failing_since'] ?? $now;
+
+    if ($next['fail_count'] < $downAfter) {
+        $failed = match (true) {
+            $next['fail_count'] > 1 => "Failed {$next['fail_count']} times",
+            $previous === 'pending' => 'First check failed',
+            default => 'Failed once',
+        };
+        $next['summary'] = "{$failed}, checking again: " . lcfirst($result['summary']);
+        return ['state' => $next, 'event' => null];
+    }
+
+    $next['status'] = 'fail';
+    if ($previous === 'fail') return ['state' => $next, 'event' => null];
+
+    $next['changed_at'] = $next['details']['failing_since'];
+    return ['state' => $next, 'event' => ['status' => 'fail', 'previous' => $previous, 'message' => 'Down: ' . lcfirst($result['summary'])]];
+}
+
+/** A length of time the way a person would say it. */
+function human_duration(int $seconds): string
+{
+    if ($seconds < 60) return 'less than a minute';
+    $minutes = intdiv($seconds, 60);
+    if ($minutes < 60) return "{$minutes} min";
+    $hours = intdiv($minutes, 60);
+    if ($hours < 24) return "{$hours} h" . ($minutes % 60 ? ' ' . ($minutes % 60) . ' min' : '');
+    $days = intdiv($hours, 24);
+    return plural($days, 'day', 'days') . ($hours % 24 ? ' ' . ($hours % 24) . ' h' : '');
+}

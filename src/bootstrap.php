@@ -11,4 +11,7 @@ require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
 require_once __DIR__ . '/sites.php';
 require_once __DIR__ . '/import.php';
+require_once __DIR__ . '/http.php';
+require_once __DIR__ . '/checks/uptime.php';
+require_once __DIR__ . '/runner.php';
 require_once __DIR__ . '/cli.php';

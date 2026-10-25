@@ -12,12 +12,6 @@ function site_options(array $opts): array
     return $fields;
 }
 
-/** Minutes between uptime checks for a site. */
-function site_interval(array $site, array $config): int
-{
-    return $site['interval_minutes'] ?? $config['uptime_interval'];
-}
-
 /** "Customers, every 5 min, paused" */
 function describe_site(array $site, array $config): string
 {

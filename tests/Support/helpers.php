@@ -28,6 +28,49 @@ function load_config(array $env = []): array
 }
 
 /**
+ * Serve tests/fixtures/sites/<name> with `php -S` on 127.0.0.1:<port>, using
+ * its index.php as the router. Several workers, so a slow request does not
+ * hold up the others. Returns once the port accepts connections.
+ */
+function start_site(string $name, int $port): mixed
+{
+    $dir = __DIR__ . '/../fixtures/sites/' . $name;
+    $proc = proc_open(
+        [PHP_BINARY, '-S', "127.0.0.1:{$port}", '-t', $dir, $dir . '/index.php'],
+        [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+        $pipes,
+        null,
+        ['PHP_CLI_SERVER_WORKERS' => '8', 'PATH' => getenv('PATH')],
+    );
+    for ($i = 0; $i < 100; $i++) {
+        $sock = @fsockopen('127.0.0.1', $port, $errno, $errstr, 0.1);
+        if ($sock) {
+            fclose($sock);
+            return $proc;
+        }
+        usleep(50_000);
+    }
+    throw new RuntimeException("Fixture site {$name} did not start on port {$port}");
+}
+
+/** Stop a fixture site. Its workers are child processes that outlive the parent's SIGTERM, so they go first. */
+function stop_site(mixed $proc): void
+{
+    if (!is_resource($proc)) return;
+    exec('pkill -TERM -P ' . (int) proc_get_status($proc)['pid']);
+    proc_terminate($proc);
+    proc_close($proc);
+}
+
+/** The config.php array for tests: defaults, plus $overrides. */
+function test_config(array $overrides = []): array
+{
+    static $base;
+    $base ??= load_config();
+    return $overrides + $base;
+}
+
+/**
  * Environment for a CLI test with its own database and users file, so
  * state carries over between vaka() calls in one test and no further.
  */

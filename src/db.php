@@ -85,13 +85,69 @@ function migrations(): array
             )",
             'CREATE INDEX idx_sites_group ON sites (group_id)',
         ],
+        3 => [
+            "CREATE TABLE check_state (
+                site_id INTEGER NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+                check_name TEXT NOT NULL,
+                status TEXT NOT NULL DEFAULT 'pending',
+                summary TEXT NOT NULL DEFAULT '',
+                details TEXT NOT NULL DEFAULT '{}',
+                fail_count INTEGER NOT NULL DEFAULT 0,
+                checked_at TEXT,
+                next_at TEXT,
+                changed_at TEXT,
+                alerted_status TEXT NOT NULL DEFAULT 'pending',
+                alerted_at TEXT,
+                snoozed_until TEXT,
+                thresholds_sent TEXT NOT NULL DEFAULT '[]',
+                PRIMARY KEY (site_id, check_name)
+            )",
+            "CREATE TABLE events (
+                id INTEGER PRIMARY KEY,
+                site_id INTEGER NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+                check_name TEXT NOT NULL,
+                status TEXT NOT NULL,
+                previous TEXT NOT NULL,
+                message TEXT NOT NULL,
+                silenced_by TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL
+            )",
+            'CREATE INDEX idx_events_site ON events (site_id, created_at)',
+            "CREATE TABLE samples (
+                site_id INTEGER NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+                checked_at TEXT NOT NULL,
+                status_code INTEGER NOT NULL,
+                ms INTEGER NOT NULL,
+                ok INTEGER NOT NULL,
+                ip TEXT NOT NULL DEFAULT ''
+            )",
+            'CREATE INDEX idx_samples_site ON samples (site_id, checked_at)',
+            "CREATE TABLE servers (
+                ip TEXT PRIMARY KEY,
+                label TEXT NOT NULL DEFAULT ''
+            )",
+        ],
     ];
 }
 
-/** The current time in UTC, as stored in the database. */
-function utc_now(): string
+/** A time in UTC (now, or a Unix timestamp), as stored in the database. */
+function utc_now(?int $time = null): string
 {
-    return gmdate('Y-m-d\TH:i:s\Z');
+    return gmdate('Y-m-d\TH:i:s\Z', $time ?? time());
+}
+
+function get_meta(PDO $db, string $key): ?string
+{
+    $stmt = $db->prepare('SELECT value FROM meta WHERE key = ?');
+    $stmt->execute([$key]);
+    $value = $stmt->fetchColumn();
+    return $value === false ? null : $value;
+}
+
+function set_meta(PDO $db, string $key, string $value): void
+{
+    $db->prepare('INSERT INTO meta (key, value) VALUES (?, ?) ON CONFLICT (key) DO UPDATE SET value = excluded.value')
+        ->execute([$key, $value]);
 }
 
 /**
