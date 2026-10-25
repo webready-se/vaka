@@ -1,7 +1,7 @@
 <?php
 
 /** Scripts and styles from our own files only: no inline script, no inline style. */
-const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 /** /?health reports a stopped cron when the last run is older than this. */
 const STALE_RUN_SECONDS = 300;
@@ -144,7 +144,7 @@ function show_login(array $config, ?string $error = null): never
     $version = e(VAKA_VERSION);
     $message = $error === null ? '' : '<p class="login-error" id="login-error" role="alert">' . e($error) . '</p>';
     $described = $error === null ? '' : ' aria-describedby="login-error"';
-    $owl = owl_svg('login-mark');
+    $owl = owl_tile();
 
     respond(200, <<<HTML
     <!doctype html>
@@ -152,18 +152,19 @@ function show_login(array $config, ?string $error = null): never
     <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
+    <meta name="theme-color" content="#0f172a">
     <title>Log in to Vaka</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="app.css?v={$version}">
-    <script src="theme.js?v={$version}"></script>
     </head>
     <body class="login">
     <main class="login-card">
       {$owl}
-      <h1>Vaka</h1>
+      <h1>vaka</h1>
       <p class="login-tagline">Keeps watch while you sleep.</p>
-      {$message}
       <form method="post" action="/?login">
+        {$message}
         <input type="hidden" name="_token" value="{$token}">
         <label for="username">User name</label>
         <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus{$described}>
@@ -171,20 +172,21 @@ function show_login(array $config, ?string $error = null): never
         <input id="password" name="password" type="password" autocomplete="current-password" required{$described}>
         <button type="submit">Log in</button>
       </form>
+      <p class="login-foot">Made by Webready in Sweden</p>
     </main>
     </body>
     </html>
     HTML, 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
 }
 
-/** The owl mark (keeps watch at night), as inline SVG without style attributes. */
-function owl_svg(string $class): string
+/** The Vaka mark: a teal tile with the watching owl, inline (no style attributes). */
+function owl_tile(): string
 {
-    return '<svg class="' . e($class) . '" viewBox="0 0 64 64" aria-hidden="true" focusable="false">'
-        . '<path class="owl-body" d="M14 22c0-8 6-14 18-14s18 6 18 14v18c0 10-8 18-18 18S14 50 14 40z"/>'
-        . '<circle class="owl-eye" cx="24" cy="28" r="7"/><circle class="owl-eye" cx="40" cy="28" r="7"/>'
-        . '<circle class="owl-pupil" cx="24" cy="28" r="3"/><circle class="owl-pupil" cx="40" cy="28" r="3"/>'
-        . '<path class="owl-beak" d="M29 35l3 5 3-5z"/></svg>';
+    return '<svg class="tile" viewBox="0 0 36 36" aria-hidden="true" focusable="false">'
+        . '<rect class="tile-bg" width="36" height="36" rx="8"/>'
+        . '<circle class="owl-line" cx="12.5" cy="19.5" r="5"/><circle class="owl-line" cx="23.5" cy="19.5" r="5"/>'
+        . '<path class="owl-line" d="M6 12.5c3.5-2.3 8.6-2 12 2.2 3.4-4.2 8.5-4.5 12-2.2"/><path class="owl-line" d="M16.4 26.6 18 28.6l1.6-2"/>'
+        . '<circle class="owl-pupil" cx="12.5" cy="19.5" r="1.9"/><circle class="owl-pupil" cx="23.5" cy="19.5" r="1.9"/></svg>';
 }
 
 function show_dashboard(array $user): never

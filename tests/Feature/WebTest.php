@@ -56,7 +56,7 @@ test('health says whether the checks are running', function () {
 test('every page sends strict security headers', function () {
     foreach (['/?login', '/', '/?health', '/?api=overview'] as $path) {
         $headers = http_request('GET', WEB . $path)['headers'];
-        expect($headers['content-security-policy'] ?? '')->toBe("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+        expect($headers['content-security-policy'] ?? '')->toBe("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
             ->and($headers['x-content-type-options'] ?? '')->toBe('nosniff')
             ->and($headers['x-frame-options'] ?? '')->toBe('DENY')
             ->and($headers['referrer-policy'] ?? '')->toBe('no-referrer')
@@ -66,9 +66,10 @@ test('every page sends strict security headers', function () {
 
 test('pages have no inline script, inline style or inline event handlers', function () {
     $login = ($this->login)('admin', 'admin password');
-    foreach ([http_request('GET', WEB . '/?login')['body'], http_request('GET', WEB . '/', ['jar' => $login['jar']])['body']] as $html) {
-        expect($html)->toContain('<script src=')
-            ->and($html)->not->toMatch('/<script(?![^>]*\ssrc=)[^>]*>/')
+    $dashboard = http_request('GET', WEB . '/', ['jar' => $login['jar']])['body'];
+    expect($dashboard)->toContain('<script src=');
+    foreach ([http_request('GET', WEB . '/?login')['body'], $dashboard] as $html) {
+        expect($html)->not->toMatch('/<script(?![^>]*\ssrc=)[^>]*>/')
             ->and($html)->not->toMatch('/\sstyle="/')
             ->and($html)->not->toMatch('/\son[a-z]+="/');
     }

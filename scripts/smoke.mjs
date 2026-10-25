@@ -173,12 +173,14 @@ async function main() {
     if (!await waitFor(() => q('#app[aria-busy="false"]'), 'the dashboard to render')) return fails;
 
     // What is wrong comes first, in plain words
-    expect(/3 sites are down/.test(q('.hero h1')?.textContent || ''), 'hero says how many sites are down');
-    expect(/2 need you, 1 is snoozed/.test(q('.hero p')?.textContent || ''), 'hero says how many of them are snoozed');
-    expect(/Checked/.test(q('[data-region="run-state"]').textContent), 'top bar says when Vaka last checked');
+    expect(/2 sites are down/.test(q('.watch h1')?.textContent || ''), 'the watch says how many sites are down and need you');
+    expect(/1 more is down but snoozed/.test(q('.watch-line')?.textContent || ''), 'the watch says how many more are snoozed');
+    expect(document.title === '(2) Vaka', `the tab title counts the outages (got "${document.title}")`);
+    expect(/favicon-alert\.svg$/.test(q('[data-favicon]').getAttribute('href')), 'the favicon turns to the alarmed owl');
+    expect(/Watching 14 sites · checked/.test(q('[data-region="run-state"]').textContent), 'top bar says how many sites Vaka watches and when it checked');
     const incidents = all('.incident');
     expect(incidents.length === 5, `five incidents need attention (got ${incidents.length})`);
-    expect(/booking\.example:\s*the SSL certificate expires in 6 days/.test(incidents[4]?.querySelector('h3')?.textContent || ''), 'an expiring certificate comes after the outages');
+    expect(/booking\.example\s*certificate expires in 6 days/.test(incidents[4]?.querySelector('h3')?.textContent || ''), 'an expiring certificate comes after the outages');
     expect(all('.site-row').some((r) => /booking\.example/.test(r.textContent) && /certificate expires in 6 days/.test(r.textContent)), 'the row says the certificate expires soon');
     expect(/shop\.example is down/.test(incidents[0]?.querySelector('h3')?.textContent || ''), 'an unsnoozed outage comes first');
     expect(/The site itself answers with an error/.test(incidents[0]?.textContent || ''), 'advice under the outage');
@@ -189,7 +191,8 @@ async function main() {
     expect(all('.site-row').length === 15, `15 site rows (got ${all('.site-row').length})`);
     expect(all('.group').length === 5, 'five groups, sites without a group last');
     expect(/No group/.test(all('.group').pop()?.textContent || ''), 'sites without a group come last');
-    expect(all('.site-row .spark rect').length === 15 * 24, 'a 24-hour sparkline on every row');
+    expect(all('.site-row .days i').length === 15 * 30, 'thirty days of bars on every row');
+    expect(all('.site-row .days i.is-partial, .site-row .days i.is-down').length > 0, 'days with downtime stand out');
     expect(all('.site-row').some((r) => /behind Cloudflare/.test(r.textContent)), 'a CDN site says so');
 
     // Hostile names and messages are text, never markup
@@ -211,17 +214,28 @@ async function main() {
 
     // Site detail: history and response times
     all('.site-row').find((r) => /shop\.example/.test(r.textContent)).click();
-    if (await waitFor(() => q('dialog.detail[open] h2'), 'the site detail to open')) {
-      expect(q('dialog.detail h2').textContent === 'shop.example', 'the detail is for the site clicked');
-      expect(q('dialog.detail .chart'), 'a response time chart');
-      expect(all('dialog.detail .history li').length >= 2, 'the history lists what happened');
+    if (await waitFor(() => q('dialog.drawer[open] h2'), 'the site detail to open')) {
+      expect(q('dialog.drawer h2').textContent === 'shop.example', 'the detail is for the site clicked');
+      expect(q('dialog.drawer .chart'), 'a response time chart');
+      expect(all('dialog.drawer .days i').length === 30, 'thirty days in the detail');
+      expect(all('dialog.drawer .timeline li').length >= 2, 'the history lists what happened');
       expect(location.hash === '#site-1', 'the detail has its own address');
-      q('dialog.detail [data-action="close"]').click();
-      expect(!q('dialog.detail[open]') && location.hash === '', 'closing the detail closes it and its address');
+      q('dialog.drawer [data-action="close"]').click();
+      expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');
     }
 
+    // "/" jumps to the filter
+    document.activeElement.blur();
+    document.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
+    expect(document.activeElement === q('[data-filter]'), 'pressing / focuses the filter');
+    document.activeElement.blur();
+
+    // The font is ours, not a fallback
+    await document.fonts.ready;
+    expect(document.fonts.check('16px Figtree'), 'Figtree is loaded');
+
     // Snooze from the dashboard
-    const snoozeButton = incidents[0]?.querySelector('[data-action="snooze"][data-for="1h"]');
+    const snoozeButton = all('.incident')[0]?.querySelector('[data-action="snooze"][data-for="1h"]');
     if (snoozeButton) {
       snoozeButton.click();
       await waitFor(() => /Snoozed shop\.example until/.test(q('[data-region="toast"]').textContent), 'a toast after snoozing');
@@ -255,15 +269,19 @@ async function main() {
   // 6. A phone: everything fits without sideways scrolling
   await send('Emulation.setDeviceMetricsOverride', { width: 390, height: 844, deviceScaleFactor: 2, mobile: true });
   wait = loaded();
-  await send('Page.reload');
+  await send('Page.navigate', { url: `${base}/` });
   await wait;
   const phone = await evaluate(async () => {
     for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
-    return { overflow: document.documentElement.scrollWidth - window.innerWidth, csp: window.__csp };
+    // On a phone the layout viewport grows with content that is too wide, so measure against the screen
+    return { overflow: document.documentElement.scrollWidth - 390, csp: window.__csp };
   });
   if (phone.overflow > 0) fails.push(`no sideways scrolling on a phone (${phone.overflow}px too wide)`);
   if (phone.csp.length) fails.push(`no CSP violations on a phone: ${phone.csp.join(', ')}`);
   await screenshot('phone');
+  await evaluate(() => document.querySelector('.site-row').click());
+  await sleep(600);
+  await screenshot('phone-detail');
 
   ws.close();
   const problems = [...fails, ...errors];

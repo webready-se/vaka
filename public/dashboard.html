@@ -3,9 +3,13 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#f8fafc" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f172a" media="(prefers-color-scheme: dark)">
 <meta name="csrf-token" content="{{csrf}}">
 <title>Vaka</title>
-<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="icon" href="favicon.svg" type="image/svg+xml" data-favicon>
+<link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="stylesheet" href="app.css?v={{version}}">
 <script src="theme.js?v={{version}}"></script>
 <script src="app.js?v={{version}}" defer></script>
@@ -13,46 +17,51 @@
 <body>
 <a class="skip-link" href="#sites-title">Skip to all sites</a>
 <header class="topbar">
-  <a class="brand" href="/">
-    <svg class="brand-mark" viewBox="0 0 64 64" aria-hidden="true" focusable="false">
-      <path class="owl-body" d="M14 22c0-8 6-14 18-14s18 6 18 14v18c0 10-8 18-18 18S14 50 14 40z"/>
-      <circle class="owl-eye" cx="24" cy="28" r="7"/><circle class="owl-eye" cx="40" cy="28" r="7"/>
-      <circle class="owl-pupil" cx="24" cy="28" r="3"/><circle class="owl-pupil" cx="40" cy="28" r="3"/>
-      <path class="owl-beak" d="M29 35l3 5 3-5z"/>
+  <a class="brand" href="/" aria-label="Vaka, home">
+    <svg class="tile" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
+      <rect class="tile-bg" width="36" height="36" rx="8"/>
+      <circle class="owl-line" cx="12.5" cy="19.5" r="5"/><circle class="owl-line" cx="23.5" cy="19.5" r="5"/>
+      <path class="owl-line" d="M6 12.5c3.5-2.3 8.6-2 12 2.2 3.4-4.2 8.5-4.5 12-2.2"/><path class="owl-line" d="M16.4 26.6 18 28.6l1.6-2"/>
+      <circle class="owl-pupil" cx="12.5" cy="19.5" r="1.9"/><circle class="owl-pupil" cx="23.5" cy="19.5" r="1.9"/>
     </svg>
-    <span>Vaka</span>
+    <span class="brand-name">vaka</span>
   </a>
-  <p class="run-state" data-region="run-state"></p>
-  <div class="topbar-actions">
-    <button type="button" class="ghost-button" data-action="theme" aria-label="Colour theme: system">
-      <span data-theme-label>System</span>
+  <p class="run-pill" data-region="run-state"><span class="run-dot"></span><span data-run-text>Starting…</span></p>
+  <span class="topbar-spacer"></span>
+  <button type="button" class="icon-button" data-action="theme" aria-label="Colour theme: system">
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" data-theme-icon><path d="M4 5h16v11H4zM9 20h6M12 16v4"/></svg>
+    <span class="label" data-theme-label>System</span>
+  </button>
+  <form method="post" action="/?logout">
+    <input type="hidden" name="_token" value="{{csrf}}">
+    <button type="submit" class="icon-button" aria-label="Log out {{user}}">
+      <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3M10 8l-4 4 4 4M6 12h10"/></svg>
+      <span class="label">Log out</span>
     </button>
-    <form method="post" action="/?logout">
-      <input type="hidden" name="_token" value="{{csrf}}">
-      <button type="submit" class="ghost-button">Log out <span class="topbar-user">{{user}}</span></button>
-    </form>
-  </div>
+  </form>
 </header>
 
 <main id="app" aria-busy="true">
   <div data-region="banner"></div>
-  <section class="hero" data-region="hero" aria-live="polite">
-    <p class="loading">Loading…</p>
+  <section data-region="watch" aria-live="polite">
+    <p class="loading">Looking at your sites…</p>
   </section>
   <section class="attention" data-region="attention" aria-labelledby="attention-title" hidden></section>
-  <section class="sites-section" aria-labelledby="sites-title">
+  <section aria-labelledby="sites-title">
     <div class="sites-head">
-      <h2 id="sites-title" tabindex="-1">All sites</h2>
+      <h2 class="section-title" id="sites-title" tabindex="-1">All sites</h2>
       <label class="filter">
         <span class="visually-hidden">Filter sites</span>
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.2-4.2"/></svg>
         <input type="search" data-filter placeholder="Filter by name or group" autocomplete="off" spellcheck="false">
+        <kbd aria-hidden="true">/</kbd>
       </label>
     </div>
     <div data-region="groups"></div>
   </section>
 </main>
 
-<dialog class="detail" data-region="detail" aria-labelledby="detail-title"></dialog>
+<dialog class="drawer" data-region="detail" aria-labelledby="detail-title"></dialog>
 <p class="toast" data-region="toast" role="status" aria-live="polite"></p>
 </body>
 </html>

@@ -13,7 +13,7 @@
     regions[node.getAttribute('data-region')] = node;
   });
   var filterInput = document.querySelector('[data-filter]');
-  var state = { data: null, filter: '', detailId: null, detail: null, timezone: undefined };
+  var state = { data: null, filter: '', detailId: null, detail: null, timezone: undefined, failed: false };
 
   // =================================================================
   // DOM helpers
@@ -46,6 +46,7 @@
   function append(node, children) {
     [].concat(children === undefined ? [] : children).forEach(function (child) {
       if (child === null || child === undefined || child === false) return;
+      if (Array.isArray(child)) return append(node, child);
       node.appendChild(typeof child === 'string' || typeof child === 'number' ? document.createTextNode(String(child)) : child);
     });
   }
@@ -54,20 +55,42 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
+  // Vaka's icons: a 24 px grid, stroke 2, round caps and joins (see docs/brand.md)
   var ICONS = {
-    up: 'M5 12.5l4.5 4.5L19 7.5',
-    down: 'M7 7l10 10M17 7L7 17',
-    failing: 'M12 7v6M12 16.5v.5',
-    paused: 'M9 7v10M15 7v10',
-    pending: 'M12 12h.01',
-    quiet: 'M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z',
-    external: 'M14 5h5v5M19 5l-8 8M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4',
-    close: 'M6 6l12 12M18 6L6 18'
+    up: ['M5 12.5l4.5 4.5L19 7.5'],
+    down: ['M7 7l10 10M17 7 7 17'],
+    failing: ['M12 7v6.5', 'M12 17.4v.1'],
+    paused: ['M9 7v10M15 7v10'],
+    pending: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 7.5V12l3 2'],
+    quiet: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'],
+    shield: ['M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z', 'M12 8v4.5', 'M12 15.8v.1'],
+    bell: ['M18 16H6l1.5-2.2V10a4.5 4.5 0 0 1 9 0v3.8z', 'M10 19a2 2 0 0 0 4 0'],
+    server: ['M4 4.5h16v6H4zM4 13.5h16v6H4z', 'M8 7.5h.01M8 16.5h.01'],
+    bulb: ['M9 18h6M10 21h4', 'M12 3a6 6 0 0 0-3.6 10.8c.6.5.6 1.1.6 1.7v.5h6v-.5c0-.6 0-1.2.6-1.7A6 6 0 0 0 12 3z'],
+    external: ['M14 5h5v5M19 5l-8 8', 'M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4'],
+    close: ['M6 6l12 12M18 6 6 18'],
+    copy: ['M9 9h10v10H9z', 'M5 15V5h10'],
+    sun: ['M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4'],
+    moon: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'],
+    monitor: ['M4 5h16v11H4z', 'M9 20h6M12 16v4']
   };
 
   function icon(name) {
-    return s('svg', { viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
-      s('path', { d: ICONS[name], fill: 'none', stroke: 'currentColor', 'stroke-width': name === 'pending' ? 6 : 2.2, 'stroke-linecap': 'round', 'stroke-linejoin': 'round' })
+    return s('svg', { class: 'icon', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' },
+      ICONS[name].map(function (d) { return s('path', { d: d }); }));
+  }
+
+  /** The watching owl. Alarmed: wide eyes, small pupils. */
+  function owl(alarmed) {
+    var r = alarmed ? 5.6 : 5;
+    var pupil = alarmed ? 1.2 : 1.9;
+    return s('svg', { class: 'watch-owl', viewBox: '0 0 36 36', 'aria-hidden': 'true', focusable: 'false' }, [
+      s('circle', { class: 'owl-line', cx: 12.5, cy: 19.5, r: r }),
+      s('circle', { class: 'owl-line', cx: 23.5, cy: 19.5, r: r }),
+      s('path', { class: 'owl-line', d: alarmed ? 'M6 11c3.5-2.3 8.6-2 12 2.2 3.4-4.2 8.5-4.5 12-2.2' : 'M6 12.5c3.5-2.3 8.6-2 12 2.2 3.4-4.2 8.5-4.5 12-2.2' }),
+      s('path', { class: 'owl-line', d: 'M16.4 26.6 18 28.6l1.6-2' }),
+      s('circle', { class: 'owl-pupil', cx: 12.5, cy: 19.5, r: pupil }),
+      s('circle', { class: 'owl-pupil', cx: 23.5, cy: 19.5, r: pupil })
     ]);
   }
 
@@ -75,7 +98,7 @@
   // Words and times
   // =================================================================
 
-  var STATUS_WORDS = { up: 'Up', down: 'Down', failing: 'Failing', paused: 'Paused', pending: 'Not checked yet' };
+  var STATUS_WORDS = { up: 'Up', down: 'Down', failing: 'Failing', paused: 'Paused', pending: 'Waiting' };
 
   function statusLabel(status) {
     return h('span', { class: 'status status-' + status }, [icon(status), STATUS_WORDS[status]]);
@@ -96,6 +119,16 @@
     return plural(days, 'day', 'days') + (hours % 24 ? ' ' + (hours % 24) + ' h' : '');
   }
 
+  /** The short form for big numbers: "14 min", "2 h", "3 days". */
+  function shortDuration(seconds) {
+    if (seconds < 60) return '<1 min';
+    var minutes = Math.floor(seconds / 60);
+    if (minutes < 60) return minutes + ' min';
+    var hours = Math.floor(minutes / 60);
+    if (hours < 48) return hours + ' h';
+    return Math.floor(hours / 24) + ' days';
+  }
+
   function secondsSince(iso) {
     return Math.max(0, Math.round((Date.now() - Date.parse(iso)) / 1000));
   }
@@ -105,24 +138,33 @@
     return seconds < 60 ? 'just now' : duration(seconds) + ' ago';
   }
 
-  function sameDay(a, b) {
-    var f = new Intl.DateTimeFormat('en-CA', { timeZone: state.timezone, year: 'numeric', month: '2-digit', day: '2-digit' });
-    return f.format(a) === f.format(b);
+  function dateParts(date) {
+    var parts = {};
+    new Intl.DateTimeFormat('en-GB', { timeZone: state.timezone, year: 'numeric', day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
+      .formatToParts(date)
+      .forEach(function (part) { parts[part.type] = part.value; });
+    parts.month = parts.month.slice(0, 3);
+    return parts;
   }
 
   /** "14:02" today, "24 Oct 14:02" before that, in the server's time zone. */
   function clock(iso) {
-    var date = new Date(iso);
-    var parts = {};
-    new Intl.DateTimeFormat('en-GB', { timeZone: state.timezone, day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' })
-      .formatToParts(date)
-      .forEach(function (part) { parts[part.type] = part.value; });
-    var time = parts.hour + ':' + parts.minute;
-    return sameDay(date, new Date()) ? time : parts.day + ' ' + parts.month.slice(0, 3) + ' ' + time;
+    var p = dateParts(new Date(iso));
+    var today = dateParts(new Date());
+    var time = p.hour + ':' + p.minute;
+    return p.day === today.day && p.month === today.month && p.year === today.year ? time : p.day + ' ' + p.month + ' ' + time;
   }
 
-  function lowerFirst(text) {
-    return text ? text.charAt(0).toLowerCase() + text.slice(1) : text;
+  function day(isoDate) {
+    var p = dateParts(new Date(isoDate + 'T12:00:00Z'));
+    return p.day + ' ' + p.month;
+  }
+
+  function median(values) {
+    if (!values.length) return null;
+    var sorted = values.slice().sort(function (a, b) { return a - b; });
+    var mid = Math.floor(sorted.length / 2);
+    return sorted.length % 2 ? sorted[mid] : Math.round((sorted[mid - 1] + sorted[mid]) / 2);
   }
 
   // =================================================================
@@ -164,121 +206,174 @@
     return state.data.groups.reduce(function (sites, group) { return sites.concat(group.sites); }, []);
   }
 
+  function isQuiet(site) {
+    return Boolean(site.snoozed_until || site.maintenance);
+  }
+
+  /** Certificates that need attention. A site that is down already says why, certificate or not. */
+  function certIssues() {
+    return allSites().filter(function (site) {
+      return site.ssl && (site.ssl.status === 'warn' || (site.ssl.status === 'fail' && site.status !== 'down'));
+    });
+  }
+
   function render() {
     renderRunState();
     renderBanner();
-    renderHero();
+    renderWatch();
     renderAttention();
     renderGroups();
+    renderTab();
     document.getElementById('app').setAttribute('aria-busy', 'false');
   }
 
   function renderRunState() {
     var node = regions['run-state'];
     var last = state.data.last_run_at;
-    node.textContent = last ? 'Checked ' + ago(last) : 'Not checked yet';
-    node.className = 'run-state ' + (state.data.run_ok ? 'is-ok' : 'is-stale');
+    var watched = state.data.totals.sites - state.data.totals.paused;
+    var text = node.querySelector('[data-run-text]');
+    clear(text);
+    // On a phone only the freshness shows: "Checked just now"
+    append(text, last
+      ? [h('span', { class: 'run-count' }, 'Watching ' + plural(watched, 'site', 'sites') + ' · '), 'checked ' + ago(last)]
+      : 'Not checked yet');
+    node.className = 'run-pill ' + (state.data.run_ok ? 'is-ok' : 'is-stale');
   }
 
   function renderBanner() {
     var node = regions.banner;
     clear(node);
     if (state.failed) {
-      append(node, h('p', { class: 'banner', role: 'alert' }, [h('strong', {}, 'Vaka cannot be reached right now. '), 'This page tries again every 30 seconds.']));
+      append(node, h('p', { class: 'banner', role: 'alert' }, [icon('failing'), h('span', {}, [h('strong', {}, 'Vaka cannot be reached right now. '), 'This page tries again every 30 seconds.'])]));
       return;
     }
     var data = state.data;
     if (!data || data.totals.sites === 0) return;
     if (!data.last_run_at) {
-      append(node, h('div', { class: 'banner', role: 'alert' }, [
+      append(node, h('div', { class: 'banner', role: 'alert' }, [icon('pending'), h('span', {}, [
         h('strong', {}, 'Vaka has not checked anything yet. '),
         'Run it every minute from cron: ', h('code', {}, '* * * * * php /path/to/vaka run')
-      ]));
+      ])]));
     } else if (!data.run_ok) {
-      append(node, h('div', { class: 'banner', role: 'alert' }, [
+      append(node, h('div', { class: 'banner', role: 'alert' }, [icon('failing'), h('span', {}, [
         h('strong', {}, 'The last check was ' + ago(data.last_run_at) + '. '),
         'Is cron still running ', h('code', {}, 'php vaka run'), ' every minute? Until it does, what you see here is out of date.'
-      ]));
+      ])]));
     }
   }
 
-  function renderHero() {
-    var node = regions.hero;
+  // -----------------------------------------------------------------
+  // The watch: how everything is, in one sentence
+  // -----------------------------------------------------------------
+
+  function renderWatch() {
+    var node = regions.watch;
     clear(node);
     var t = state.data.totals;
-
     if (t.sites === 0) {
-      append(node, h('div', { class: 'empty' }, [
-        h('h1', {}, 'Nothing to watch yet'),
-        h('p', {}, 'Add your first site, and Vaka starts keeping watch within a minute.'),
-        h('ol', {}, [
-          h('li', {}, ['Add a site: ', h('code', {}, 'php vaka site:add https://shop.example'), ' (or a whole list: ', h('code', {}, 'php vaka site:import sites.csv'), ')']),
-          h('li', {}, ['Run the checks every minute from cron: ', h('code', {}, '* * * * * php /path/to/vaka run')]),
-          h('li', {}, ['Tell Vaka where to send alerts: ', h('code', {}, 'SLACK_WEBHOOK_URL'), ' in .env, then ', h('code', {}, 'php vaka alert:test')])
-        ])
-      ]));
+      append(node, emptyState());
       return;
     }
 
+    var sites = allSites();
+    var downNow = sites.filter(function (site) { return site.status === 'down' && !isQuiet(site); }).length;
+    var downQuiet = t.down - downNow;
+    var certs = certIssues().length;
     var watched = t.sites - t.paused;
-    var kind, title, line;
-    if (t.down > 0) {
-      kind = 'down';
-      title = plural(t.down, 'site is down', 'sites are down');
-      var quiet = allSites().filter(function (site) { return site.status === 'down' && isQuiet(site); }).length;
-      var parts = [];
-      if (quiet === t.down) parts.push(t.down === 1 ? 'It is snoozed or in a maintenance window.' : 'All of them are snoozed or in a maintenance window.');
-      else if (quiet) parts.push((t.down - quiet) + (t.down - quiet === 1 ? ' needs' : ' need') + ' you, ' + quiet + (quiet === 1 ? ' is' : ' are') + ' snoozed or in a maintenance window.');
-      if (t.failing) parts.push(plural(t.failing, 'more site is failing a check', 'more sites are failing a check') + ' and being checked again.');
-      line = parts.length ? parts.join(' ') : 'Everything else is up.';
+    var kind, kicker, title, line;
+
+    if (downNow > 0) {
+      kind = 'alert';
+      kicker = 'Needs you now';
+      title = plural(downNow, 'site is down', 'sites are down');
+      var more = [];
+      if (downQuiet) more.push(downQuiet + ' more ' + (downQuiet === 1 ? 'is' : 'are') + ' down but snoozed or in a maintenance window.');
+      if (t.failing) more.push(plural(t.failing, 'more site is', 'more sites are') + ' failing a check and being checked again.');
+      line = more.length ? more.join(' ') : 'Everything else is up.';
+    } else if (downQuiet > 0) {
+      kind = 'watch';
+      kicker = 'Keeping watch';
+      title = 'Nothing needs you right now';
+      line = plural(downQuiet, 'site is', 'sites are') + ' down, but snoozed or in a maintenance window.';
     } else if (t.failing > 0) {
-      kind = 'failing';
-      title = 'Everything is up, ' + plural(t.failing, 'site is', 'sites are') + ' being checked again';
-      line = 'A single failed check is not an outage yet. Vaka checks again within a minute.';
+      kind = 'watch';
+      kicker = 'Checking again';
+      title = 'Something looks off';
+      line = plural(t.failing, 'site', 'sites') + ' failed a check. Vaka checks again within a minute: one failure is not an outage yet.';
     } else if (t.up === 0) {
       kind = 'empty';
+      kicker = 'Getting ready';
       title = 'Waiting for the first checks';
       line = 'Results show up here after the next run.';
     } else {
-      var certs = sslIssues().length;
-      kind = certs ? 'failing' : 'up';
-      title = t.up === watched ? (t.up === 1 ? 'Your site is up' : 'All ' + t.up + ' sites are up') : plural(t.up, 'site is up', 'sites are up');
-      line = certs ? 'But ' + plural(certs, 'certificate needs', 'certificates need') + ' attention.' : 'Nothing needs your attention.';
+      kind = certs ? 'watch' : 'calm';
+      kicker = 'Keeping watch';
+      title = 'All quiet.';
+      line = t.up === watched ? (watched === 1 ? 'Your site is up.' : 'All ' + watched + ' sites are up.') : plural(t.up, 'site is up.', 'sites are up.');
+      if (certs) line += ' ' + plural(certs, 'certificate needs', 'certificates need') + ' renewing soon.';
+      else if (state.data.last_incident) line += ' The last outage was ' + ago(state.data.last_incident.at) + ', on ' + state.data.last_incident.label + '.';
     }
 
-    var counts = [];
-    if (t.up) counts.push(h('li', {}, [statusLabel('up'), String(t.up)]));
-    if (t.down) counts.push(h('li', {}, [statusLabel('down'), String(t.down)]));
-    if (t.failing) counts.push(h('li', {}, [statusLabel('failing'), String(t.failing)]));
-    if (t.paused) counts.push(h('li', {}, [statusLabel('paused'), String(t.paused)]));
-    if (t.pending) counts.push(h('li', {}, [statusLabel('pending'), String(t.pending)]));
+    var ms = median(sites.filter(function (site) { return site.ms !== null && site.ms !== undefined; }).map(function (site) { return site.ms; }));
+    var month = sites.filter(function (site) { return site.status !== 'paused' && site.uptime_30d !== null && site.uptime_30d !== undefined; }).map(function (site) { return site.uptime_30d; });
+    var average = month.length ? Math.floor(month.reduce(function (a, b) { return a + b; }, 0) / month.length * 100) / 100 : null;
 
-    append(node, h('div', { class: 'hero-card is-' + kind }, [
-      h('div', { class: 'hero-icon' }, icon(kind === 'empty' ? 'pending' : kind)),
-      h('div', {}, [h('h1', {}, title), h('p', {}, line), h('ul', { class: 'hero-counts', 'aria-label': 'Sites by status' }, counts)])
+    var stats = [h('li', { class: 'is-up' }, [h('b', {}, String(t.up)), h('span', {}, 'Up')])];
+    if (t.down) stats.push(h('li', { class: 'is-down' }, [h('b', {}, String(t.down)), h('span', {}, 'Down')]));
+    if (t.failing) stats.push(h('li', { class: 'is-warn' }, [h('b', {}, String(t.failing)), h('span', {}, 'Checking')]));
+    if (certs) stats.push(h('li', { class: 'is-warn' }, [h('b', {}, String(certs)), h('span', {}, 'Certificates')]));
+    if (ms !== null) stats.push(h('li', {}, [h('b', {}, ms + ' ms'), h('span', {}, 'Typical response')]));
+    if (average !== null) stats.push(h('li', {}, [h('b', {}, average + '%'), h('span', {}, 'Up, 30 days')]));
+    if (t.paused) stats.push(h('li', {}, [h('b', {}, String(t.paused)), h('span', {}, 'Paused')]));
+
+    append(node, h('div', { class: 'watch is-' + kind }, [
+      h('div', {}, [
+        h('p', { class: 'watch-kicker' }, kicker),
+        h('h1', {}, title),
+        h('p', { class: 'watch-line' }, line),
+        h('ul', { class: 'watch-stats', 'aria-label': 'At a glance' }, stats)
+      ]),
+      owl(kind === 'alert')
     ]));
   }
 
-  // -----------------------------------------------------------------
-  // Needs attention: outages first, sites on one server together
-  // -----------------------------------------------------------------
-
-  function isQuiet(site) {
-    return Boolean(site.snoozed_until || site.maintenance);
+  function command(text) {
+    return h('div', { class: 'command' }, [
+      h('code', {}, text),
+      h('button', { type: 'button', class: 'button', 'data-action': 'copy', 'data-copy': text, 'aria-label': 'Copy ' + text }, [icon('copy'), 'Copy'])
+    ]);
   }
 
-  /** Certificates that need attention. A site that is down already says why, certificate or not. */
-  function sslIssues() {
-    return allSites().filter(function (site) {
-      return site.ssl && (site.ssl.status === 'warn' || (site.ssl.status === 'fail' && site.status !== 'down'));
-    });
+  function emptyState() {
+    return h('div', { class: 'empty' }, [
+      h('h2', {}, 'Nothing to watch yet'),
+      h('p', {}, 'Three steps, and Vaka keeps watch from the next minute on.'),
+      h('ol', { class: 'steps' }, [
+        h('li', {}, h('div', {}, [h('p', {}, 'Add a site, or a whole list'), command('php vaka site:add https://shop.example')])),
+        h('li', {}, h('div', {}, [h('p', {}, 'Run the checks every minute from cron'), command('* * * * * php /path/to/vaka run')])),
+        h('li', {}, h('div', {}, [h('p', {}, 'Tell Vaka where alerts go (SLACK_WEBHOOK_URL in .env), then send a test'), command('php vaka alert:test')]))
+      ])
+    ]);
   }
+
+  /** The tab says it too: an alarmed owl and a count when something is down. */
+  function renderTab() {
+    var down = allSites().filter(function (site) { return site.status === 'down' && !isQuiet(site); }).length;
+    document.title = (down ? '(' + down + ') ' : '') + 'Vaka';
+    var link = document.querySelector('[data-favicon]');
+    var href = down ? 'favicon-alert.svg' : 'favicon.svg';
+    if (link.getAttribute('href') !== href) link.setAttribute('href', href);
+  }
+
+  // -----------------------------------------------------------------
+  // Needs your attention: outages first, sites on one server together
+  // -----------------------------------------------------------------
 
   function renderAttention() {
     var node = regions.attention;
     clear(node);
     var problems = allSites().filter(function (site) { return site.status === 'down' || site.status === 'failing'; });
-    var certs = sslIssues().sort(function (a, b) { return (a.ssl.status === 'fail' ? 0 : 1) - (b.ssl.status === 'fail' ? 0 : 1) || (a.ssl.days_left || 0) - (b.ssl.days_left || 0); });
+    var certs = certIssues().sort(function (a, b) { return (a.ssl.status === 'fail' ? 0 : 1) - (b.ssl.status === 'fail' ? 0 : 1) || (a.ssl.days_left || 0) - (b.ssl.days_left || 0); });
     node.hidden = problems.length + certs.length === 0;
     if (node.hidden) return;
 
@@ -302,39 +397,37 @@
     append(node, h('h2', { class: 'section-title', id: 'attention-title' }, 'Needs your attention'));
     append(node, h('ul', { class: 'incidents' }, items.map(function (item) {
       return item.sites.length > 1 ? serverIncident(item) : siteIncident(item.sites[0]);
-    }).concat(certs.map(sslIncident))));
+    }).concat(certs.map(certIncident))));
   }
 
-  function certificateHeadline(ssl) {
-    if (ssl.status === 'fail') return 'the SSL certificate is not valid';
-    var days = ssl.days_left;
-    return 'the SSL certificate expires ' + (days === 0 ? 'today' : days === 1 ? 'tomorrow' : 'in ' + days + ' days');
+  function advice(text) {
+    return text ? h('p', { class: 'advice' }, [icon('bulb'), h('span', {}, text)]) : null;
   }
 
-  function sslIncident(site) {
-    var kind = site.ssl.status === 'fail' ? 'down' : 'failing';
-    return h('li', { class: 'incident is-' + kind }, [
-      h('h3', {}, [icon(kind), h('span', { class: 'incident-site' }, site.label + ':'), certificateHeadline(site.ssl)]),
-      h('p', { class: 'incident-meta' }, site.group || 'No group'),
-      h('p', { class: 'incident-summary' }, site.ssl.summary),
-      site.ssl.advice ? h('p', { class: 'incident-advice' }, site.ssl.advice) : null,
-      h('div', { class: 'actions' }, siteActions(site).filter(function (n) { return n.getAttribute('data-action') !== 'snooze'; }))
-    ]);
+  function timeBox(big, small) {
+    return h('div', { class: 'incident-time' }, [h('span', {}, small), h('b', {}, big)]);
   }
 
   function siteIncident(site) {
-    var kind = isQuiet(site) ? 'quiet' : site.status;
-    var heading = site.status === 'down' ? ' is down' : ' failed a check, Vaka is checking again';
-    var since = site.since ? (site.status === 'down' ? 'Down since ' : 'Since ') + clock(site.since) + ' (' + duration(secondsSince(site.since)) + ')' : '';
-    var meta = [since, site.group || 'No group'].filter(Boolean).join(' · ');
+    var quiet = isQuiet(site);
+    var kind = quiet ? 'quiet' : site.status;
+    var what = site.status === 'down' ? 'is down' : 'failed a check, checking again';
+    var time = site.snoozed_until
+      ? timeBox(clock(site.snoozed_until), 'Snoozed until')
+      : timeBox(site.since ? shortDuration(secondsSince(site.since)) : '–', site.status === 'down' ? (site.maintenance ? 'Down, in maintenance' : 'Down for') : 'Failing for');
+    var meta = [site.group || 'No group', site.since ? 'since ' + clock(site.since) : null].filter(Boolean).join(' · ');
 
     return h('li', { class: 'incident is-' + kind }, [
-      h('h3', {}, [icon(kind === 'quiet' ? 'quiet' : site.status), h('span', { class: 'incident-site' }, site.label), heading]),
+      h('div', { class: 'medallion' }, icon(quiet ? 'quiet' : site.status)),
+      h('h3', {}, [site.label, ' ', h('span', { class: 'incident-what' }, what)]),
+      time,
       h('p', { class: 'incident-meta' }, meta),
-      h('p', { class: 'incident-summary' }, site.summary),
-      site.advice ? h('p', { class: 'incident-advice' }, site.advice) : null,
-      badges(site),
-      h('div', { class: 'actions' }, siteActions(site))
+      h('div', { class: 'incident-body' }, [
+        h('p', { class: 'incident-summary' }, site.summary),
+        advice(site.advice),
+        badges(site, true),
+        h('div', { class: 'actions' }, siteActions(site, true))
+      ])
     ]);
   }
 
@@ -345,48 +438,71 @@
     var earliest = sites.map(function (site) { return site.since; }).filter(Boolean).sort()[0];
 
     return h('li', { class: 'incident is-down' }, [
-      h('h3', {}, [icon('down'), h('span', { class: 'incident-site' }, 'Server ' + item.server), ' · ' + plural(sites.length, 'site is', 'sites are') + ' down']),
-      h('p', { class: 'incident-meta' }, earliest ? 'Since ' + clock(earliest) + ' (' + duration(secondsSince(earliest)) + ')' : ''),
-      h('p', { class: 'incident-summary' }, same ? reasons[0] : 'The sites fail in different ways: open one to see why.'),
-      same && sites[0].advice ? h('p', { class: 'incident-advice' }, sites[0].advice) : null,
-      h('ul', { class: 'incident-sites', 'aria-label': 'Sites on this server' }, sites.map(function (site) {
-        return h('li', {}, h('button', { type: 'button', class: 'chip-button', 'data-action': 'open', 'data-site': site.id }, site.label));
-      })),
-      h('div', { class: 'actions' }, [
-        snoozeButton(sites, '1h', 'Snooze all 1 h'),
-        snoozeButton(sites, '4h', '4 h'),
-        snoozeButton(sites, '24h', '24 h')
+      h('div', { class: 'medallion' }, icon('server')),
+      h('h3', {}, ['Server ' + item.server, ' ', h('span', { class: 'incident-what' }, plural(sites.length, 'site is', 'sites are') + ' down')]),
+      timeBox(earliest ? shortDuration(secondsSince(earliest)) : '–', 'Down for'),
+      h('p', { class: 'incident-meta' }, earliest ? 'since ' + clock(earliest) : ''),
+      h('div', { class: 'incident-body' }, [
+        h('p', { class: 'incident-summary' }, same ? reasons[0] : 'The sites fail in different ways: open one to see why.'),
+        same ? advice(sites[0].advice) : null,
+        h('ul', { class: 'incident-sites', 'aria-label': 'Sites on this server' }, sites.map(function (site) {
+          return h('li', {}, h('button', { type: 'button', class: 'chip', 'data-action': 'open', 'data-site': site.id }, site.label));
+        })),
+        h('div', { class: 'actions' }, [snoozeGroup(sites, 'Snooze all')])
       ])
     ]);
   }
 
-  function badges(site) {
+  function certificateWords(ssl) {
+    if (ssl.status === 'fail') return 'certificate is not valid';
+    var days = ssl.days_left;
+    return 'certificate expires ' + (days === 0 ? 'today' : days === 1 ? 'tomorrow' : 'in ' + days + ' days');
+  }
+
+  function certIncident(site) {
+    var kind = site.ssl.status === 'fail' ? 'down' : 'warn';
+    return h('li', { class: 'incident is-' + kind }, [
+      h('div', { class: 'medallion' }, icon('shield')),
+      h('h3', {}, [site.label, ' ', h('span', { class: 'incident-what' }, certificateWords(site.ssl))]),
+      site.ssl.status === 'fail' ? timeBox('Invalid', 'Certificate') : timeBox(plural(site.ssl.days_left, 'day', 'days'), 'Expires in'),
+      h('p', { class: 'incident-meta' }, site.group || 'No group'),
+      h('div', { class: 'incident-body' }, [
+        h('p', { class: 'incident-summary' }, site.ssl.summary),
+        advice(site.ssl.advice),
+        h('div', { class: 'actions' }, siteActions(site, false))
+      ])
+    ]);
+  }
+
+  /** Snoozed, in maintenance, unstable. In an incident card the snooze is in the time box already. */
+  function badges(site, inCard) {
     var list = [];
-    if (site.snoozed_until) list.push(h('li', { class: 'badge' }, 'Snoozed until ' + clock(site.snoozed_until)));
-    if (site.maintenance) list.push(h('li', { class: 'badge' }, 'In a maintenance window: not alerted'));
-    if (site.unstable) list.push(h('li', { class: 'badge is-warn' }, 'Unstable: went down several times lately'));
+    if (site.snoozed_until && !inCard) list.push(h('li', { class: 'badge' }, [icon('quiet'), 'Snoozed until ' + clock(site.snoozed_until)]));
+    if (site.maintenance) list.push(h('li', { class: 'badge' }, [icon('quiet'), 'In a maintenance window: not alerted']));
+    if (site.unstable) list.push(h('li', { class: 'badge is-warn' }, [icon('failing'), 'Unstable: went down several times lately']));
     return list.length ? h('ul', { class: 'badges' }, list) : null;
   }
 
-  function snoozeButton(sites, length, label) {
-    return h('button', {
-      type: 'button',
-      class: 'button',
-      'data-action': 'snooze',
-      'data-sites': sites.map(function (site) { return site.id; }).join(','),
-      'data-for': length,
-      'aria-label': 'Snooze ' + (sites.length > 1 ? plural(sites.length, 'site', 'sites') : sites[0].label) + ' for ' + length.replace('h', ' hours').replace('1 hours', '1 hour')
-    }, label);
+  function snoozeGroup(sites, label) {
+    var ids = sites.map(function (site) { return site.id; }).join(',');
+    var who = sites.length > 1 ? plural(sites.length, 'site', 'sites') : sites[0].label;
+    var words = { '1h': '1 hour', '4h': '4 hours', '24h': '24 hours' };
+    return h('div', { class: 'segmented', role: 'group', 'aria-label': label + ' ' + who }, [
+      h('span', {}, [icon('quiet'), label]),
+      ['1h', '4h', '24h'].map(function (length) {
+        return h('button', { type: 'button', 'data-action': 'snooze', 'data-sites': ids, 'data-for': length, 'aria-label': 'Snooze ' + who + ' for ' + words[length] }, length.replace('h', ' h'));
+      })
+    ]);
   }
 
-  function siteActions(site) {
+  function siteActions(site, withSnooze) {
     var actions = [];
-    if (site.snoozed_until) {
-      actions.push(h('button', { type: 'button', class: 'button', 'data-action': 'unsnooze', 'data-sites': site.id }, 'Unsnooze'));
-    } else if (site.status === 'down' || site.status === 'failing') {
-      actions.push(snoozeButton([site], '1h', 'Snooze 1 h'), snoozeButton([site], '4h', '4 h'), snoozeButton([site], '24h', '24 h'));
+    if (withSnooze && site.snoozed_until) {
+      actions.push(h('button', { type: 'button', class: 'button', 'data-action': 'unsnooze', 'data-sites': site.id }, [icon('bell'), 'Unsnooze']));
+    } else if (withSnooze && (site.status === 'down' || site.status === 'failing')) {
+      actions.push(snoozeGroup([site], 'Snooze'));
     }
-    actions.push(h('button', { type: 'button', class: 'button', 'data-action': 'open', 'data-site': site.id }, 'History'));
+    actions.push(h('button', { type: 'button', class: 'button', 'data-action': 'open', 'data-site': site.id }, [icon('pending'), 'History']));
     if (/^https?:\/\//.test(site.url)) {
       actions.push(h('a', { class: 'button', href: site.url, target: '_blank', rel: 'noopener noreferrer' }, ['Open site', icon('external'), h('span', { class: 'visually-hidden' }, ' (opens in a new tab)')]));
     }
@@ -416,7 +532,13 @@
       append(node, h('section', { class: 'group', 'aria-label': title }, [
         h('div', { class: 'group-head' }, [
           h('h3', {}, title),
-          h('p', {}, plural(group.sites.length, 'site', 'sites') + ' · alerts ' + group.alerting)
+          h('ul', { class: 'group-meta' }, [
+            h('li', {}, plural(group.sites.length, 'site', 'sites')),
+            h('li', {}, [icon('bell'), 'Alerts ' + group.alerting])
+          ])
+        ]),
+        h('div', { class: 'columns', 'aria-hidden': 'true' }, [
+          h('span', {}, 'Status'), h('span', {}, 'Site'), h('span', {}, 'Last 30 days'), h('span', { class: 'right' }, 'Response'), h('span', { class: 'right' }, 'Uptime')
         ]),
         h('ul', { class: 'site-list' }, sites.map(siteRow))
       ]));
@@ -427,47 +549,50 @@
     }
   }
 
+  /** One bar per day: green when up all day, amber with some downtime, red with a lot, grey without data. */
+  function days(list, large, paused) {
+    return h('span', { class: 'days' + (large ? ' is-large' : ''), 'aria-hidden': 'true' }, list.map(function (d) {
+      if (paused) return h('i', { class: 'is-none', title: day(d.date) + ': paused' });
+      var cls = d.up === null ? 'is-none' : d.up >= 99.95 ? null : d.up >= 95 ? 'is-partial' : 'is-down';
+      return h('i', { class: cls, title: day(d.date) + ': ' + (d.up === null ? 'not watched yet' : d.up + '% up') });
+    }));
+  }
+
   function siteRow(site) {
     var ms = site.ms !== null && site.ms !== undefined ? site.ms + ' ms' : '–';
-    var uptime = site.status !== 'paused' && site.uptime_24h !== null && site.uptime_24h !== undefined ? site.uptime_24h + '%' : '–';
-    var certificate = site.ssl && site.ssl.status !== 'ok' ? certificateHeadline(site.ssl) : null;
-    var subtitle = [site.name, site.cdn ? 'behind ' + site.cdn : null, site.snoozed_until ? 'snoozed' : null, site.maintenance ? 'maintenance' : null, certificate].filter(Boolean).join(' · ');
+    var month = site.status !== 'paused' && site.uptime_30d !== null && site.uptime_30d !== undefined ? site.uptime_30d + '%' : '–';
+    var notes = [];
+    if (site.name) notes.push(site.name);
+    if (site.cdn) notes.push('behind ' + site.cdn);
+    if (site.snoozed_until) notes.push('snoozed');
+    if (site.maintenance) notes.push('in maintenance');
+    var subtitle = notes.join(' · ');
+    var cert = site.ssl && site.ssl.status !== 'ok' ? h('span', { class: site.ssl.status === 'fail' ? 'is-down' : 'is-warn' }, certificateWords(site.ssl)) : null;
 
     return h('li', {}, h('button', {
       type: 'button',
       class: 'site-row',
       'data-action': 'open',
       'data-site': site.id,
-      'aria-label': site.label + ': ' + STATUS_WORDS[site.status] + (site.status === 'up' ? ', ' + ms + ', ' + uptime + ' uptime today' : '. ' + site.summary)
+      'aria-label': site.label + ': ' + STATUS_WORDS[site.status] + (site.status === 'up' ? ', ' + ms + ', ' + month + ' up over 30 days' : '. ' + site.summary)
     }, [
       statusLabel(site.status),
-      h('span', { class: 'site-name' }, [h('strong', {}, site.label), subtitle ? h('small', {}, subtitle) : null]),
-      spark(site.hours),
+      h('span', { class: 'site-name' }, [h('strong', {}, site.label), subtitle || cert ? h('small', {}, [subtitle, subtitle && cert ? ' · ' : null, cert]) : null]),
+      days(site.days, false, site.status === 'paused'),
       h('span', { class: 'site-figures' }, [
         h('span', { class: 'site-figure' }, [ms, h('small', {}, 'now')]),
-        h('span', { class: 'site-figure' }, [uptime, h('small', {}, '24 h up')])
+        h('span', { class: 'site-figure' }, [month, h('small', {}, '30 days')])
       ])
     ]));
   }
 
-  /** 24 bars, one per hour: response time, red where checks failed. */
-  function spark(hours) {
-    var max = Math.max.apply(null, [300].concat(hours.map(function (b) { return b.ms || 0; })));
-    var bars = hours.map(function (bucket, i) {
-      var height = bucket.ms ? Math.max(3, Math.round((bucket.ms / max) * 26)) : 3;
-      var cls = bucket.up === null ? 'is-empty' : bucket.up === 0 ? 'is-down' : bucket.up < 1 ? 'is-partial' : '';
-      if (bucket.up !== null && bucket.up < 1 && !bucket.ms) height = 26;
-      return s('rect', { x: i * 5, y: 28 - height, width: 4, height: height, rx: 1, class: cls || null });
-    });
-    return s('svg', { class: 'spark', viewBox: '0 0 120 28', preserveAspectRatio: 'none', 'aria-hidden': 'true', focusable: 'false' }, bars);
-  }
-
   // =================================================================
-  // Site detail
+  // Site detail: a drawer from the right
   // =================================================================
 
-  function openDetail(id) {
+  function openDetail(id, opener) {
     state.detailId = id;
+    if (opener) state.opener = opener;
     if (window.location.hash !== '#site-' + id) history.replaceState(null, '', '#site-' + id);
     return api('/?api=site&id=' + encodeURIComponent(id)).then(function (detail) {
       state.detail = detail;
@@ -484,10 +609,12 @@
     state.detail = null;
     if (regions.detail.open) regions.detail.close();
     if (window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search);
+    if (state.opener && document.body.contains(state.opener)) state.opener.focus();
+    state.opener = null;
   }
 
   function percent(value) {
-    return value === null || value === undefined ? 'Not enough data' : value + '%';
+    return value === null || value === undefined ? '–' : value + '%';
   }
 
   function renderDetail() {
@@ -496,50 +623,56 @@
     var node = regions.detail;
     clear(node);
 
-    var facts = [
-      ['Uptime, 24 hours', percent(d.uptime['24h'])],
-      ['Uptime, 7 days', percent(d.uptime['7d'])],
-      ['Uptime, 30 days', percent(d.uptime['30d'])],
-      ['Response time now', site.ms !== null ? site.ms + ' ms' : '–'],
-      ['Checked every', site.interval_minutes + ' min'],
+    var kind = isQuiet(site) && site.status === 'down' ? 'quiet' : site.status;
+    var since = site.since ? (site.status === 'up' ? 'Up since ' : site.status === 'down' ? 'Down since ' : 'Since ') + clock(site.since) + ' (' + duration(secondsSince(site.since)) + ')' : STATUS_WORDS[site.status];
+    var settings = [
       ['Group', (site.group || 'No group')],
-      ['Server', site.cdn ? 'Behind ' + site.cdn : (site.server || 'Not known yet')]
+      ['Checked every', site.interval_minutes + ' min'],
+      ['Server', site.cdn ? 'Behind ' + site.cdn : (site.server || 'Not known yet')],
+      ['Certificate', site.ssl ? site.ssl.summary : (/^https:/.test(site.url) ? 'Not checked yet' : 'No https')]
     ];
-    if (site.keyword) facts.push(['Looks for the text', '"' + site.keyword + '"']);
-    facts.push(['Certificate', site.ssl ? site.ssl.summary : (/^https:/.test(site.url) ? 'Not checked yet' : 'No https')]);
+    if (site.keyword) settings.splice(2, 0, ['Looks for the text', '"' + site.keyword + '"']);
+    d.maintenance.forEach(function (w) {
+      settings.push(['Maintenance', w.when + (w.label ? ' (' + w.label + ')' : '') + (w.active ? ', now' : '')]);
+    });
 
-    var since = site.since ? (site.status === 'up' ? 'Up since ' : 'Since ') + clock(site.since) + ' (' + duration(secondsSince(site.since)) + ')' : '';
-
-    append(node, h('div', { class: 'detail-inner' }, [
-      h('div', { class: 'detail-head' }, [
-        h('div', {}, [
-          h('h2', { id: 'detail-title' }, site.label),
-          h('p', {}, [statusLabel(site.status), since ? ' ' + since : '']),
-        ]),
+    append(node, h('div', { class: 'drawer-inner is-' + kind }, [
+      h('div', { class: 'drawer-head' }, [
+        h('div', { class: 'medallion' }, icon(kind === 'quiet' ? 'quiet' : site.status)),
+        h('div', {}, [h('h2', { id: 'detail-title' }, site.label), h('p', {}, since)]),
         h('button', { type: 'button', class: 'close-button', 'data-action': 'close', 'aria-label': 'Close' }, icon('close'))
       ]),
       site.summary ? h('p', { class: 'incident-summary' }, site.summary) : null,
-      site.advice ? h('p', { class: 'incident-advice' }, site.advice) : null,
-      site.ssl && site.ssl.advice ? h('p', { class: 'incident-advice' }, site.ssl.summary + '. ' + site.ssl.advice) : null,
+      advice(site.advice),
+      site.ssl && site.ssl.advice ? advice(site.ssl.summary + '. ' + site.ssl.advice) : null,
       badges(site),
-      h('div', { class: 'actions' }, siteActions(site).filter(function (n) { return n.getAttribute('data-action') !== 'open'; })),
-      h('dl', { class: 'facts' }, facts.map(function (fact) {
+      h('div', { class: 'actions' }, siteActions(site, true).filter(function (n) { return n.getAttribute('data-action') !== 'open'; })),
+      h('dl', { class: 'facts' }, [
+        ['Up, 24 hours', percent(d.uptime['24h'])],
+        ['Up, 7 days', percent(d.uptime['7d'])],
+        ['Up, 30 days', percent(d.uptime['30d'])],
+        ['Response now', site.ms !== null ? site.ms + ' ms' : '–']
+      ].map(function (fact) {
         return h('div', { class: 'fact' }, [h('dt', {}, fact[0]), h('dd', {}, fact[1])]);
       })),
-      d.maintenance.length ? h('p', { class: 'detail-hint' }, 'Maintenance: ' + d.maintenance.map(function (w) {
-        return w.when + (w.label ? ' (' + w.label + ')' : '') + (w.active ? ', now' : '');
-      }).join('; ') + '.') : null,
+      h('h3', {}, 'Last 30 days'),
+      days(d.days, true, site.status === 'paused'),
+      h('p', { class: 'days-legend', 'aria-hidden': 'true' }, [h('span', {}, '30 days ago'), h('span', {}, 'Today')]),
       h('h3', {}, 'Response time, last 24 hours'),
       chart(d.samples),
       h('h3', {}, 'History'),
-      historyList(d.events),
-      h('p', { class: 'detail-hint' }, ['Change this site with ', h('code', {}, 'php vaka site:edit ' + site.label)])
+      timeline(d.events),
+      h('h3', {}, 'Settings'),
+      h('dl', { class: 'settings' }, settings.reduce(function (list, row) {
+        return list.concat([h('dt', {}, row[0]), h('dd', {}, row[1])]);
+      }, [])),
+      h('p', { class: 'drawer-hint' }, ['Change this site with ', h('code', {}, 'php vaka site:edit ' + site.label)])
     ]));
   }
 
   function chart(samples) {
     if (!samples.length) return h('p', { class: 'chart-note' }, 'No checks in the last 24 hours.');
-    var width = 700, height = 160, top = 10, bottom = 140, left = 44;
+    var width = 700, height = 170, top = 12, bottom = 146, left = 48;
     var end = Date.now(), start = end - 86400000;
     var good = samples.filter(function (sample) { return sample.ok; });
     var max = Math.max.apply(null, [100].concat(good.map(function (sample) { return sample.ms; })));
@@ -553,22 +686,24 @@
 
     var nodes = [
       s('line', { class: 'chart-grid', x1: left, x2: width, y1: top, y2: top }),
+      s('line', { class: 'chart-grid', x1: left, x2: width, y1: (top + bottom) / 2, y2: (top + bottom) / 2 }),
       s('line', { class: 'chart-grid', x1: left, x2: width, y1: bottom, y2: bottom }),
       s('text', { x: 0, y: top + 4 }, max + ' ms'),
-      s('text', { x: 0, y: bottom }, '0 ms'),
-      s('text', { x: left, y: height - 4 }, '24 h ago'),
-      s('text', { x: (left + width) / 2 - 20, y: height - 4 }, '12 h ago'),
-      s('text', { x: width - 24, y: height - 4 }, 'now')
+      s('text', { x: 0, y: (top + bottom) / 2 + 4 }, max / 2 + ' ms'),
+      s('text', { x: 0, y: bottom + 4 }, '0'),
+      s('text', { x: left, y: height - 2 }, '24 h ago'),
+      s('text', { x: (left + width) / 2 - 22, y: height - 2 }, '12 h ago'),
+      s('text', { x: width - 26, y: height - 2 }, 'now')
     ];
     if (area) nodes.push(s('path', { class: 'chart-area', d: area }), s('path', { class: 'chart-line', d: path }));
     fails.forEach(function (sample) {
-      nodes.push(s('rect', { class: 'chart-fail', x: x(sample.checked_at).toFixed(1), y: bottom - 6, width: 3, height: 6 }));
+      nodes.push(s('rect', { class: 'chart-fail', x: x(sample.checked_at).toFixed(1), y: bottom - 7, width: 3, height: 7, rx: 1 }));
     });
 
     var slowest = good.reduce(function (m, sample) { return Math.max(m, sample.ms); }, 0);
-    var average = good.length ? Math.round(good.reduce(function (t, sample) { return t + sample.ms; }, 0) / good.length) : 0;
+    var typical = median(good.map(function (sample) { return sample.ms; }));
     var label = good.length
-      ? 'Average ' + average + ' ms, slowest ' + slowest + ' ms' + (fails.length ? ', ' + plural(fails.length, 'failed check', 'failed checks') + ' (red)' : '')
+      ? 'Typically ' + typical + ' ms, slowest ' + slowest + ' ms' + (fails.length ? ', ' + plural(fails.length, 'failed check', 'failed checks') + ' (red)' : '')
       : 'Every check in the last 24 hours failed.';
 
     return h('figure', {}, [
@@ -577,13 +712,13 @@
     ]);
   }
 
-  function historyList(events) {
+  function timeline(events) {
     if (!events.length) return h('p', { class: 'chart-note' }, 'Nothing has happened yet.');
-    return h('ul', { class: 'history' }, events.map(function (event) {
-      var cls = event.status === 'fail' ? 'is-fail' : event.status === 'ok' ? 'is-ok' : '';
-      return h('li', {}, [
+    return h('ol', { class: 'timeline' }, events.map(function (event) {
+      var cls = { fail: 'is-fail', ok: 'is-ok', warn: 'is-warn', snoozed: 'is-quiet' }[event.status] || null;
+      return h('li', { class: cls }, [
         h('time', { datetime: event.created_at }, clock(event.created_at)),
-        h('span', { class: cls }, [event.message, event.silenced_by ? h('span', { class: 'history-tag' }, event.silenced_by === 'maintenance' ? 'during maintenance' : 'while snoozed') : null])
+        h('span', {}, [event.message, event.silenced_by ? h('span', { class: 'history-tag' }, event.silenced_by === 'maintenance' ? 'during maintenance' : 'while snoozed') : null])
       ]);
     }));
   }
@@ -611,9 +746,8 @@
     });
     return Promise.all(requests).then(function (results) {
       var site = results[0].site;
-      toast(body.action === 'unsnooze'
-        ? (ids.length > 1 ? plural(ids.length, 'site', 'sites') : site.label) + ' is no longer snoozed'
-        : 'Snoozed ' + (ids.length > 1 ? plural(ids.length, 'site', 'sites') : site.label) + ' until ' + clock(site.snoozed_until));
+      var who = ids.length > 1 ? plural(ids.length, 'site', 'sites') : site.label;
+      toast(body.action === 'unsnooze' ? who + ' is no longer snoozed' : 'Snoozed ' + who + ' until ' + clock(site.snoozed_until));
       return load().then(function () { if (state.detailId) return openDetail(state.detailId); });
     }).catch(function (error) {
       if (error.message !== 'Logged out') toast(error.message);
@@ -623,6 +757,7 @@
 
   var THEMES = ['system', 'light', 'dark'];
   var THEME_WORDS = { system: 'System', light: 'Light', dark: 'Dark' };
+  var THEME_ICONS = { system: 'monitor', light: 'sun', dark: 'moon' };
 
   function currentTheme() {
     try {
@@ -637,6 +772,7 @@
     else document.documentElement.setAttribute('data-theme', theme);
     var button = document.querySelector('[data-action="theme"]');
     button.querySelector('[data-theme-label]').textContent = THEME_WORDS[theme];
+    button.replaceChild(icon(THEME_ICONS[theme]), button.querySelector('svg'));
     button.setAttribute('aria-label', 'Colour theme: ' + THEME_WORDS[theme].toLowerCase() + '. Change it');
   }
 
@@ -645,14 +781,26 @@
     if (!target) return;
     var action = target.getAttribute('data-action');
 
-    if (action === 'open') openDetail(target.getAttribute('data-site'));
+    if (action === 'open') openDetail(target.getAttribute('data-site'), target);
     if (action === 'close') closeDetail();
     if (action === 'snooze') snooze(target.getAttribute('data-sites').split(','), { 'for': target.getAttribute('data-for') }, target);
     if (action === 'unsnooze') snooze(target.getAttribute('data-sites').split(','), { action: 'unsnooze' }, target);
+    if (action === 'copy') {
+      navigator.clipboard.writeText(target.getAttribute('data-copy')).then(function () { toast('Copied'); }, function () { toast('Select the text and copy it'); });
+    }
     if (action === 'theme') {
       var next = THEMES[(THEMES.indexOf(currentTheme()) + 1) % THEMES.length];
       try { localStorage.setItem('vaka-theme', next); } catch (e) { /* storage blocked: the choice lasts for this page */ }
       applyTheme(next);
+    }
+  });
+
+  // "/" jumps to the filter, as in most tools
+  document.addEventListener('keydown', function (event) {
+    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
+    if (event.key === '/' && !typing && !regions.detail.open) {
+      event.preventDefault();
+      filterInput.focus();
     }
   });
 
