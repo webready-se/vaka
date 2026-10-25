@@ -1,6 +1,6 @@
 <?php
 
-/** Seconds a run may take before it stops starting slow checks (SSL); what is left waits for the next run. */
+/** Seconds a run may take before it stops starting slow checks (SSL, exposed files); what is left waits for the next run. */
 const RUN_BUDGET_SECONDS = 40;
 
 /**
@@ -35,6 +35,7 @@ function run(PDO $db, array $config, ?int $now = null): array
     $started = microtime(true);
     $summary = run_uptime($db, $config, $now);
     $summary['ssl'] = run_ssl($db, $config, $now, $started + RUN_BUDGET_SECONDS);
+    $summary['exposed'] = run_exposed($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $alerts = process_alerts($db, $config, $now);
     $summary['alerts'] = $alerts['alerts'];
     $summary['nowhere'] = $alerts['nowhere'];
@@ -207,6 +208,65 @@ function run_ssl(PDO $db, array $config, int $now, float $deadline): array
             $summary['events'][] = ['url' => $site['url']] + $event;
         }
         $summary['checked']++;
+    }
+    return $summary;
+}
+
+/**
+ * Sites whose exposed-file check is due. A site that is down is left out:
+ * its answers would say nothing, and it is checked once it is back.
+ */
+function due_exposed_sites(PDO $db, string $now): array
+{
+    $stmt = $db->prepare("SELECT s.*, c.status AS state_status, c.summary AS state_summary, c.details AS state_details, c.changed_at AS state_changed_at
+        FROM sites s
+        LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'exposed'
+        LEFT JOIN check_state u ON u.site_id = s.id AND u.check_name = 'uptime'
+        WHERE s.paused = 0
+            AND (',' || s.disabled_checks || ',') NOT LIKE '%,exposed,%'
+            AND (c.next_at IS NULL OR c.next_at <= ?)
+            AND (u.status IS NULL OR u.status != 'fail')
+        ORDER BY c.next_at IS NOT NULL, c.next_at, s.id");
+    $stmt->execute([$now]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Check due sites for exposed files, a few sites per parallel batch, until
+ * $deadline (microtime). The rest stays due for the next run. A change of
+ * status, or of which files are public, is recorded in the history.
+ */
+function run_exposed(PDO $db, array $config, int $now, float $deadline): array
+{
+    $summary = ['checked' => 0, 'left' => 0, 'events' => []];
+    $sites = due_exposed_sites($db, utc_now($now));
+    $checkedAt = utc_now($now);
+    foreach (array_chunk($sites, EXPOSED_SITES_PER_BATCH) as $i => $batch) {
+        if (microtime(true) >= $deadline) {
+            $summary['left'] = count($sites) - $i * EXPOSED_SITES_PER_BATCH;
+            break;
+        }
+        $results = check_exposed(array_column($batch, 'url', 'id'), $config);
+        foreach ($batch as $site) {
+            $result = $results[$site['id']];
+            $previous = $site['state_status'] ?? 'pending';
+            $before = array_column(json_decode((string) $site['state_details'], true)['found'] ?? [], 'label');
+            $changed = $previous !== $result['status'];
+            $wait = $result['status'] === 'ok' ? EXPOSED_INTERVAL_SECONDS : EXPOSED_RECHECK_SECONDS;
+            save_check_state($db, $site['id'], 'exposed', [
+                'status' => $result['status'],
+                'summary' => $result['summary'],
+                'details' => $result['details'],
+                'fail_count' => 0,
+                'changed_at' => $changed ? $checkedAt : $site['state_changed_at'],
+            ], $checkedAt, utc_now($now + $wait));
+            if ($result['status'] !== 'unknown' && ($changed || $before !== array_column($result['details']['found'], 'label'))) {
+                $event = ['status' => $result['status'], 'previous' => $previous, 'message' => $result['summary']];
+                add_event($db, $site['id'], 'exposed', $event, $checkedAt);
+                $summary['events'][] = ['url' => $site['url']] + $event;
+            }
+            $summary['checked']++;
+        }
     }
     return $summary;
 }

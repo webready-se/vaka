@@ -390,8 +390,11 @@ function update_site(PDO $db, int $id, array $input): void
     $set = implode(', ', array_map(fn ($column) => "{$column} = ?", array_keys($fields)));
     $db->prepare("UPDATE sites SET {$set} WHERE id = ?")->execute([...array_values($fields), $id]);
 
-    // A change to what is checked (or a resumed site) is checked on the next run, not after the old interval
-    if (array_intersect_key($fields, array_flip(['url', 'keyword', 'interval_minutes', 'paused']))) {
+    // A change to what is checked (or a resumed site) is checked on the next run, not after the old interval;
+    // a new URL is a new target for every check
+    if (isset($fields['url'])) {
+        $db->prepare('UPDATE check_state SET next_at = NULL WHERE site_id = ?')->execute([$id]);
+    } elseif (array_intersect_key($fields, array_flip(['keyword', 'interval_minutes', 'paused']))) {
         $db->prepare("UPDATE check_state SET next_at = NULL WHERE site_id = ? AND check_name = 'uptime'")->execute([$id]);
     }
 }

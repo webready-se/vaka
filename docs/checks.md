@@ -40,9 +40,37 @@ Every six hours for https sites. See [Alerts](alerts.md#certificates) for when i
 
 The handshakes happen one at a time and stop 40 seconds into a run; what is left waits for the next run.
 
+## Exposed files
+
+Once a day, Vaka asks each site for files that should never be on the web. It looks next to the site's address, so `https://shop.example/blog` is checked in `/blog/`. See [Alerts](alerts.md#exposed-files) for when it alerts.
+
+| File | What it holds | Level |
+|------|---------------|-------|
+| `.env` | The environment file, often with database passwords and API keys | Error |
+| `.git/HEAD`, `.git/config` | The Git repository: the site's source code and its history | Error |
+| `wp-config.php.bak` | A copy of the WordPress settings, with the database password | Error |
+| `backup.zip`, `site.zip` | A backup of the site | Error |
+| `db.sql`, `dump.sql`, `backup.sql`, `db.sql.gz` | A copy of the database | Error |
+| `phpinfo.php`, `info.php` | A PHP information page: versions, settings and paths | Warning |
+| `server-status` | Apache's status page: who is visiting and what they ask for | Warning |
+| `composer.json`, `composer.lock`, `package.json` | The packages the site uses, and their versions | Warning |
+| `.DS_Store` | A macOS folder index that lists the files next to it | Warning |
+
+- **Error**: the file holds secrets, source code or data. Remove it or block it, then change every password and key it held: assume someone has read it.
+- **Warning**: the file holds no secrets, but it tells an attacker which software and versions the site runs.
+
+A file counts only when its content says what it is. Many sites answer every address with a page of their own and status 200 (a "soft 404"); that page never counts as a `.env` or a database dump. Vaka also asks for a made-up address each time, and content that the made-up address gets too is the site's answer to anything, not a file. An error status (403, 404) means the file is not public.
+
+Vaka reads at most 64 KB of each answer, never a whole backup. While something is public the site is checked every hour, so a fix shows up soon. A site that is down is checked when it is back.
+
+**Firewalls.** Asking for `/.env` and `/.git/` is also what attackers do, and some firewalls (ModSecurity rules, Imunify360, Wordfence) may block the address the requests come from. Then the uptime check sees the site as down. Vaka asks for 18 addresses per site once a day, with its own User-Agent. If a firewall blocks it, allow Vaka's IP address, or turn the check off for that site:
+
+```bash
+php vaka site:edit shop.example --disable=exposed
+```
+
 ## Coming next
 
-- **Exposed files**: `.env`, `.git/`, database dumps and backups that should never be public, matched on their content.
 - **Security headers**: a grade from A to F, and an alert when a header disappears or weakens.
 - **Mail DNS**: MX, SPF and DMARC, and an alert when they change.
 - **Domain expiry** through RDAP.

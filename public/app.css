@@ -306,6 +306,10 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 80px; }
 .advice { display: flex; gap: 9px; margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); color: var(--text-2); font-size: 14px; }
 .advice .icon { width: 16px; height: 16px; margin-top: 2px; color: var(--accent); }
 .incident-sites { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
+.incident-files { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 14px; }
+.incident-files li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
+.incident-files code { padding: 1px 7px; border-radius: 6px; background: var(--surface-2); font-weight: 650; overflow-wrap: anywhere; }
+.incident-files span { color: var(--text-2); }
 .incidents.is-nested .incident summary { padding-left: 0; }
 .incidents.is-nested .incident-body { padding-left: 48px; padding-right: 0; }
 

@@ -108,6 +108,21 @@ test('update_site can change the URL but not onto another site', function () {
     expect(fn () => update_site($this->db, $id, ['url' => 'blog.example']))->toThrow(InvalidArgumentException::class, 'already watched');
 });
 
+test('a new URL is checked on the next run by every check, a new keyword by uptime only', function () {
+    $id = add_site($this->db, ['url' => 'https://shop.example']);
+    $later = utc_now(time() + 86400);
+    foreach (['uptime', 'ssl', 'exposed'] as $check) {
+        save_check_state($this->db, $id, $check, ['status' => 'ok', 'summary' => '', 'details' => [], 'fail_count' => 0, 'changed_at' => null], utc_now(), $later);
+    }
+    $nextAt = fn () => array_column($this->db->query('SELECT check_name, next_at FROM check_state ORDER BY check_name')->fetchAll(), 'next_at', 'check_name');
+
+    update_site($this->db, $id, ['keyword' => 'Add to cart']);
+    expect($nextAt())->toBe(['exposed' => $later, 'ssl' => $later, 'uptime' => null]);
+
+    update_site($this->db, $id, ['url' => 'https://shop.example/en']);
+    expect($nextAt())->toBe(['exposed' => null, 'ssl' => null, 'uptime' => null]);
+});
+
 test('update_site with an empty interval goes back to the default', function () {
     $id = add_site($this->db, ['url' => 'https://shop.example', 'interval' => '2']);
     update_site($this->db, $id, ['interval' => '']);

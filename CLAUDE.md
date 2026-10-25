@@ -84,7 +84,7 @@ src/http.php             fetch_many(): parallel GETs over curl_multi (redirects,
 src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), advice_for(), plain-words errors and durations
 src/checks/ssl.php       fetch_certificate() (verified, then unverified to describe a bad one), certificate_info(), host_matches(), evaluate_ssl(), ssl_notice() (thresholds once per certificate)
 src/checks/domain.php    Domain expiry via RDAP (IANA bootstrap)
-src/checks/exposed.php   Exposed file paths and content signatures
+src/checks/exposed.php   EXPOSED_FILES, exposed_matches() (content signatures), evaluate_exposed() (soft-404 baseline), check_exposed(), exposed_notice()
 src/checks/headers.php   Security header grading and regressions
 src/checks/dns.php       MX, SPF, DMARC snapshots
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
@@ -137,7 +137,8 @@ sites        id, group_id, url (unique), name, keyword, interval_minutes, paused
              ip, cdn, server, created_at                        (ip and cdn from the last check; server set by hand)
 servers      ip, label                                           (optional label for a server)
 check_state  site_id, check_name, status, summary, details (JSON), fail_count, checked_at, next_at, changed_at,
-             alerted_status, alerted_at, flapping_since, snoozed_until, thresholds_sent (JSON)
+             alerted_status, alerted_at, flapping_since, snoozed_until, thresholds_sent (JSON),
+             alerted_snapshot (JSON: what a change check last told, e.g. the public files)
 events       id, site_id, check_name, status, previous, message, silenced_by, created_at
 maintenance  id, site_id | group_id, label, starts_at, ends_at  (one-off, UTC)
              or days ("1,2,3" ISO weekdays), start_time, end_time (recurring, HH:MM in TIMEZONE)
@@ -156,7 +157,7 @@ Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are sto
 | `uptime` | 5 min (per site); a failing site is rechecked every run | GET via curl_multi, follows redirects, `UPTIME_TIMEOUT`; records response time and the IP it answered on | `ok` on 2xx/3xx (and keyword found); `fail` after `DOWN_AFTER_FAILURES` consecutive failures | down, recovered |
 | `ssl` | 6 h | `stream_socket_client` with `capture_peer_cert`, `openssl_x509_parse` | `warn` within 14 days, `fail` when expired or invalid | at `SSL_ALERT_DAYS` (14, 7, 1), invalid, recovered |
 | `domain` | 24 h | RDAP, base URL from the IANA bootstrap file (cached in `data/`) | `unknown` when the registry has no RDAP; never parses WHOIS | at `DOMAIN_ALERT_DAYS` |
-| `exposed` | 24 h | GET each known path plus a random-path baseline; match content signatures | `fail` when any path matches | new exposure, resolved |
+| `exposed` | 24 h (1 h while something is public) | GET each known path next to the site plus a made-up path as baseline, 64 KB each; match content signatures | `fail` for a file with secrets, code or data; `warn` for one that only tells versions and paths | each new file, all private again |
 | `headers` | 6 h | Response headers of a GET to the site URL; grade A-F | `warn` below B | header removed or weakened |
 | `dns` | 6 h | `dns_get_record` for MX, TXT (SPF) and `_dmarc` TXT | `warn` when SPF or DMARC is missing | record changed |
 
@@ -200,8 +201,8 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 
 1. Take `data/vaka.lock` with `flock(LOCK_EX | LOCK_NB)`. If another run holds it, exit 0 quietly.
 2. Collect due `(site, check)` pairs: `next_at <= now`, or no state yet.
-3. All HTTP work (uptime, headers, exposed) goes through one `curl_multi` batch with a concurrency limit.
-4. Blocking work (SSL handshakes, later DNS and RDAP) runs after, one by one, until `RUN_BUDGET_SECONDS` (40) since the run started. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate.
+3. Uptime requests go through one `curl_multi` batch with a concurrency limit.
+4. The slower work runs after, until `RUN_BUDGET_SECONDS` (40) since the run started: SSL handshakes one by one (later DNS and RDAP too), then exposed files in parallel batches of five sites. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate; exposed files skip every site that is down.
 5. Store results and new states; a change writes an event.
 6. Reconcile alerts, apply silences and policies, bundle per destination and server, send. Send the daily digest when it is due.
 7. Trim old samples and audit log rows (once a day), then store `last_run_at`.

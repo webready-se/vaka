@@ -95,6 +95,8 @@ function advice_for(string $problem, int $status): string
         'self_signed' => 'Use a certificate from a trusted authority, such as Let\'s Encrypt (free).',
         'untrusted' => 'Install the full chain: the certificate together with its intermediate certificates.',
         'not_yet' => 'The certificate is not valid yet. Check its start date, and the server\'s clock.',
+        'exposed' => 'Remove the files from the web root, or block them in the web server. Then change every password and key they held: assume someone has read them.',
+        'exposed_minor' => 'Remove the files from the web root, or block them in the web server. They hold no secrets, but they tell attackers which software and versions the site runs.',
         default => '',
     };
 }
