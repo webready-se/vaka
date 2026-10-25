@@ -72,7 +72,7 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 
 - [x] Identity: the watching owl on a teal tile (Webready family construction), wordmark, alarmed favicon while a site is down
 - [x] Figtree self-hosted, slate neutrals and shared status colours, icon set (stroke 2), `docs/brand.md`
-- [x] The watch panel ("All quiet." or what needs you), incident cards with live duration and advice, 30 days of uptime bars per site, the detail as a drawer, phone layout
+- [x] The watch panel ("All quiet." or what needs you), compact incident rows that open for advice and actions, 30 days of uptime bars per site, the detail as a drawer, phone layout
 - [ ] Decide with the other Webready tools: one family look, or each tool its own character with shared rules
 
 ## Milestone 3: More checks
