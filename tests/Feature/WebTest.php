@@ -56,7 +56,7 @@ test('health says whether the checks are running', function () {
 test('every page sends strict security headers', function () {
     foreach (['/?login', '/', '/?health', '/?api=overview'] as $path) {
         $headers = http_request('GET', WEB . $path)['headers'];
-        expect($headers['content-security-policy'] ?? '')->toBe("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+        expect($headers['content-security-policy'] ?? '')->toBe("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
             ->and($headers['x-content-type-options'] ?? '')->toBe('nosniff')
             ->and($headers['x-frame-options'] ?? '')->toBe('DENY')
             ->and($headers['referrer-policy'] ?? '')->toBe('no-referrer')
@@ -66,9 +66,10 @@ test('every page sends strict security headers', function () {
 
 test('pages have no inline script, inline style or inline event handlers', function () {
     $login = ($this->login)('admin', 'admin password');
-    foreach ([http_request('GET', WEB . '/?login')['body'], http_request('GET', WEB . '/', ['jar' => $login['jar']])['body']] as $html) {
-        expect($html)->toContain('<script src=')
-            ->and($html)->not->toMatch('/<script(?![^>]*\ssrc=)[^>]*>/')
+    $dashboard = http_request('GET', WEB . '/', ['jar' => $login['jar']])['body'];
+    expect($dashboard)->toContain('<script src=');
+    foreach ([http_request('GET', WEB . '/?login')['body'], $dashboard] as $html) {
+        expect($html)->not->toMatch('/<script(?![^>]*\ssrc=)[^>]*>/')
             ->and($html)->not->toMatch('/\sstyle="/')
             ->and($html)->not->toMatch('/\son[a-z]+="/');
     }
@@ -166,7 +167,15 @@ test('site details have the history and response times, and are hidden from user
     expect($admin['status'])->toBe(200)
         ->and(array_column($admin['json']['events'], 'message'))->toBe(['Up again after 12 min: answered 200 OK in 230 ms', 'Down: no answer within 10 s'])
         ->and($admin['json']['samples'][0]['ms'])->toBe(230)
-        ->and($admin['json']['uptime']['24h'])->toBeGreaterThan(99.0)->toBeLessThan(99.2);
+        ->and($admin['json']['uptime']['24h'])->toBeGreaterThan(99.0)->toBeLessThan(99.2)
+        ->and($admin['json']['days'])->toHaveCount(30)
+        ->and(end($admin['json']['days'])['up'])->toBeLessThan(100.0);
+
+    $overview = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
+    expect($overview['groups'][0]['sites'][0]['days'])->toHaveCount(30)
+        // Watched for two days: 12 minutes down out of 48 hours
+        ->and($overview['groups'][0]['sites'][0]['uptime_30d'])->toBe(99.58)
+        ->and($overview['last_incident'])->toMatchArray(['label' => 'blog.example', 'message' => 'Down: no answer within 10 s']);
 
     $anna = http_request('GET', WEB . "/?api=site&id={$blog}", ['jar' => ($this->login)('anna', 'anna password')['jar']]);
     expect($anna['status'])->toBe(404);

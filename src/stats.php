@@ -48,6 +48,47 @@ function site_uptime(PDO $db, array $site, int $seconds, int $now): ?float
 }
 
 /**
+ * Uptime for each of the last $days local days (oldest first), from the
+ * site's events: {date: 'Y-m-d', up: percent or null}. A day before the site
+ * was added is null; today counts up to now.
+ *
+ * @return list<array{date: string, up: ?float}>
+ */
+function daily_uptime(PDO $db, array $site, int $now, int $days, string $timezone): array
+{
+    $tz = new DateTimeZone($timezone);
+    $today = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
+    $first = $today->modify('-' . ($days - 1) . ' days');
+    $added = strtotime($site['created_at']);
+
+    $before = $db->prepare("SELECT status FROM events WHERE site_id = ? AND check_name = 'uptime' AND status IN ('ok', 'fail') AND created_at < ? ORDER BY created_at DESC, id DESC LIMIT 1");
+    $before->execute([$site['id'], utc_now($first->getTimestamp())]);
+    $status = $before->fetchColumn() ?: 'ok';
+    $events = $db->prepare("SELECT status, created_at FROM events WHERE site_id = ? AND check_name = 'uptime' AND status IN ('ok', 'fail') AND created_at >= ? AND created_at < ? ORDER BY created_at, id");
+    $events->execute([$site['id'], utc_now($first->getTimestamp()), utc_now($now)]);
+    $events = $events->fetchAll();
+
+    $result = [];
+    for ($day = $first; $day <= $today; $day = $day->modify('+1 day')) {
+        $from = max($day->getTimestamp(), $added);
+        $to = min($day->modify('+1 day')->getTimestamp(), $now);
+        if ($from >= $to) {
+            $result[] = ['date' => $day->format('Y-m-d'), 'up' => null];
+            continue;
+        }
+        $inDay = [];
+        $statusAtStart = $status;
+        foreach ($events as $event) {
+            $at = strtotime($event['created_at']);
+            if ($at < $from) $statusAtStart = $event['status'];
+            elseif ($at < $to) $inDay[] = $event;
+        }
+        $result[] = ['date' => $day->format('Y-m-d'), 'up' => uptime_percent(downtime_seconds($inDay, $statusAtStart, $from, $to), $to - $from)];
+    }
+    return $result;
+}
+
+/**
  * Samples in hourly buckets for the last $hours, oldest first: the average
  * response time of the checks that were up, and the share of checks that
  * were up (null for an hour without checks).

@@ -68,6 +68,13 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [ ] Read API right after go-live, named like Puls: `share:create <site|group> [--label=...] [--expires=YYYY-MM-DD]`, `share:list`, `share:revoke`; read with `GET /?api&share=TOKEN` (JSON, CSV where it helps). Read-only, scoped to one site or group, stored hashed, optional expiry. Returns status per check, incidents and response-time history
 - [ ] `docs/api.md`: stable field names with a field reference, fields that hold text from the sites marked as untrusted data, and a "Use it from an AI assistant" section (token in the site project's gitignored .env, never in CLAUDE.md; a CLAUDE.md snippet with the curl call)
 
+## Design
+
+- [x] Identity: the watching owl on a teal tile (Webready family construction), wordmark, alarmed favicon while a site is down
+- [x] Figtree self-hosted, slate neutrals and shared status colours, icon set (stroke 2), `docs/brand.md`
+- [x] The watch panel ("All quiet." or what needs you), incident cards with live duration and advice, 30 days of uptime bars per site, the detail as a drawer, phone layout
+- [ ] Decide with the other Webready tools: one family look, or each tool its own character with shared rules
+
 ## Milestone 3: More checks
 
 - [ ] Exposed files: `.env`, `.git/HEAD`, `.git/config`, `composer.json`/`.lock`, `package.json`, `phpinfo.php`/`info.php`, `.DS_Store`, backups (`backup.zip`, `site.zip`, `db.sql`, `*.sql.gz`), `wp-config.php.bak`, `server-status`; content signatures plus a soft-404 baseline

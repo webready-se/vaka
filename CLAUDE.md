@@ -42,6 +42,8 @@ This repository will be public. Nothing about the user, the company, its custome
   - the same goes for CLI output and alert messages
 
   Test every screen, message and command output with: would someone understand this in five seconds?
+
+  The look is defined in `docs/brand.md` (owl mark, Webready family tile, slate neutrals, shared status colours, Figtree, icons with stroke 2). Follow it; change the guide first if the look changes. Review visual changes with `node scripts/smoke.mjs --screenshots=<dir>` (login, light, dark, detail, phone and phone detail).
 - **Never on the same server it watches.** If that server goes down, nobody gets an alert. The install docs say so, and Vaka watches itself: every run pings `HEARTBEAT_URL` (a dead man's switch such as Healthchecks.io's free tier, which alerts when pings stop), `/?health` returns 503 when cron has stopped, and the dashboard shows when Vaka last ran and warns when that is more than a few minutes ago.
 - **No dependencies at runtime.** PHP 8.3+ with built-in extensions only: `pdo_sqlite`, `curl`, `openssl` (`intl` optional). No Composer runtime packages, no framework, no build step, no CDN. Deploy = copy the files. Must run on Laravel Forge and on shared hosting wherever cron exists.
 - **"No dependencies", not "one file".** A few files loaded with plain `require` are fine. Code lives in `src/` as plain functions, so tests load it with `require` (no regex extraction or `eval`, unlike Puls's test bootstrap).
@@ -98,7 +100,9 @@ public/dashboard.html    Dashboard markup (no inline script or style; {{csrf}}, 
 public/app.js            Dashboard JS: hero, "Needs your attention" (outages first, one card per server), sites by group with 24 h sparklines, filter, detail dialog (#site-N), snooze, theme; one click listener (data-action), DOM built with textContent
 public/app.css           Styles for the login and the dashboard (light + dark)
 public/theme.js          Applies a saved light/dark choice before paint (loaded in <head>, no inline script needed)
-public/favicon.svg       The owl
+public/favicon.svg       The owl on its teal tile (favicon-alert.svg: red tile, wide eyes, shown while a site is down)
+public/fonts/            Figtree (SIL OFL, variable, Latin) and its licence: self-hosted, no CDN
+docs/brand.md            The brand: concept, logo construction, colour and status tokens, type, icons, motion, voice
 users.json               User credentials (bcrypt, created by the CLI, gitignored)
 data/vaka.sqlite         SQLite database (auto-created, gitignored)
 data/vaka.lock           Run lock (flock)
@@ -225,7 +229,7 @@ Query-string routing like Puls, so it works on shared hosting without rewrite ru
 ### Security headers (Vaka's own responses)
 
 ```text
-Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'
+Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 Referrer-Policy: no-referrer
