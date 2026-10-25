@@ -79,7 +79,7 @@ src/commands/run.php     run, check, status
 src/commands/alerts.php  alert:test, server:list, server:label
 src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, snooze, unsnooze
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
-src/checks/uptime.php    evaluate_uptime(), next_uptime_state(), detect_cdn(), plain-words errors and durations
+src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), advice_for(), plain-words errors and durations
 src/checks/ssl.php       Peer certificate capture and expiry
 src/checks/domain.php    Domain expiry via RDAP (IANA bootstrap)
 src/checks/exposed.php   Exposed file paths and content signatures
@@ -91,11 +91,11 @@ src/alerts.php           server_key(), alert_decision(), notice_for() (flapping)
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
 src/stats.php            downtime_seconds(), uptime_percent(), site_uptime(), hourly_buckets()
-src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze)
+src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze; `advice` from advice_for())
 src/commands/users.php   user:add, user:edit, user:remove, user:list
 public/index.php         Web front controller (three lines: bootstrap, config, handle_request())
 public/dashboard.html    Dashboard markup (no inline script or style; {{csrf}}, {{version}}, {{user}} filled in by show_dashboard())
-public/app.js            Dashboard JS (event delegation, fetches the JSON API, DOM built with textContent)
+public/app.js            Dashboard JS: hero, "Needs your attention" (outages first, one card per server), sites by group with 24 h sparklines, filter, detail dialog (#site-N), snooze, theme; one click listener (data-action), DOM built with textContent
 public/app.css           Styles for the login and the dashboard (light + dark)
 public/theme.js          Applies a saved light/dark choice before paint (loaded in <head>, no inline script needed)
 public/favicon.svg       The owl
@@ -109,8 +109,8 @@ tests/Support/helpers.php temp_dir(), load_config(), cli_env() and vaka() (CLI a
 tests/fixtures/import/   CSV files for site:import (example domains only)
 tests/fixtures/sites/    Fixture sites served by `php -S` in feature tests (start_site()/stop_site() in helpers); hooks/ records alert POSTs
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
-scripts/seed-demo.php    Demo database with fake sites, groups and servers
-scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps
+scripts/seed-demo.php    Demo database with fake sites, groups, servers, history and samples (`--hostile` adds markup-laden names for the smoke test)
+scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail and phone views
 scripts/hooks/pre-push   Git hook: runs Pest before push
 docs/                    install.md, configuration.md, checks.md, alerts.md (alerts.md: when, where, JSON fields)
 .claude/settings.json    Project hooks (PHP lint after edit) and read denies for .env / users.json
@@ -278,7 +278,9 @@ Pest, dev dependency only. **No real network in tests.** Fixtures use reserved e
 
 - **Unit** (`tests/Unit/`): pure functions. Header grading, cert expiry from a fixture PEM, exposed-file signature matching, RDAP parsing from fixture JSON, SPF/DMARC parsing, URL normalization, state transitions, alert reconciliation, maintenance window matching (including across midnight), policies, grouping by server, alert formatting. CLI as a subprocess for deterministic output.
 - **Feature** (`tests/Feature/`): start `php -S` against `tests/fixtures/sites/*` (one site with an exposed `.env`, one with good headers, one that answers 500, one soft-404 site that answers 200 for everything) and run the checks against them. RDAP from fixture JSON served the same way. DNS through an injected resolver. Alerts against a local fixture webhook that records what it received.
-- **Smoke** (`scripts/smoke.mjs`): headless Chrome over the DevTools protocol, no npm dependencies. Fails on JS errors and on CSP violations. Seeds hostile site names and messages and asserts they render as text.
+- **Smoke** (`scripts/smoke.mjs`): headless Chrome over the DevTools protocol, no npm dependencies. Seeds a demo database with hostile names and messages, logs in through the form and walks the dashboard: hero, incidents, groups, filter, detail, snooze, theme, phone width. Fails on JS errors, on CSP violations (reported by a CDP-injected `securitypolicyviolation` listener and the console) and when markup from the data renders as markup. Runs as its own CI job.
+
+Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.sqlite`, then `DB_PATH=/tmp/demo.sqlite php -S localhost:8080 -t public` with a user from `php vaka user:add`, or `node scripts/smoke.mjs --screenshots=<dir>` for the five standard views.
 
 | Change | Test? |
 |--------|-------|

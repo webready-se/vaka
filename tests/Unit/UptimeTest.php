@@ -13,6 +13,7 @@ test('a 200 answer is up', function () {
         'ms' => 231,
         'ip' => '192.0.2.10',
         'cdn' => '',
+        'problem' => '',
     ]);
 });
 
@@ -27,20 +28,54 @@ test('an error status is down, in plain words', function () {
     expect(evaluate_uptime(response(['status' => 418]), '', 10)['summary'])->toBe('The site answered 418');
 });
 
-test('connection problems are explained, not shown as curl codes', function (int $errno, string $error, string $summary) {
+test('connection problems are explained, not shown as curl codes', function (int $errno, string $error, string $summary, string $problem) {
     $result = evaluate_uptime(response(['status' => 0, 'errno' => $errno, 'error' => $error, 'body' => '']), '', 10);
     expect($result['ok'])->toBeFalse()
-        ->and($result['summary'])->toBe($summary);
+        ->and($result['summary'])->toBe($summary)
+        ->and($result['problem'])->toBe($problem);
 })->with([
-    'timeout' => [28, 'Operation timed out after 10001 milliseconds', 'No answer within 10 s'],
-    'dns' => [6, 'Could not resolve host: shop.example', 'The domain does not resolve (DNS lookup failed)'],
-    'refused' => [7, 'Failed to connect to shop.example port 443 after 2 ms: Connection refused', 'The server refused the connection'],
-    'unreachable' => [7, "Failed to connect to shop.example port 443 after 75003 ms: Couldn't connect to server", 'Could not connect to the server'],
-    'certificate' => [60, 'SSL certificate problem: certificate has expired', 'The certificate is not accepted: SSL certificate problem: certificate has expired'],
-    'tls' => [35, 'OpenSSL SSL_connect: SSL_ERROR_SYSCALL', 'The secure connection failed: OpenSSL SSL_connect: SSL_ERROR_SYSCALL'],
-    'redirects' => [47, 'Maximum (5) redirects followed', 'Too many redirects (more than 5)'],
-    'other' => [56, 'Recv failure: Connection reset by peer', 'Could not reach the site: Recv failure: Connection reset by peer'],
+    'timeout' => [28, 'Operation timed out after 10001 milliseconds', 'No answer within 10 s', 'timeout'],
+    'dns' => [6, 'Could not resolve host: shop.example', 'The domain does not resolve (DNS lookup failed)', 'dns'],
+    'refused' => [7, 'Failed to connect to shop.example port 443 after 2 ms: Connection refused', 'The server refused the connection', 'refused'],
+    'unreachable' => [7, "Failed to connect to shop.example port 443 after 75003 ms: Couldn't connect to server", 'Could not connect to the server', 'connect'],
+    'certificate' => [60, 'SSL certificate problem: certificate has expired', 'The certificate is not accepted: SSL certificate problem: certificate has expired', 'certificate'],
+    'tls' => [35, 'OpenSSL SSL_connect: SSL_ERROR_SYSCALL', 'The secure connection failed: OpenSSL SSL_connect: SSL_ERROR_SYSCALL', 'tls'],
+    'redirects' => [47, 'Maximum (5) redirects followed', 'Too many redirects (more than 5)', 'redirects'],
+    'other' => [56, 'Recv failure: Connection reset by peer', 'Could not reach the site: Recv failure: Connection reset by peer', 'other'],
 ]);
+
+test('an error status and a missing keyword are problems of their own kind', function () {
+    expect(evaluate_uptime(response(['status' => 503]), '', 10)['problem'])->toBe('http')
+        ->and(evaluate_uptime(response(), 'Add to cart', 10)['problem'])->toBe('keyword');
+});
+
+test('the uptime state keeps the kind of problem for the dashboard', function () {
+    $up = ['status' => 'ok', 'fail_count' => 0, 'changed_at' => '2026-10-25T08:00:00Z', 'details' => []];
+    $next = next_uptime_state($up, evaluate_uptime(response(['status' => 0, 'errno' => 28, 'error' => 't', 'body' => '']), '', 10), 2, '2026-10-25T12:00:00Z');
+    expect($next['state']['details']['problem'])->toBe('timeout');
+});
+
+test('advice_for says in plain words what to look at', function (string $problem, int $status, string $start) {
+    expect(advice_for($problem, $status))->toStartWith($start);
+})->with([
+    'server error' => ['http', 503, 'The site itself answers with an error'],
+    'gone' => ['http', 404, 'The page is not there'],
+    'refused access' => ['http', 403, 'The site refuses Vaka'],
+    'rate limited' => ['http', 429, 'The site is limiting how often'],
+    'keyword' => ['keyword', 200, 'The page loads, but the text Vaka looks for is missing'],
+    'timeout' => ['timeout', 0, 'No answer in time'],
+    'dns' => ['dns', 0, 'The domain does not resolve'],
+    'refused' => ['refused', 0, 'Nothing answers on the server'],
+    'connect' => ['connect', 0, 'Vaka cannot reach the server'],
+    'certificate' => ['certificate', 0, 'Browsers will refuse the site too'],
+    'tls' => ['tls', 0, 'The secure connection fails'],
+    'redirects' => ['redirects', 0, 'The site redirects in a loop'],
+]);
+
+test('advice_for has nothing to add when there is no problem', function () {
+    expect(advice_for('', 200))->toBe('')
+        ->and(advice_for('other', 0))->toBe('');
+});
 
 test('a keyword must be on the page, in any case and with entities decoded', function () {
     $page = response(['body' => '<h1>Welcome to the SHOP</h1><p>R&auml;ksm&ouml;rg&aring;s</p>']);

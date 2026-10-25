@@ -289,6 +289,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'group' => $row['group_name'],
         'status' => $status,
         'summary' => (string) ($row['summary'] ?? ''),
+        'advice' => in_array($status, ['down', 'failing'], true) ? advice_for($details['problem'] ?? '', (int) ($details['status_code'] ?? 0)) : '',
         'since' => $since,
         'checked_at' => $row['checked_at'],
         'ms' => $status === 'up' ? ($details['ms'] ?? null) : null,

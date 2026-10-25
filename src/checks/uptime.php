@@ -3,8 +3,10 @@
 /**
  * What one uptime request says about a site, in plain words. Up means a
  * status below 400 and, when a keyword is set, the keyword on the page.
+ * `problem` names the kind of failure for advice_for(): timeout, dns,
+ * refused, connect, certificate, tls, redirects, http, keyword or other.
  *
- * @return array{ok: bool, summary: string, status_code: int, ms: int, ip: string, cdn: string}
+ * @return array{ok: bool, summary: string, status_code: int, ms: int, ip: string, cdn: string, problem: string}
  */
 function evaluate_uptime(array $response, string $keyword, int $timeout): array
 {
@@ -15,10 +17,12 @@ function evaluate_uptime(array $response, string $keyword, int $timeout): array
         'ms' => $response['ms'],
         'ip' => $response['ip'],
         'cdn' => detect_cdn($response['headers']),
+        'problem' => '',
     ];
 
     if ($response['errno']) {
         $result['summary'] = connection_problem($response['errno'], $response['error'], $timeout);
+        $result['problem'] = problem_kind($response['errno'], $response['error']);
         return $result;
     }
 
@@ -26,8 +30,10 @@ function evaluate_uptime(array $response, string $keyword, int $timeout): array
     $answered = trim($status . ' ' . status_text($status));
     if ($status < 100 || $status >= 400) {
         $result['summary'] = "The site answered {$answered}";
+        $result['problem'] = 'http';
     } elseif ($keyword !== '' && !page_contains($response['body'], $keyword)) {
         $result['summary'] = "Answered {$answered}, but the page does not contain \"{$keyword}\"";
+        $result['problem'] = 'keyword';
     } else {
         $result['ok'] = true;
         $result['summary'] = "Answered {$answered} in {$response['ms']} ms";
@@ -46,6 +52,45 @@ function connection_problem(int $errno, string $error, int $timeout): string
         CURLE_SSL_CONNECT_ERROR => "The secure connection failed: {$error}",
         CURLE_TOO_MANY_REDIRECTS => 'Too many redirects (more than 5)',
         default => "Could not reach the site: {$error}",
+    };
+}
+
+/** The kind of a connection failure, matching connection_problem(). */
+function problem_kind(int $errno, string $error): string
+{
+    return match ($errno) {
+        CURLE_OPERATION_TIMEDOUT => 'timeout',
+        CURLE_COULDNT_RESOLVE_HOST => 'dns',
+        CURLE_COULDNT_CONNECT => str_contains(strtolower($error), 'refused') ? 'refused' : 'connect',
+        CURLE_SSL_CACERT, CURLE_SSL_PEER_CERTIFICATE, CURLE_SSL_CERTPROBLEM, CURLE_SSL_CACERT_BADFILE, 83, 90, 91 => 'certificate',
+        CURLE_SSL_CONNECT_ERROR => 'tls',
+        CURLE_TOO_MANY_REDIRECTS => 'redirects',
+        default => 'other',
+    };
+}
+
+/** What to look at for a kind of problem, in words a site owner understands. Empty when there is nothing useful to say. */
+function advice_for(string $problem, int $status): string
+{
+    if ($problem === 'http') {
+        return match (true) {
+            $status >= 500 => 'The site itself answers with an error. Look at its error log, or at what changed in the last deploy.',
+            $status === 404 || $status === 410 => 'The page is not there. Was the address changed, or did a deploy remove it?',
+            $status === 401 || $status === 403 => 'The site refuses Vaka. Check access rules, a firewall or a password on the site.',
+            $status === 429 => 'The site is limiting how often it may be asked. Allow Vaka\'s requests, or check the site less often.',
+            default => 'The site answers with an error code instead of the page.',
+        };
+    }
+    return match ($problem) {
+        'keyword' => 'The page loads, but the text Vaka looks for is missing. The page may show an error message, or the text has changed.',
+        'timeout' => 'No answer in time. The server may be down or overloaded: check it, or ask the host.',
+        'dns' => 'The domain does not resolve. Check its DNS records, and that the domain is still registered.',
+        'refused' => 'Nothing answers on the server. Is the web server running?',
+        'connect' => 'Vaka cannot reach the server. It may be down, or a firewall is in the way.',
+        'certificate' => 'Browsers will refuse the site too. Renew or fix its SSL certificate.',
+        'tls' => 'The secure connection fails. Check the server\'s SSL setup.',
+        'redirects' => 'The site redirects in a loop. Check the redirect rules, for example between www and https.',
+        default => '',
     };
 }
 
@@ -102,7 +147,7 @@ function next_uptime_state(array $state, array $result, int $downAfter, string $
         'summary' => $result['summary'],
         'fail_count' => 0,
         'changed_at' => $state['changed_at'],
-        'details' => ['status_code' => $result['status_code'], 'ms' => $result['ms'], 'ip' => $result['ip'], 'cdn' => $result['cdn']],
+        'details' => ['status_code' => $result['status_code'], 'ms' => $result['ms'], 'ip' => $result['ip'], 'cdn' => $result['cdn'], 'problem' => $result['problem']],
     ];
 
     if ($result['ok']) {
