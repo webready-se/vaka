@@ -62,6 +62,8 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [ ] Alerts at 14, 7 and 1 days before expiry, and when a certificate turns invalid
 - [ ] Docs: install (Forge, shared hosting cron; never on the same server as the sites it watches), configuration, checks, alerts (honest about `mail()` needing an MTA)
 - [ ] Run in production next to the previous monitor for a week, then switch over
+- [ ] Read API right after go-live, named like Puls: `share:create <site|group> [--label=...] [--expires=YYYY-MM-DD]`, `share:list`, `share:revoke`; read with `GET /?api&share=TOKEN` (JSON, CSV where it helps). Read-only, scoped to one site or group, stored hashed, optional expiry. Returns status per check, incidents and response-time history
+- [ ] `docs/api.md`: stable field names with a field reference, fields that hold text from the sites marked as untrusted data, and a "Use it from an AI assistant" section (token in the site project's gitignored .env, never in CLAUDE.md; a CLAUDE.md snippet with the curl call)
 
 ## Milestone 3: More checks
 
@@ -81,7 +83,6 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [ ] Tags on sites, if one group per site proves too narrow
 - [ ] Snooze straight from Slack (needs a Slack app instead of an incoming webhook)
 - [ ] Connect sibling tools: each tool keeps its own small JSON API with a token; paste another tool's URL and token in Settings, e.g. to show Puls traffic next to a site's uptime. No shared database, no shared code library
-- [ ] A read API with tokens for Vaka itself
 - [ ] CSP report endpoint (`report-to` / `report-uri`) that collects violations from the sites
 - [ ] Read-only share link per group (like Puls share tokens), e.g. for a customer
 - [ ] Public status pages

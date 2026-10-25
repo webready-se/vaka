@@ -54,6 +54,7 @@ This repository will be public. Nothing about the user, the company, its custome
 - **Store as little as possible.** No personal data. Uptime samples are trimmed after `SAMPLES_RETENTION_DAYS`; the login audit log after 30 days.
 - **Quiet alerts.** Alert on state changes and expiry thresholds only, grouped into one message per destination per run.
 - **Standalone.** Other tools (like Puls) are reached through their own small JSON API with a token, never through a shared database or a shared code library. Copy patterns, don't depend on each other.
+- **A read API from v1 (every Webready tool).** A read-only token per site or group lets the AI assistant in a site's own project read Vaka's data and act on it, and the same API serves links between the tools. Same names as Puls: `share:create`, `share:list`, `share:revoke`, `GET /?api&share=TOKEN`. Stable field names documented in `docs/api.md`; text that came from the sites is marked as untrusted data there. Planned right after go-live (see ROADMAP).
 - **No new monthly running costs.** Raise any that come up.
 - **Prefer established standards** (RDAP, Keep a Changelog, SemVer, Slack incoming webhooks) over custom extras.
 
