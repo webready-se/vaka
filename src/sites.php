@@ -419,13 +419,27 @@ function find_site(PDO $db, string $ref): ?array
     } catch (InvalidArgumentException) {
         return null;
     }
-    if ($site = site_by_url($db, $url)) return $site;
+    // Typed without a scheme, it may be an http site as well
+    $candidates = [$url];
+    if (!preg_match('#^[a-z][a-z0-9+.-]*://#i', $ref)) $candidates[] = 'http://' . substr($url, strlen('https://'));
+    foreach ($candidates as $candidate) {
+        if ($site = site_by_url($db, $candidate)) return $site;
+    }
 
-    // A bare domain: match on host alone, unless that is ambiguous
+    // A bare domain (port included): the one site on it, or else the one without a path
     if (parse_url($url, PHP_URL_PATH) !== null || parse_url($url, PHP_URL_QUERY) !== null) return null;
-    $host = site_host($url);
-    $matches = array_filter($db->query('SELECT * FROM sites')->fetchAll(), fn ($site) => site_host($site['url']) === $host);
-    return count($matches) === 1 ? array_values($matches)[0] : null;
+    $authority = site_authority($url);
+    $matches = array_values(array_filter($db->query('SELECT * FROM sites ORDER BY id')->fetchAll(), fn ($site) => site_authority($site['url']) === $authority));
+    if (count($matches) === 1) return $matches[0];
+    $roots = array_values(array_filter($matches, fn ($site) => parse_url($site['url'], PHP_URL_PATH) === null && parse_url($site['url'], PHP_URL_QUERY) === null));
+    return count($roots) === 1 ? $roots[0] : null;
+}
+
+/** Host without www, plus the port when there is one: what people mean by "the domain". */
+function site_authority(string $url): string
+{
+    $port = parse_url($url, PHP_URL_PORT);
+    return site_host($url) . ($port ? ':' . $port : '');
 }
 
 /** Sites by group name and URL, sites without a group last, with their group's name. */
