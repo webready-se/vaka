@@ -43,17 +43,18 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [x] Delivery: Slack incoming webhook, generic JSON webhook, email via `mail()`
 - [x] Maintenance windows: one-off or recurring (e.g. every night 00:00-07:00, across midnight), per site or per group; checks still run and record; incidents inside a window show on the dashboard only; still down when it ends alerts
 - [x] Snooze from the CLI: an ongoing incident (or a whole server) for 1 h, 4 h or 24 h; alerts again if still down when it ends
-- [ ] Snooze from the dashboard
+- [x] Snooze API for the dashboard (`POST /?api=snooze`)
+- [ ] Snooze buttons in the dashboard
 - [x] `php vaka check <url>` and `php vaka status`
 - [x] `php vaka alert:test`
-- [ ] Auth: `user:*` commands, login with CSRF, lockout per IP in SQLite, session hardening, security headers
-- [ ] Access per group: `groups` per user (empty = all), enforced in every endpoint and in snooze
+- [x] Auth: `user:*` commands, login with CSRF, lockout per IP in SQLite, session hardening, security headers
+- [x] Access per group: `groups` per user (empty = all), enforced in every endpoint and in snooze
 - [ ] Dashboard: leads with what is wrong right now and what to do about it; every site at a glance, grouped by group and server; response time and uptime history; per-site event history; maintenance and snooze state; plain language, every number explained; dark/light, accessible, mobile, and good-looking
 - [ ] Empty states and onboarding: the first site added in under a minute
 - [ ] Dashboard shows when Vaka last ran and warns when it is older than a few minutes (cron stopped)
 - [ ] Strict CSP (`script-src 'self'`, `style-src 'self'`), event delegation in `app.js`
 - [ ] Dashboard smoke test (`scripts/smoke.mjs`): fails on JS errors and CSP violations, renders hostile values as text
-- [ ] `/?health` that reports a stopped cron
+- [x] `/?health` that reports a stopped cron
 - [x] Dead man's switch: every run pings `HEARTBEAT_URL` (e.g. Healthchecks.io's free tier), which alerts when the pings stop
 - [ ] Seed script with fake sites (example.com, shop.example, 192.0.2.x) for demos, screenshots and the smoke test
 

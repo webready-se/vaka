@@ -137,3 +137,69 @@ function down_sites(int $count, array $overrides = []): array
 {
     return array_map(fn ($i) => notice(['site_id' => $i, 'url' => "https://site{$i}.example"] + $overrides), range(1, $count));
 }
+
+/**
+ * Serve Vaka's public/ with `php -S` on 127.0.0.1:<port>, with its own
+ * database and users file from $env. Returns once the port answers.
+ */
+function start_web(int $port, array $env): mixed
+{
+    $public = __DIR__ . '/../../public';
+    $proc = proc_open(
+        [PHP_BINARY, '-S', "127.0.0.1:{$port}", '-t', $public],
+        [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
+        $pipes,
+        null,
+        $env + ['VAKA_ENV_FILE' => '/dev/null', 'PHP_CLI_SERVER_WORKERS' => '4', 'PATH' => getenv('PATH')],
+    );
+    set_error_handler(fn () => true);
+    try {
+        for ($i = 0; $i < 100; $i++) {
+            $sock = fsockopen('127.0.0.1', $port, $errno, $errstr, 0.1);
+            if ($sock) {
+                fclose($sock);
+                return $proc;
+            }
+            usleep(50_000);
+        }
+    } finally {
+        restore_error_handler();
+    }
+    throw new RuntimeException("Vaka did not start on port {$port}");
+}
+
+/**
+ * One HTTP request to the test web server, with a cookie jar file so a
+ * login carries over between calls that share it.
+ *
+ * @return array{status: int, headers: array<string, string>, body: string, json: mixed}
+ */
+function http_request(string $method, string $url, array $options = []): array
+{
+    $handle = curl_init($url);
+    $headers = [];
+    curl_setopt_array($handle, [
+        CURLOPT_CUSTOMREQUEST => $method,
+        CURLOPT_RETURNTRANSFER => true,
+        CURLOPT_FOLLOWLOCATION => false,
+        CURLOPT_HTTPHEADER => $options['headers'] ?? [],
+        CURLOPT_HEADERFUNCTION => function ($handle, string $line) use (&$headers) {
+            if (str_contains($line, ':')) {
+                [$name, $value] = explode(':', $line, 2);
+                $headers[strtolower(trim($name))] = trim($value);
+            }
+            return strlen($line);
+        },
+    ]);
+    if (isset($options['jar'])) {
+        curl_setopt($handle, CURLOPT_COOKIEFILE, $options['jar']);
+        curl_setopt($handle, CURLOPT_COOKIEJAR, $options['jar']);
+    }
+    if (isset($options['form'])) curl_setopt($handle, CURLOPT_POSTFIELDS, http_build_query($options['form']));
+    if (isset($options['json'])) {
+        curl_setopt($handle, CURLOPT_POSTFIELDS, json_encode($options['json']));
+        curl_setopt($handle, CURLOPT_HTTPHEADER, [...($options['headers'] ?? []), 'Content-Type: application/json']);
+    }
+    $body = (string) curl_exec($handle);
+    return ['status' => (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE), 'headers' => $headers, 'body' => $body, 'json' => json_decode($body, true)];
+}

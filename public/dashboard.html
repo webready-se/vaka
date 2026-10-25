@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="csrf-token" content="{{csrf}}">
+<title>Vaka</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="app.css?v={{version}}">
+<script src="theme.js?v={{version}}"></script>
+<script src="app.js?v={{version}}" defer></script>
+</head>
+<body>
+<header class="topbar">
+  <a class="brand" href="/">Vaka</a>
+  <p class="run-state" data-run-state></p>
+  <form method="post" action="/?logout" class="logout">
+    <input type="hidden" name="_token" value="{{csrf}}">
+    <button type="submit" class="link-button">Log out {{user}}</button>
+  </form>
+</header>
+<main id="app" aria-live="polite" aria-busy="true">
+  <p class="loading">Loading…</p>
+</main>
+</body>
+</html>
