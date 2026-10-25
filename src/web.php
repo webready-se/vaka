@@ -1,0 +1,374 @@
+<?php
+
+/** Scripts and styles from our own files only: no inline script, no inline style. */
+const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+
+/** /?health reports a stopped cron when the last run is older than this. */
+const STALE_RUN_SECONDS = 300;
+
+/** Escape text for HTML (content and attributes). */
+function e(?string $text): string
+{
+    return htmlspecialchars((string) $text, ENT_QUOTES | ENT_SUBSTITUTE | ENT_HTML5, 'UTF-8');
+}
+
+function security_headers(array $server): array
+{
+    $headers = [
+        'Content-Security-Policy' => CSP,
+        'X-Content-Type-Options' => 'nosniff',
+        'X-Frame-Options' => 'DENY',
+        'Referrer-Policy' => 'no-referrer',
+        'Permissions-Policy' => 'camera=(), microphone=(), geolocation=(), payment=()',
+        'Cross-Origin-Opener-Policy' => 'same-origin',
+    ];
+    if (is_https($server)) $headers['Strict-Transport-Security'] = 'max-age=31536000';
+    return $headers;
+}
+
+function respond(int $status, string $body, string $type, array $headers = []): never
+{
+    http_response_code($status);
+    header("Content-Type: {$type}");
+    foreach ($headers as $name => $value) header("{$name}: {$value}");
+    echo $body;
+    exit;
+}
+
+function respond_json(int $status, array $data): never
+{
+    respond($status, json_encode($data, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE), 'application/json; charset=utf-8', ['Cache-Control' => 'no-store']);
+}
+
+function redirect(string $to): never
+{
+    respond(302, '', 'text/plain; charset=utf-8', ['Location' => $to, 'Cache-Control' => 'no-store']);
+}
+
+// =====================================================================
+// Routing
+// =====================================================================
+
+function handle_request(array $config): never
+{
+    foreach (security_headers($_SERVER) as $name => $value) header("{$name}: {$value}");
+    $method = $_SERVER['REQUEST_METHOD'] ?? 'GET';
+    $path = parse_url($_SERVER['REQUEST_URI'] ?? '/', PHP_URL_PATH);
+    $now = time();
+
+    if ($path !== '/' && $path !== '/index.php') respond(404, 'Not found', 'text/plain; charset=utf-8');
+    if (isset($_GET['health'])) health($config, $now);
+
+    start_session($config);
+    if (isset($_GET['login'])) {
+        $method === 'POST' ? handle_login($config, $now) : show_login($config);
+    }
+    if (isset($_GET['logout'])) {
+        if ($method !== 'POST') respond(405, 'Log out with the button on the dashboard.', 'text/plain; charset=utf-8', ['Allow' => 'POST']);
+        handle_logout((string) ($_POST['_token'] ?? ''));
+    }
+
+    $user = current_user($config);
+    if (isset($_GET['api'])) {
+        if (!$user) respond_json(401, ['error' => 'Log in first']);
+        handle_api($config, $user, (string) $_GET['api'], $method, $now);
+    }
+    if (!$user) redirect('/?login');
+    show_dashboard($user);
+}
+
+/** The logged-in user (name plus users.json entry), or null. A removed user is logged out. */
+function current_user(array $config): ?array
+{
+    $name = $_SESSION['user'] ?? null;
+    if ($name === null) return null;
+    $user = load_users($config['users_file'])[$name] ?? null;
+    return $user === null ? null : ['name' => $name] + $user;
+}
+
+/** 200 while cron runs, 503 when the last run is too old or there never was one: for an external monitor to watch Vaka. */
+function health(array $config, int $now): never
+{
+    try {
+        $last = get_meta(get_db($config['db_path']), 'last_run_at');
+    } catch (Throwable) {
+        respond_json(503, ['status' => 'error', 'last_run_at' => null, 'seconds_since_last_run' => null]);
+    }
+    if ($last === null) respond_json(503, ['status' => 'never_run', 'last_run_at' => null, 'seconds_since_last_run' => null]);
+    $age = $now - strtotime($last);
+    $ok = $age <= STALE_RUN_SECONDS;
+    respond_json($ok ? 200 : 503, ['status' => $ok ? 'ok' : 'stale', 'last_run_at' => $last, 'seconds_since_last_run' => $age]);
+}
+
+// =====================================================================
+// Login
+// =====================================================================
+
+function handle_login(array $config, int $now): never
+{
+    $db = get_db($config['db_path']);
+    $ip = client_ip($_SERVER, $config['trusted_proxies']);
+
+    if (!check_csrf((string) ($_POST['_token'] ?? ''))) show_login($config, 'The form expired. Try again.');
+    if (is_locked_out($db, $ip, $config['max_login_attempts'], $config['lockout_minutes'], $now)) {
+        show_login($config, "Too many failed attempts. Wait {$config['lockout_minutes']} minutes and try again.");
+    }
+
+    $name = strtolower(trim((string) ($_POST['username'] ?? '')));
+    $user = load_users($config['users_file'])[$name] ?? null;
+    // Verify against a dummy hash for unknown users too, so timing does not tell which names exist
+    $hash = $user['password'] ?? '$2y$12$FKKe7nUCFf6k3/.WVUVIRuEPI.d6R0F75pyM5t4qCqSCqQ6kIkfFi';
+    if (password_verify((string) ($_POST['password'] ?? ''), $hash) && $user !== null) {
+        session_regenerate_id(true);
+        $_SESSION = ['user' => $name, 'rotated_at' => time(), 'csrf' => bin2hex(random_bytes(32))];
+        audit_log($db, $name, 'login_success', $ip, $now);
+        redirect('/');
+    }
+    audit_log($db, $name, 'login_failed', $ip, $now);
+    show_login($config, 'Wrong user name or password.');
+}
+
+function handle_logout(string $token): never
+{
+    if (!check_csrf($token)) redirect('/');
+    $_SESSION = [];
+    $cookie = session_get_cookie_params();
+    setcookie(session_name(), '', ['expires' => 1] + array_intersect_key($cookie, array_flip(['path', 'domain', 'secure', 'httponly', 'samesite'])));
+    session_destroy();
+    redirect('/?login');
+}
+
+function show_login(array $config, ?string $error = null): never
+{
+    $token = e(csrf_token());
+    $version = e(VAKA_VERSION);
+    $message = $error === null ? '' : '<p class="login-error" id="login-error" role="alert">' . e($error) . '</p>';
+    $described = $error === null ? '' : ' aria-describedby="login-error"';
+    $owl = owl_svg('login-mark');
+
+    respond(200, <<<HTML
+    <!doctype html>
+    <html lang="en">
+    <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Log in to Vaka</title>
+    <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="app.css?v={$version}">
+    <script src="theme.js?v={$version}"></script>
+    </head>
+    <body class="login">
+    <main class="login-card">
+      {$owl}
+      <h1>Vaka</h1>
+      <p class="login-tagline">Keeps watch while you sleep.</p>
+      {$message}
+      <form method="post" action="/?login">
+        <input type="hidden" name="_token" value="{$token}">
+        <label for="username">User name</label>
+        <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus{$described}>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required{$described}>
+        <button type="submit">Log in</button>
+      </form>
+    </main>
+    </body>
+    </html>
+    HTML, 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
+}
+
+/** The owl mark (keeps watch at night), as inline SVG without style attributes. */
+function owl_svg(string $class): string
+{
+    return '<svg class="' . e($class) . '" viewBox="0 0 64 64" aria-hidden="true" focusable="false">'
+        . '<path class="owl-body" d="M14 22c0-8 6-14 18-14s18 6 18 14v18c0 10-8 18-18 18S14 50 14 40z"/>'
+        . '<circle class="owl-eye" cx="24" cy="28" r="7"/><circle class="owl-eye" cx="40" cy="28" r="7"/>'
+        . '<circle class="owl-pupil" cx="24" cy="28" r="3"/><circle class="owl-pupil" cx="40" cy="28" r="3"/>'
+        . '<path class="owl-beak" d="M29 35l3 5 3-5z"/></svg>';
+}
+
+function show_dashboard(array $user): never
+{
+    $html = (string) file_get_contents(__DIR__ . '/../public/dashboard.html');
+    $html = strtr($html, [
+        '{{csrf}}' => e(csrf_token()),
+        '{{version}}' => e(VAKA_VERSION),
+        '{{user}}' => e($user['name']),
+    ]);
+    respond(200, $html, 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
+}
+
+// =====================================================================
+// JSON API for the dashboard
+// =====================================================================
+
+function handle_api(array $config, array $user, string $endpoint, string $method, int $now): never
+{
+    $db = get_db($config['db_path']);
+    $allowed = user_group_ids($db, $user);
+
+    if ($endpoint === 'overview' && $method === 'GET') respond_json(200, api_overview($db, $config, $allowed, $now));
+    if ($endpoint === 'site' && $method === 'GET') {
+        $site = visible_site($db, (int) ($_GET['id'] ?? 0), $allowed);
+        if (!$site) respond_json(404, ['error' => 'No such site']);
+        respond_json(200, api_site($db, $config, $site, $now));
+    }
+    if ($endpoint === 'snooze' && $method === 'POST') {
+        if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
+        $input = json_decode((string) file_get_contents('php://input'), true) ?: [];
+        $site = visible_site($db, (int) ($input['site_id'] ?? 0), $allowed);
+        if (!$site) respond_json(404, ['error' => 'No such site']);
+
+        if (($input['action'] ?? '') === 'unsnooze') {
+            unsnooze_site($db, $site['id'], $now);
+        } else {
+            try {
+                $seconds = parse_snooze((string) ($input['for'] ?? ''));
+            } catch (InvalidArgumentException $e) {
+                respond_json(422, ['error' => $e->getMessage()]);
+            }
+            if ($site['status'] !== 'fail' && !$site['fail_count']) respond_json(409, ['error' => display_url($site['url']) . ' is up: there is nothing to snooze']);
+            snooze_site($db, $site['id'], $seconds, $now);
+        }
+        $row = overview_rows($db, 's.id = ' . $site['id'])[0];
+        respond_json(200, ['site' => site_summary($db, $config, $row, server_labels($db), load_windows($db, $now), [], $now)]);
+    }
+    respond_json(404, ['error' => 'No such API call']);
+}
+
+/** A site with its uptime state, if the user may see it (null when not, so its existence does not leak). */
+function visible_site(PDO $db, int $id, ?array $allowed): ?array
+{
+    $rows = overview_rows($db, 's.id = ' . $id . ' AND ' . group_filter($allowed));
+    return $rows[0] ?? null;
+}
+
+/** SQL condition for the sites a user may see. */
+function group_filter(?array $allowed): string
+{
+    if ($allowed === null) return '1 = 1';
+    if (!$allowed) return '0 = 1';
+    return 's.group_id IN (' . implode(', ', array_map('intval', $allowed)) . ')';
+}
+
+function overview_rows(PDO $db, string $where): array
+{
+    return $db->query("SELECT s.*, g.name AS group_name, g.policy, g.delay_minutes,
+            c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until, c.flapping_since
+        FROM sites s
+        LEFT JOIN groups g ON g.id = s.group_id
+        LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
+        WHERE {$where}
+        ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
+}
+
+/** One site as the dashboard shows it. */
+function site_summary(PDO $db, array $config, array $row, array $labels, array $windows, array $samples, int $now): array
+{
+    $details = json_decode((string) ($row['details'] ?? '{}'), true) ?: [];
+    $status = match (true) {
+        (bool) $row['paused'] => 'paused',
+        $row['status'] === null || ($row['status'] === 'pending' && !$row['fail_count']) => 'pending',
+        $row['status'] === 'fail' => 'down',
+        $row['fail_count'] > 0 => 'failing',
+        default => 'up',
+    };
+    $since = match ($status) {
+        'down', 'up' => $row['changed_at'],
+        'failing' => $details['failing_since'] ?? null,
+        default => null,
+    };
+    $quiet = active_silence(['id' => $row['id'], 'group_id' => $row['group_id'], 'snoozed_until' => $row['snoozed_until']], $windows, $now, $config['timezone']);
+    $serverKey = server_key($row);
+
+    return [
+        'id' => $row['id'],
+        'url' => $row['url'],
+        'label' => display_url($row['url']),
+        'name' => $row['name'],
+        'group' => $row['group_name'],
+        'status' => $status,
+        'summary' => (string) ($row['summary'] ?? ''),
+        'since' => $since,
+        'checked_at' => $row['checked_at'],
+        'ms' => $status === 'up' ? ($details['ms'] ?? null) : null,
+        'server' => $serverKey === null ? null : server_display($row, $labels),
+        'cdn' => $row['cdn'] !== '' ? $row['cdn'] : null,
+        'snoozed_until' => $quiet === 'snooze' ? $row['snoozed_until'] : null,
+        'maintenance' => $quiet === 'maintenance',
+        'unstable' => $row['flapping_since'] !== null,
+        'uptime_24h' => site_uptime($db, $row, 86400, $now),
+        'hours' => hourly_buckets($samples, $now, 24),
+    ];
+}
+
+function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
+{
+    $rows = overview_rows($db, group_filter($allowed));
+    $samples = [];
+    if ($rows) {
+        $stmt = $db->prepare('SELECT site_id, checked_at, ms, ok FROM samples WHERE checked_at >= ? AND site_id IN (' . implode(', ', array_map('intval', array_column($rows, 'id'))) . ')');
+        $stmt->execute([utc_now($now - 86400)]);
+        foreach ($stmt->fetchAll() as $sample) $samples[$sample['site_id']][] = $sample;
+    }
+    $labels = server_labels($db);
+    $windows = load_windows($db, $now);
+
+    $totals = ['sites' => 0, 'up' => 0, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0];
+    $groups = [];
+    foreach ($rows as $row) {
+        $site = site_summary($db, $config, $row, $labels, $windows, $samples[$row['id']] ?? [], $now);
+        $totals['sites']++;
+        $totals[$site['status']]++;
+        $key = $row['group_id'] ?? 'none';
+        $groups[$key] ??= [
+            'id' => $row['group_id'],
+            'name' => $row['group_name'],
+            'alerting' => $row['group_id'] === null ? 'right away' : describe_policy(['policy' => $row['policy'], 'delay_minutes' => $row['delay_minutes']], $config['digest_time']),
+            'sites' => [],
+        ];
+        $groups[$key]['sites'][] = $site;
+    }
+
+    $lastRun = get_meta($db, 'last_run_at');
+    return [
+        'generated_at' => utc_now($now),
+        'timezone' => $config['timezone'],
+        'last_run_at' => $lastRun,
+        'run_ok' => $lastRun !== null && $now - strtotime($lastRun) <= STALE_RUN_SECONDS,
+        'totals' => $totals,
+        'groups' => array_values($groups),
+    ];
+}
+
+function api_site(PDO $db, array $config, array $row, int $now): array
+{
+    $samples = $db->prepare('SELECT checked_at, status_code, ms, ok FROM samples WHERE site_id = ? AND checked_at >= ? ORDER BY checked_at');
+    $samples->execute([$row['id'], utc_now($now - 86400)]);
+    $samples = $samples->fetchAll();
+    $events = $db->prepare("SELECT status, previous, message, silenced_by, created_at FROM events WHERE site_id = ? AND check_name = 'uptime' ORDER BY created_at DESC, id DESC LIMIT 100");
+    $events->execute([$row['id']]);
+
+    $windows = load_windows($db, $now);
+    $mine = array_values(array_filter($windows, fn ($w) => $w['site_id'] === $row['id'] || ($w['group_id'] !== null && $w['group_id'] === $row['group_id'])));
+
+    return [
+        'site' => site_summary($db, $config, $row, server_labels($db), $windows, $samples, $now) + [
+            'keyword' => $row['keyword'],
+            'interval_minutes' => site_interval($row, $config),
+            'created_at' => $row['created_at'],
+        ],
+        'uptime' => [
+            '24h' => site_uptime($db, $row, 86400, $now),
+            '7d' => site_uptime($db, $row, 7 * 86400, $now),
+            '30d' => site_uptime($db, $row, 30 * 86400, $now),
+        ],
+        'samples' => $samples,
+        'events' => $events->fetchAll(),
+        'maintenance' => array_map(fn ($w) => [
+            'when' => describe_window($w, $config['timezone']),
+            'label' => $w['label'],
+            'active' => window_active($w, $now, $config['timezone']),
+        ], $mine),
+    ];
+}

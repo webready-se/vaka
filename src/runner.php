@@ -166,12 +166,13 @@ function add_event(PDO $db, int $siteId, string $check, array $event, string $cr
         ->execute([$siteId, $check, $event['status'], $event['previous'], $event['message'], $silencedBy, $createdAt]);
 }
 
-/** Once a day: drop uptime samples older than SAMPLES_RETENTION_DAYS. */
+/** Once a day: drop uptime samples older than SAMPLES_RETENTION_DAYS and login records older than 30 days. */
 function cleanup(PDO $db, array $config, int $now): void
 {
     $today = gmdate('Y-m-d', $now);
     if (get_meta($db, 'last_cleanup_on') === $today) return;
     $db->prepare('DELETE FROM samples WHERE checked_at < ?')->execute([utc_now($now - $config['samples_retention_days'] * 86400)]);
+    $db->prepare('DELETE FROM audit_log WHERE created_at < ?')->execute([utc_now($now - 30 * 86400)]);
     set_meta($db, 'last_cleanup_on', $today);
 }
 

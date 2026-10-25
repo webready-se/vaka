@@ -89,12 +89,16 @@ src/runner.php           run_locked(), run(): due checks, state, events, samples
 src/silence.php          Maintenance windows (parse, window_active() in local time, describe), active_silence(), snooze_site()
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
-src/auth.php             Sessions, CSRF, login lockout, users.json
-src/web.php              respond(), e(), security_headers()
-public/index.php         Web front controller (routing only, calls into src/)
-public/dashboard.html    Dashboard markup (no inline script or style)
-public/app.js            Dashboard JS (event delegation, fetches the JSON API)
-public/app.css           Dashboard styles (light + dark)
+src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
+src/stats.php            downtime_seconds(), uptime_percent(), site_uptime(), hourly_buckets()
+src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze)
+src/commands/users.php   user:add, user:edit, user:remove, user:list
+public/index.php         Web front controller (three lines: bootstrap, config, handle_request())
+public/dashboard.html    Dashboard markup (no inline script or style; {{csrf}}, {{version}}, {{user}} filled in by show_dashboard())
+public/app.js            Dashboard JS (event delegation, fetches the JSON API, DOM built with textContent)
+public/app.css           Styles for the login and the dashboard (light + dark)
+public/theme.js          Applies a saved light/dark choice before paint (loaded in <head>, no inline script needed)
+public/favicon.svg       The owl
 users.json               User credentials (bcrypt, created by the CLI, gitignored)
 data/vaka.sqlite         SQLite database (auto-created, gitignored)
 data/vaka.lock           Run lock (flock)
@@ -203,14 +207,16 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 
 | Endpoint | Auth | Purpose |
 |----------|------|---------|
-| `GET /?health` | No | 200 when the last run is recent, 503 when cron has stopped (so something external can watch the watcher) |
-| `GET /?login` | No | Login form (server-rendered, CSRF token) |
-| `POST /?login` | No | Login submission (lockout per IP) |
-| `POST /?logout` | Yes | End session (CSRF) |
-| `GET /` | Yes | Dashboard |
-| `GET /?api=overview` | Yes | Every site with the state of each check, by group and server |
-| `GET /?api=site&id=N` | Yes | One site: check details, event history, recent response times |
-| `POST /?snooze` | Yes | Snooze an incident (1 h, 4 h, 24 h) or lift a snooze (CSRF, group access) |
+| `GET /?health` | No | `{status: ok\|stale\|never_run, last_run_at, seconds_since_last_run}`; 200 only when the last run is under 5 min old, so something external can watch the watcher |
+| `GET /?login` | No | Login form (server-rendered, CSRF token in the session) |
+| `POST /?login` | No | Login (CSRF, lockout per IP, constant-time check for unknown users) |
+| `POST /?logout` | Yes | End the session (CSRF in `_token`); GET answers 405 |
+| `GET /` | Yes | Dashboard (redirects to `/?login` without a session) |
+| `GET /?api=overview` | Yes | Totals, last run, and every visible site by group: status, summary, since, response time, server, snooze, maintenance, unstable, 24 h uptime, hourly buckets |
+| `GET /?api=site&id=N` | Yes | One site: summary, uptime 24 h / 7 d / 30 d, samples of the last 24 h, last 100 events, maintenance windows. 404 when not visible |
+| `POST /?api=snooze` | Yes | `{site_id, for: "1h"\|"4h"\|"24h"}` or `{site_id, action: "unsnooze"}`; needs `X-CSRF-Token`; 404 when not visible |
+
+Any other path answers 404. Restricted users (`groups` in users.json) only ever see their groups' sites, and a site they may not see is a 404, so its existence does not leak.
 
 Query-string routing like Puls, so it works on shared hosting without rewrite rules.
 

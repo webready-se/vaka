@@ -92,7 +92,9 @@ function cmd_group_edit(array $config, array $args, array $opts): void
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage() . '.');
     }
-    $group = get_group($db, $group['id']);
+    $renamed = get_group($db, $group['id']);
+    if ($renamed['name'] !== $group['name']) rename_group_in_users($config['users_file'], $group['name'], $renamed['name']);
+    $group = $renamed;
     echo "Updated group {$group['name']}. " . describe_alerting($group, $config) . "\n";
 }
 

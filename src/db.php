@@ -144,6 +144,16 @@ function migrations(): array
                 created_at TEXT NOT NULL
             )",
         ],
+        6 => [
+            'CREATE TABLE audit_log (
+                id INTEGER PRIMARY KEY,
+                username TEXT NOT NULL,
+                action TEXT NOT NULL,
+                ip TEXT NOT NULL,
+                created_at TEXT NOT NULL
+            )',
+            'CREATE INDEX idx_audit_ip ON audit_log (ip, action, created_at)',
+        ],
     ];
 }
 

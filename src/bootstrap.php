@@ -17,4 +17,7 @@ require_once __DIR__ . '/runner.php';
 require_once __DIR__ . '/silence.php';
 require_once __DIR__ . '/alerts.php';
 require_once __DIR__ . '/notify.php';
+require_once __DIR__ . '/auth.php';
+require_once __DIR__ . '/stats.php';
+require_once __DIR__ . '/web.php';
 require_once __DIR__ . '/cli.php';
