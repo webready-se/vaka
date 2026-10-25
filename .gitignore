@@ -1,0 +1,15 @@
+# Real data and secrets: never in git (see "Never store sensitive data in git" in CLAUDE.md)
+data/
+.env
+users.json
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+.private/
+
+# Local tooling
+/vendor/
+/build/
+.DS_Store
+.claude/settings.local.json
+.claude/handoffs/
