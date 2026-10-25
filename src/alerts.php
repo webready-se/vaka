@@ -210,10 +210,62 @@ function collect_notices(PDO $db, array $config, int $now): array
     return ['notices' => $notices, 'nowhere' => $nowhere];
 }
 
-function mark_alerted(PDO $db, int $siteId, string $check, string $status, ?string $flappingSince, int $now): void
+function mark_alerted(PDO $db, int $siteId, string $check, string $status, ?string $flappingSince, int $now, ?string $thresholds = null): void
 {
-    $db->prepare('UPDATE check_state SET alerted_status = ?, alerted_at = ?, flapping_since = ? WHERE site_id = ? AND check_name = ?')
-        ->execute([$status, utc_now($now), $flappingSince, $siteId, $check]);
+    $db->prepare('UPDATE check_state SET alerted_status = ?, alerted_at = ?, flapping_since = ?, thresholds_sent = COALESCE(?, thresholds_sent) WHERE site_id = ? AND check_name = ?')
+        ->execute([$status, utc_now($now), $flappingSince, $thresholds, $siteId, $check]);
+}
+
+/**
+ * Certificate notices that are due (see ssl_notice()). Maintenance windows
+ * hold them back like any other alert; a snooze is for outages only.
+ *
+ * @return array{notices: list<array>, nowhere: int}
+ */
+function collect_ssl_notices(PDO $db, array $config, int $now): array
+{
+    $rows = $db->query("SELECT c.*, s.url, s.group_id, g.name AS group_name, g.policy, g.slack_webhook, g.webhook_url, g.email
+        FROM check_state c
+        JOIN sites s ON s.id = c.site_id
+        LEFT JOIN groups g ON g.id = s.group_id
+        WHERE c.check_name = 'ssl' AND s.paused = 0 AND c.status IN ('ok', 'warn', 'fail')
+        ORDER BY s.id")->fetchAll();
+    $windows = load_windows($db, $now);
+    $notices = [];
+    $nowhere = 0;
+
+    foreach ($rows as $row) {
+        if (active_silence(['id' => $row['site_id'], 'group_id' => $row['group_id'], 'snoozed_until' => null], $windows, $now, $config['timezone']) !== '') continue;
+        $group = $row['group_id'] === null ? null : $row;
+        $details = json_decode($row['details'], true) ?: [];
+        $notice = ssl_notice(['details' => $details] + $row, $group, $config['ssl_alert_days']);
+        if ($notice['action'] === 'none') continue;
+
+        $destinations = $notice['action'] === 'send' ? alert_destinations($group, $config) : [];
+        if (!$destinations) {
+            mark_alerted($db, $row['site_id'], 'ssl', $row['status'], null, $now, $notice['thresholds']);
+            if ($notice['action'] === 'send') $nowhere++;
+            continue;
+        }
+        $notices[] = [
+            'site_id' => $row['site_id'],
+            'check' => 'ssl',
+            'status' => $row['status'],
+            'url' => $row['url'],
+            'group' => $row['group_name'],
+            'kind' => $notice['kind'],
+            'summary' => $row['summary'],
+            'since' => $row['changed_at'],
+            'down_seconds' => 0,
+            'outages' => 0,
+            'days_left' => $details['days_left'] ?? null,
+            'thresholds' => $notice['thresholds'],
+            'server_key' => null,
+            'server' => null,
+            'destinations' => $destinations,
+        ];
+    }
+    return ['notices' => $notices, 'nowhere' => $nowhere];
 }
 
 /**
@@ -226,6 +278,8 @@ function mark_alerted(PDO $db, int $siteId, string $check, string $status, ?stri
 function process_alerts(PDO $db, array $config, int $now): array
 {
     $collected = collect_notices($db, $config, $now);
+    $ssl = collect_ssl_notices($db, $config, $now);
+    $collected = ['notices' => [...$collected['notices'], ...$ssl['notices']], 'nowhere' => $collected['nowhere'] + $ssl['nowhere']];
     $results = [];
     $told = [];
     foreach (bundle_notices($collected['notices'], server_sizes($db)) as $bundle) {
@@ -241,7 +295,7 @@ function process_alerts(PDO $db, array $config, int $now): array
         }
     }
     foreach ($told as $notice) {
-        mark_alerted($db, $notice['site_id'], $notice['check'], $notice['status'], $notice['kind'] === 'unstable' ? utc_now($now) : null, $now);
+        mark_alerted($db, $notice['site_id'], $notice['check'], $notice['status'], $notice['kind'] === 'unstable' ? utc_now($now) : null, $now, $notice['thresholds'] ?? null);
     }
     return ['alerts' => $results, 'nowhere' => $collected['nowhere']];
 }
@@ -265,7 +319,7 @@ function bundle_notices(array $notices, array $serverSizes): array
         }
     }
 
-    $order = ['unstable' => 0, 'still_down' => 1, 'down' => 2, 'up' => 3, 'stable' => 4];
+    $order = ['unstable' => 0, 'still_down' => 1, 'down' => 2, 'up' => 3, 'stable' => 4, 'ssl_invalid' => 5, 'ssl_expiring' => 6, 'ssl_fixed' => 7, 'ssl_renewed' => 8];
     $bundles = [];
     foreach ($byDestination as $bundle) {
         $groups = [];
@@ -311,6 +365,17 @@ function alert_text(array $item): array
             'up' => ['headline' => "{$who} is up again{$after}", 'details' => []],
             'unstable' => ['headline' => "{$who} is unstable: down {$site['outages']} times in {$window}", 'details' => [$site['summary'], $quiet]],
             'stable' => ['headline' => "{$who} is stable again: up for " . STABLE_MINUTES . ' min', 'details' => []],
+            'ssl_invalid' => ['headline' => "{$who}: the SSL certificate is not valid", 'details' => [$site['summary']]],
+            'ssl_expiring' => [
+                'headline' => "{$who}: the SSL certificate expires " . match ((int) $site['days_left']) {
+                    0 => 'today',
+                    1 => 'tomorrow',
+                    default => "in {$site['days_left']} days",
+                },
+                'details' => [$site['summary'], 'Renew it before then. With Let\'s Encrypt, check that the automatic renewal runs.'],
+            ],
+            'ssl_fixed' => ['headline' => "{$who}: the SSL certificate is valid again", 'details' => [$site['summary']]],
+            'ssl_renewed' => ['headline' => "{$who}: the SSL certificate was renewed", 'details' => [$site['summary']]],
         };
     }
 
@@ -379,7 +444,7 @@ function digest_text(string $group, array $events, array $stillDown, string $tim
 {
     $tz = new DateTimeZone($timezone);
     $time = fn (string $utc) => (new DateTimeImmutable($utc))->setTimezone($tz)->format('H:i');
-    $outages = count(array_filter($events, fn ($event) => $event['status'] === 'fail'));
+    $outages = count(array_filter($events, fn ($event) => $event['status'] === 'fail' && ($event['check_name'] ?? 'uptime') === 'uptime'));
 
     $parts = [$outages ? plural($outages, 'outage', 'outages') : 'no outages'];
     if ($stillDown) $parts[] = plural(count($stillDown), 'site still down', 'sites still down');
@@ -410,7 +475,7 @@ function send_digests(PDO $db, array $config, int $now): array
     $results = [];
     foreach ($db->query("SELECT * FROM groups WHERE policy = 'digest' ORDER BY name")->fetchAll() as $group) {
         $events = $db->prepare("SELECT e.*, s.url FROM events e JOIN sites s ON s.id = e.site_id
-            WHERE s.group_id = ? AND e.check_name = 'uptime' AND e.created_at > ? AND e.created_at <= ?
+            WHERE s.group_id = ? AND e.check_name IN ('uptime', 'ssl') AND e.created_at > ? AND e.created_at <= ?
                 AND NOT (e.previous = 'pending' AND e.status = 'ok')
             ORDER BY e.created_at, e.id");
         $events->execute([$group['id'], $since, utc_now($now)]);

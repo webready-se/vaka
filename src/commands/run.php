@@ -62,17 +62,20 @@ function cmd_check(array $config, array $args, array $opts): void
     }
     $keyword = is_string($opts['keyword'] ?? null) ? $opts['keyword'] : '';
 
-    $response = fetch_many(['check' => $url], $config['uptime_timeout'], user_agent($config))['check'];
+    $response = fetch_many(['check' => $url], $config['uptime_timeout'], user_agent($config), 1, $config['ssl_ca_file'])['check'];
     $result = evaluate_uptime($response, $keyword, $config['uptime_timeout']);
 
     echo "{$url}\n";
     if ($result['ok']) {
         $from = $result['cdn'] !== '' ? "behind {$result['cdn']}" : "from {$result['ip']}";
         echo "  Up: " . lcfirst($result['summary']) . ", {$from}\n";
-        return;
+    } else {
+        echo "  Down: " . lcfirst($result['summary']) . "\n";
     }
-    echo "  Down: " . lcfirst($result['summary']) . "\n";
-    exit(1);
+    if (str_starts_with($url, 'https://') && !in_array($result['problem'], ['timeout', 'dns', 'refused', 'connect'], true)) {
+        echo '  Certificate: ' . lcfirst(check_certificate($url, $config, time())['summary']) . "\n";
+    }
+    if (!$result['ok']) exit(1);
 }
 
 function cmd_status(array $config, array $args, array $opts): void
@@ -80,10 +83,12 @@ function cmd_status(array $config, array $args, array $opts): void
     allow_options($opts, []);
     $db = get_db($config['db_path']);
     $now = time();
-    $sites = $db->query("SELECT s.*, g.name AS group_name, c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until
+    $sites = $db->query("SELECT s.*, g.name AS group_name, c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until,
+            cs.status AS ssl_status, cs.summary AS ssl_summary
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
+        LEFT JOIN check_state cs ON cs.site_id = s.id AND cs.check_name = 'ssl'
         ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
 
     $lastRun = get_meta($db, 'last_run_at');
@@ -114,6 +119,7 @@ function cmd_status(array $config, array $args, array $opts): void
         $quiet = active_silence($site, $windows, $now, $config['timezone']);
         if ($quiet === 'snooze') $detail .= '; snoozed until ' . local_time($site['snoozed_until'], $now);
         if ($quiet === 'maintenance') $detail = trim($detail . '; in a maintenance window', '; ');
+        if (in_array($site['ssl_status'], ['warn', 'fail'], true)) $detail = trim($detail . '; ' . lcfirst($site['ssl_summary']), '; ');
         $rows[] = [$site['group_name'] ?? 'No group', display_url($site['url']), $word, $detail];
     }
 

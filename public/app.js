@@ -240,9 +240,10 @@
       title = 'Waiting for the first checks';
       line = 'Results show up here after the next run.';
     } else {
-      kind = 'up';
+      var certs = sslIssues().length;
+      kind = certs ? 'failing' : 'up';
       title = t.up === watched ? (t.up === 1 ? 'Your site is up' : 'All ' + t.up + ' sites are up') : plural(t.up, 'site is up', 'sites are up');
-      line = 'Nothing needs your attention.';
+      line = certs ? 'But ' + plural(certs, 'certificate needs', 'certificates need') + ' attention.' : 'Nothing needs your attention.';
     }
 
     var counts = [];
@@ -266,12 +267,20 @@
     return Boolean(site.snoozed_until || site.maintenance);
   }
 
+  /** Certificates that need attention. A site that is down already says why, certificate or not. */
+  function sslIssues() {
+    return allSites().filter(function (site) {
+      return site.ssl && (site.ssl.status === 'warn' || (site.ssl.status === 'fail' && site.status !== 'down'));
+    });
+  }
+
   function renderAttention() {
     var node = regions.attention;
     clear(node);
     var problems = allSites().filter(function (site) { return site.status === 'down' || site.status === 'failing'; });
-    node.hidden = problems.length === 0;
-    if (!problems.length) return;
+    var certs = sslIssues().sort(function (a, b) { return (a.ssl.status === 'fail' ? 0 : 1) - (b.ssl.status === 'fail' ? 0 : 1) || (a.ssl.days_left || 0) - (b.ssl.days_left || 0); });
+    node.hidden = problems.length + certs.length === 0;
+    if (node.hidden) return;
 
     var rank = function (site) { return (isQuiet(site) ? 2 : 0) + (site.status === 'failing' ? 1 : 0); };
     problems.sort(function (a, b) { return rank(a) - rank(b) || String(a.since).localeCompare(String(b.since)); });
@@ -293,7 +302,24 @@
     append(node, h('h2', { class: 'section-title', id: 'attention-title' }, 'Needs your attention'));
     append(node, h('ul', { class: 'incidents' }, items.map(function (item) {
       return item.sites.length > 1 ? serverIncident(item) : siteIncident(item.sites[0]);
-    })));
+    }).concat(certs.map(sslIncident))));
+  }
+
+  function certificateHeadline(ssl) {
+    if (ssl.status === 'fail') return 'the SSL certificate is not valid';
+    var days = ssl.days_left;
+    return 'the SSL certificate expires ' + (days === 0 ? 'today' : days === 1 ? 'tomorrow' : 'in ' + days + ' days');
+  }
+
+  function sslIncident(site) {
+    var kind = site.ssl.status === 'fail' ? 'down' : 'failing';
+    return h('li', { class: 'incident is-' + kind }, [
+      h('h3', {}, [icon(kind), h('span', { class: 'incident-site' }, site.label + ':'), certificateHeadline(site.ssl)]),
+      h('p', { class: 'incident-meta' }, site.group || 'No group'),
+      h('p', { class: 'incident-summary' }, site.ssl.summary),
+      site.ssl.advice ? h('p', { class: 'incident-advice' }, site.ssl.advice) : null,
+      h('div', { class: 'actions' }, siteActions(site).filter(function (n) { return n.getAttribute('data-action') !== 'snooze'; }))
+    ]);
   }
 
   function siteIncident(site) {
@@ -404,7 +430,8 @@
   function siteRow(site) {
     var ms = site.ms !== null && site.ms !== undefined ? site.ms + ' ms' : '–';
     var uptime = site.status !== 'paused' && site.uptime_24h !== null && site.uptime_24h !== undefined ? site.uptime_24h + '%' : '–';
-    var subtitle = [site.name, site.cdn ? 'behind ' + site.cdn : null, site.snoozed_until ? 'snoozed' : null, site.maintenance ? 'maintenance' : null].filter(Boolean).join(' · ');
+    var certificate = site.ssl && site.ssl.status !== 'ok' ? certificateHeadline(site.ssl) : null;
+    var subtitle = [site.name, site.cdn ? 'behind ' + site.cdn : null, site.snoozed_until ? 'snoozed' : null, site.maintenance ? 'maintenance' : null, certificate].filter(Boolean).join(' · ');
 
     return h('li', {}, h('button', {
       type: 'button',
@@ -479,6 +506,7 @@
       ['Server', site.cdn ? 'Behind ' + site.cdn : (site.server || 'Not known yet')]
     ];
     if (site.keyword) facts.push(['Looks for the text', '"' + site.keyword + '"']);
+    facts.push(['Certificate', site.ssl ? site.ssl.summary : (/^https:/.test(site.url) ? 'Not checked yet' : 'No https')]);
 
     var since = site.since ? (site.status === 'up' ? 'Up since ' : 'Since ') + clock(site.since) + ' (' + duration(secondsSince(site.since)) + ')' : '';
 
@@ -492,6 +520,7 @@
       ]),
       site.summary ? h('p', { class: 'incident-summary' }, site.summary) : null,
       site.advice ? h('p', { class: 'incident-advice' }, site.advice) : null,
+      site.ssl && site.ssl.advice ? h('p', { class: 'incident-advice' }, site.ssl.summary + '. ' + site.ssl.advice) : null,
       badges(site),
       h('div', { class: 'actions' }, siteActions(site).filter(function (n) { return n.getAttribute('data-action') !== 'open'; })),
       h('dl', { class: 'facts' }, facts.map(function (fact) {

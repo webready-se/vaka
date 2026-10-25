@@ -12,14 +12,14 @@ const MAX_BODY_BYTES = 1048576;
  * @param array<array-key, string> $urls
  * @return array<array-key, array{status: int, headers: array<string, list<string>>, body: string, ms: int, ip: string, errno: int, error: string, url: string}>
  */
-function fetch_many(array $urls, int $timeout, string $userAgent, int $concurrency = 20): array
+function fetch_many(array $urls, int $timeout, string $userAgent, int $concurrency = 20, string $caFile = ''): array
 {
     $multi = curl_multi_init();
     $pending = $urls;
     $running = [];
     $results = [];
 
-    $start = function () use (&$pending, &$running, $multi, $timeout, $userAgent): void {
+    $start = function () use (&$pending, &$running, $multi, $timeout, $userAgent, $caFile): void {
         $key = array_key_first($pending);
         $transfer = (object) ['key' => $key, 'headers' => [], 'body' => '', 'truncated' => false];
         $handle = curl_init($pending[$key]);
@@ -56,6 +56,7 @@ function fetch_many(array $urls, int $timeout, string $userAgent, int $concurren
                 return strlen($chunk);
             },
         ]);
+        if ($caFile !== '') curl_setopt($handle, CURLOPT_CAINFO, $caFile);
         curl_multi_add_handle($multi, $handle);
         $running[spl_object_id($handle)] = [$handle, $transfer];
     };

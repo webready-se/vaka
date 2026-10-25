@@ -1,5 +1,8 @@
 <?php
 
+/** Seconds a run may take before it stops starting slow checks (SSL); what is left waits for the next run. */
+const RUN_BUDGET_SECONDS = 40;
+
 /**
  * Run $fn while holding an exclusive lock on $lockFile, so cron runs never
  * overlap. Returns $fn's result, or null when another run holds the lock.
@@ -29,7 +32,9 @@ function run_locked(string $lockFile, callable $fn): mixed
 function run(PDO $db, array $config, ?int $now = null): array
 {
     $now ??= time();
+    $started = microtime(true);
     $summary = run_uptime($db, $config, $now);
+    $summary['ssl'] = run_ssl($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $alerts = process_alerts($db, $config, $now);
     $summary['alerts'] = $alerts['alerts'];
     $summary['nowhere'] = $alerts['nowhere'];
@@ -104,7 +109,7 @@ function run_uptime(PDO $db, array $config, int $now): array
  */
 function check_uptime(PDO $db, array $config, array $sites, int $now, array $windows, array &$summary): array
 {
-    $responses = fetch_many(array_column($sites, 'url', 'id'), $config['uptime_timeout'], user_agent($config));
+    $responses = fetch_many(array_column($sites, 'url', 'id'), $config['uptime_timeout'], user_agent($config), 20, $config['ssl_ca_file']);
     $checkedAt = utc_now($now);
     $failing = [];
 
@@ -146,6 +151,64 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array $win
     $db->commit();
 
     return $failing;
+}
+
+/**
+ * HTTPS sites whose certificate check is due. A site that does not answer at
+ * all (timeout, DNS, refused) is left out: the uptime check covers it and a
+ * handshake would only wait for the timeout. One that is down because of its
+ * certificate is checked, since that is what this check explains.
+ */
+function due_ssl_sites(PDO $db, string $now): array
+{
+    $stmt = $db->prepare("SELECT s.*, c.status AS state_status, c.changed_at AS state_changed_at, u.status AS uptime_status, u.details AS uptime_details
+        FROM sites s
+        LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'ssl'
+        LEFT JOIN check_state u ON u.site_id = s.id AND u.check_name = 'uptime'
+        WHERE s.paused = 0 AND s.url LIKE 'https://%'
+            AND (',' || s.disabled_checks || ',') NOT LIKE '%,ssl,%'
+            AND (c.next_at IS NULL OR c.next_at <= ?)
+        ORDER BY c.next_at IS NOT NULL, c.next_at, s.id");
+    $stmt->execute([$now]);
+    return array_values(array_filter($stmt->fetchAll(), function (array $site): bool {
+        if ($site['uptime_status'] !== 'fail') return true;
+        $problem = json_decode((string) $site['uptime_details'], true)['problem'] ?? '';
+        return !in_array($problem, ['timeout', 'dns', 'refused', 'connect'], true);
+    }));
+}
+
+/**
+ * Check due certificates one by one (a TLS handshake blocks) until $deadline
+ * (microtime). The rest stays due for the next run.
+ */
+function run_ssl(PDO $db, array $config, int $now, float $deadline): array
+{
+    $summary = ['checked' => 0, 'left' => 0, 'events' => []];
+    $sites = due_ssl_sites($db, utc_now($now));
+    $checkedAt = utc_now($now);
+    foreach ($sites as $i => $site) {
+        if (microtime(true) >= $deadline) {
+            $summary['left'] = count($sites) - $i;
+            break;
+        }
+        $result = check_certificate($site['url'], $config, $now);
+        $previous = $site['state_status'] ?? 'pending';
+        $changed = $previous !== $result['status'];
+        save_check_state($db, $site['id'], 'ssl', [
+            'status' => $result['status'],
+            'summary' => $result['summary'],
+            'details' => $result['details'],
+            'fail_count' => 0,
+            'changed_at' => $changed ? $checkedAt : $site['state_changed_at'],
+        ], $checkedAt, utc_now($now + SSL_INTERVAL_SECONDS));
+        if ($changed && $result['status'] !== 'unknown') {
+            $event = ['status' => $result['status'], 'previous' => $previous, 'message' => $result['summary']];
+            add_event($db, $site['id'], 'ssl', $event, $checkedAt);
+            $summary['events'][] = ['url' => $site['url']] + $event;
+        }
+        $summary['checked']++;
+    }
+    return $summary;
 }
 
 function save_check_state(PDO $db, int $siteId, string $check, array $state, string $checkedAt, string $nextAt): void

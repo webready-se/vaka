@@ -254,10 +254,12 @@ function group_filter(?array $allowed): string
 function overview_rows(PDO $db, string $where): array
 {
     return $db->query("SELECT s.*, g.name AS group_name, g.policy, g.delay_minutes,
-            c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until, c.flapping_since
+            c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until, c.flapping_since,
+            cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
+        LEFT JOIN check_state cs ON cs.site_id = s.id AND cs.check_name = 'ssl'
         WHERE {$where}
         ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
 }
@@ -279,6 +281,17 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         default => null,
     };
     $quiet = active_silence(['id' => $row['id'], 'group_id' => $row['group_id'], 'snoozed_until' => $row['snoozed_until']], $windows, $now, $config['timezone']);
+    $ssl = null;
+    if (in_array($row['ssl_status'], ['ok', 'warn', 'fail'], true)) {
+        $sslDetails = json_decode((string) $row['ssl_details'], true) ?: [];
+        $ssl = [
+            'status' => $row['ssl_status'],
+            'summary' => $row['ssl_summary'],
+            'days_left' => $sslDetails['days_left'] ?? null,
+            'valid_to' => $sslDetails['valid_to'] ?? null,
+            'advice' => $row['ssl_status'] === 'ok' ? '' : advice_for($sslDetails['problem'] ?? '', 0),
+        ];
+    }
     $serverKey = server_key($row);
 
     return [
@@ -298,6 +311,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'snoozed_until' => $quiet === 'snooze' ? $row['snoozed_until'] : null,
         'maintenance' => $quiet === 'maintenance',
         'unstable' => $row['flapping_since'] !== null,
+        'ssl' => $ssl,
         'uptime_24h' => site_uptime($db, $row, 86400, $now),
         'hours' => hourly_buckets($samples, $now, 24),
     ];

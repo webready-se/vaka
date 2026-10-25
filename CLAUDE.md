@@ -80,7 +80,7 @@ src/commands/alerts.php  alert:test, server:list, server:label
 src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, snooze, unsnooze
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
 src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), advice_for(), plain-words errors and durations
-src/checks/ssl.php       Peer certificate capture and expiry
+src/checks/ssl.php       fetch_certificate() (verified, then unverified to describe a bad one), certificate_info(), host_matches(), evaluate_ssl(), ssl_notice() (thresholds once per certificate)
 src/checks/domain.php    Domain expiry via RDAP (IANA bootstrap)
 src/checks/exposed.php   Exposed file paths and content signatures
 src/checks/headers.php   Security header grading and regressions
@@ -108,6 +108,8 @@ tests/                   Pest suite: Unit/, Feature/, fixtures/
 tests/Support/helpers.php temp_dir(), load_config(), cli_env() and vaka() (CLI as a subprocess, never reads the local .env)
 tests/fixtures/import/   CSV files for site:import (example domains only)
 tests/fixtures/sites/    Fixture sites served by `php -S` in feature tests (start_site()/stop_site() in helpers); hooks/ records alert POSTs
+tests/fixtures/certs/    Test-only CA and certificates (valid, wrong name, self-signed), made by generate.php; keys are not secrets
+tests/fixtures/tls-server.php  Minimal TLS server for the SSL check tests
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups, servers, history and samples (`--hostile` adds markup-laden names for the smoke test)
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail and phone views
@@ -195,7 +197,7 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 1. Take `data/vaka.lock` with `flock(LOCK_EX | LOCK_NB)`. If another run holds it, exit 0 quietly.
 2. Collect due `(site, check)` pairs: `next_at <= now`, or no state yet.
 3. All HTTP work (uptime, headers, exposed) goes through one `curl_multi` batch with a concurrency limit.
-4. Blocking work (SSL handshakes, DNS, RDAP) runs after, within a time budget so the run ends before the next minute. Whatever is left stays due.
+4. Blocking work (SSL handshakes, later DNS and RDAP) runs after, one by one, until `RUN_BUDGET_SECONDS` (40) since the run started. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate.
 5. Store results and new states; a change writes an event.
 6. Reconcile alerts, apply silences and policies, bundle per destination and server, send. Send the daily digest when it is due.
 7. Trim old samples and audit log rows (once a day), then store `last_run_at`.

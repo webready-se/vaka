@@ -90,6 +90,11 @@ function advice_for(string $problem, int $status): string
         'certificate' => 'Browsers will refuse the site too. Renew or fix its SSL certificate.',
         'tls' => 'The secure connection fails. Check the server\'s SSL setup.',
         'redirects' => 'The site redirects in a loop. Check the redirect rules, for example between www and https.',
+        'expired', 'expiring' => 'Renew the certificate. With Let\'s Encrypt, check that the automatic renewal runs (certbot, or the setting at your host).',
+        'name' => 'The certificate does not cover this domain. Issue one that includes it.',
+        'self_signed' => 'Use a certificate from a trusted authority, such as Let\'s Encrypt (free).',
+        'untrusted' => 'Install the full chain: the certificate together with its intermediate certificates.',
+        'not_yet' => 'The certificate is not valid yet. Check its start date, and the server\'s clock.',
         default => '',
     };
 }
