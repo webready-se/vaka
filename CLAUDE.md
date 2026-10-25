@@ -29,7 +29,7 @@ This repository will be public. Nothing about the user, the company, its custome
 - **No dependencies at runtime.** PHP 8.3+ with built-in extensions only: `pdo_sqlite`, `curl`, `openssl` (`intl` optional). No Composer runtime packages, no framework, no build step, no CDN. Deploy = copy the files. Must run on Laravel Forge and on shared hosting wherever cron exists.
 - **"No dependencies", not "one file".** A few files loaded with plain `require` are fine. Code lives in `src/` as plain functions, so tests load it with `require` (no regex extraction or `eval`, unlike Puls's test bootstrap).
 - **SQLite in WAL mode** with a schema version (`PRAGMA user_version`) and lazy migrations, like Puls's `run_migrations()` / `migrate_schema()`.
-- **Config:** `config.php` reads an optional `.env` (a copy of `.env.example`). OS environment variables win over `.env`.
+- **Config:** `config.php` reads an optional `.env` (a copy of `.env.example`). OS environment variables win over `.env`. `VAKA_ENV_FILE` points at another file (tests use `/dev/null`).
 - **One CLI entrypoint:** `php vaka <command>`. Every command falls back to interactive prompts (readline) when called without arguments.
 - **Dashboard:** plain HTML/CSS/JS served from `public/`, no CDN, dark and light mode, accessible, works on mobile, and good-looking. Every value rendered into HTML is escaped (build DOM with `textContent`; server-side HTML goes through `e()`).
 - **Strict CSP from day one:** `script-src 'self'` without `'unsafe-inline'`, and the same for `style-src`. No inline `<script>`, no `onclick`/`onkeydown` attributes, no `style="..."` in markup. Event delegation: `data-action` attributes plus one listener in `public/app.js`.
@@ -49,8 +49,10 @@ vaka                     CLI entrypoint (php vaka <command>), interactive with r
 config.php               Configuration: loads .env, resolves paths (Forge zero-downtime aware)
 .env.example             Environment template (checked in)
 .env                     Optional environment config (gitignored)
-src/bootstrap.php        require_once of every src file; defines functions only, no side effects
-src/db.php               get_db(), run_migrations(), migrate_schema()
+src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines functions only, no side effects
+src/config.php           parse_env(), load_env(), resolve_path(), int_list()
+src/db.php               get_db(), enable_wal(), migrations(), run_migrations()
+src/cli.php              parse_args(), prompt(), fail()
 src/sites.php            normalize_url(), sites, groups, servers
 src/http.php             fetch_many(): parallel requests over curl_multi
 src/checks/uptime.php    Uptime + response time + keyword
@@ -72,7 +74,11 @@ public/app.css           Dashboard styles (light + dark)
 users.json               User credentials (bcrypt, created by the CLI, gitignored)
 data/vaka.sqlite         SQLite database (auto-created, gitignored)
 data/vaka.lock           Run lock (flock)
+composer.json            Platform requirements (PHP 8.3+, pdo_sqlite, curl, openssl) + Pest (dev only)
+phpunit.xml              Test configuration (Pest)
 tests/                   Pest suite: Unit/, Feature/, fixtures/
+tests/Support/helpers.php temp_dir(), load_config() and vaka() (CLI as a subprocess, never reads the local .env)
+.github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups and servers
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps
 scripts/hooks/pre-push   Git hook: runs Pest before push

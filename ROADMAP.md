@@ -4,14 +4,14 @@ Uptime comes first: knowing when a site goes down is the main job. SSL certifica
 
 ## Milestone 0: Foundation
 
-- [ ] Repository skeleton: LICENSE (MIT), CHANGELOG.md, SECURITY.md, CONTRIBUTING.md, .editorconfig
-- [ ] .gitignore before the first commit: `data/`, `.env`, `users.json`, `*.sqlite`, `.private/`
-- [ ] composer.json: platform requirements (PHP 8.3+, pdo_sqlite, curl, openssl) and Pest as the only dev dependency
-- [ ] `config.php` with optional `.env`, Forge zero-downtime path detection
-- [ ] `src/bootstrap.php` and `tests/bootstrap.php` loading code with plain `require`
-- [ ] SQLite in WAL mode, `PRAGMA user_version` and lazy migrations
-- [ ] `php vaka` CLI skeleton: help, readline prompts as fallback for missing arguments
-- [ ] Pre-push hook and GitHub Actions CI (PHP 8.3, 8.4, 8.5)
+- [x] Repository skeleton: LICENSE (MIT), CHANGELOG.md, SECURITY.md, CONTRIBUTING.md, .editorconfig
+- [x] .gitignore before the first commit: `data/`, `.env`, `users.json`, `*.sqlite`, `.private/`
+- [x] composer.json: platform requirements (PHP 8.3+, pdo_sqlite, curl, openssl) and Pest as the only dev dependency
+- [x] `config.php` with optional `.env`, Forge zero-downtime path detection
+- [x] `src/bootstrap.php` and `tests/bootstrap.php` loading code with plain `require`
+- [x] SQLite in WAL mode, `PRAGMA user_version` and lazy migrations (safe when several processes open a new database at once)
+- [x] `php vaka` CLI skeleton: help, version, argument parsing, readline prompt helper
+- [x] Pre-push hook and GitHub Actions CI (PHP 8.3, 8.4, 8.5), Dependabot for Actions and Pest
 
 ## Milestone 1: Uptime
 
