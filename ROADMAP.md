@@ -32,7 +32,7 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [x] Uptime check: status code, response time, optional keyword; down after 2 consecutive failures
 - [x] Server grouping: the IP a site answered on (curl's primary IP) puts sites on the same server together; an optional label per server
 - [x] Sites behind a CDN (`cf-ray` or `server: cloudflare` and similar): alerted on their own instead of with a server; `site:edit --server=<label>` sets the server by hand
-- [ ] Dashboard shows "behind CDN" instead of a server
+- [x] Dashboard shows "behind CDN" instead of a server
 - [x] State per check and an event history per site
 - [x] Alerts reconcile what was last sent with the current state (retries, delays and silences fall out of this)
 - [x] Grouped alerts: one message per destination per run, sites on the same server folded together ("server 203.0.113.10: 23 sites down"), recoveries the same way
@@ -44,19 +44,19 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [x] Maintenance windows: one-off or recurring (e.g. every night 00:00-07:00, across midnight), per site or per group; checks still run and record; incidents inside a window show on the dashboard only; still down when it ends alerts
 - [x] Snooze from the CLI: an ongoing incident (or a whole server) for 1 h, 4 h or 24 h; alerts again if still down when it ends
 - [x] Snooze API for the dashboard (`POST /?api=snooze`)
-- [ ] Snooze buttons in the dashboard
+- [x] Snooze buttons in the dashboard (one site, or every site down on a server)
 - [x] `php vaka check <url>` and `php vaka status`
 - [x] `php vaka alert:test`
 - [x] Auth: `user:*` commands, login with CSRF, lockout per IP in SQLite, session hardening, security headers
 - [x] Access per group: `groups` per user (empty = all), enforced in every endpoint and in snooze
-- [ ] Dashboard: leads with what is wrong right now and what to do about it; every site at a glance, grouped by group and server; response time and uptime history; per-site event history; maintenance and snooze state; plain language, every number explained; dark/light, accessible, mobile, and good-looking
-- [ ] Empty states and onboarding: the first site added in under a minute
-- [ ] Dashboard shows when Vaka last ran and warns when it is older than a few minutes (cron stopped)
-- [ ] Strict CSP (`script-src 'self'`, `style-src 'self'`), event delegation in `app.js`
-- [ ] Dashboard smoke test (`scripts/smoke.mjs`): fails on JS errors and CSP violations, renders hostile values as text
+- [x] Dashboard: leads with what is wrong right now and what to do about it; every site at a glance, grouped by group and server; response time and uptime history; per-site event history; maintenance and snooze state; plain language, every number explained; dark/light, accessible, mobile, and good-looking
+- [x] Empty states and onboarding: the first site added in under a minute
+- [x] Dashboard shows when Vaka last ran and warns when it is older than a few minutes (cron stopped)
+- [x] Strict CSP (`script-src 'self'`, `style-src 'self'`), event delegation in `app.js`
+- [x] Dashboard smoke test (`scripts/smoke.mjs`): fails on JS errors and CSP violations, renders hostile values as text
 - [x] `/?health` that reports a stopped cron
 - [x] Dead man's switch: every run pings `HEARTBEAT_URL` (e.g. Healthchecks.io's free tier), which alerts when the pings stop
-- [ ] Seed script with fake sites (example.com, shop.example, 192.0.2.x) for demos, screenshots and the smoke test
+- [x] Seed script with fake sites (example.com, shop.example, 192.0.2.x) for demos, screenshots and the smoke test
 
 ## Milestone 2: SSL certificates
 
