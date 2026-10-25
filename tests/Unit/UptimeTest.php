@@ -109,6 +109,16 @@ test('coming back up says how long the site was down', function () {
         ->and($next['event'])->toBe(['status' => 'ok', 'previous' => 'fail', 'message' => 'Up again after 14 min: answered 200 OK in 231 ms']);
 });
 
+test('coming back up keeps how long the site was down, for the recovery alert', function () {
+    $down = ['status' => 'fail', 'fail_count' => 14, 'changed_at' => '2026-10-25T12:01:00Z', 'details' => ['failing_since' => '2026-10-25T12:00:00Z']];
+    $up = next_uptime_state($down, evaluate_uptime(response(), '', 10), 2, '2026-10-25T12:14:30Z');
+    expect($up['state']['details']['down_seconds'])->toBe(870);
+
+    // and forgets it on the next healthy check
+    $later = next_uptime_state($up['state'], evaluate_uptime(response(), '', 10), 2, '2026-10-25T12:19:30Z');
+    expect($later['state']['details'])->not->toHaveKey('down_seconds');
+});
+
 test('a failure that recovers before it counts leaves no trace in the events', function () {
     $failing = ['status' => 'ok', 'fail_count' => 1, 'changed_at' => '2026-10-25T08:00:00Z', 'details' => ['failing_since' => '2026-10-25T12:00:00Z']];
     $next = next_uptime_state($failing, evaluate_uptime(response(), '', 10), 2, '2026-10-25T12:01:00Z');

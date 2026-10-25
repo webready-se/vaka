@@ -11,6 +11,7 @@ require __DIR__ . '/src/bootstrap.php';
 require __DIR__ . '/src/commands/groups.php';
 require __DIR__ . '/src/commands/sites.php';
 require __DIR__ . '/src/commands/run.php';
+require __DIR__ . '/src/commands/alerts.php';
 $config = require __DIR__ . '/config.php';
 date_default_timezone_set($config['timezone']);
 
@@ -30,6 +31,9 @@ match ($command) {
     'group:edit' => cmd_group_edit($config, $args, $opts),
     'group:remove' => cmd_group_remove($config, $args, $opts),
     'group:list' => cmd_group_list($config, $args, $opts),
+    'alert:test' => cmd_alert_test($config, $args, $opts),
+    'server:list' => cmd_server_list($config, $args, $opts),
+    'server:label' => cmd_server_label($config, $args, $opts),
     'help', '--help', '-h' => print_help(),
     'version' => print_version(),
     default => fail("Unknown command: {$command}\nRun `php vaka help` to see every command."),
@@ -69,6 +73,12 @@ function print_help(): void
       group:edit <name>    Change a group (same options, plus --name=)
       group:remove <name>  Remove a group; its sites stay, without a group  --force
       group:list           List groups: when they alert and where
+
+    Alerts and servers
+      alert:test [<group>] Send a test alert to a group's destinations
+                           (without a group: the defaults in .env)
+      server:list          Servers and how many sites each one has
+      server:label <ip> <name>  Name a server, so alerts say "web-1 (203.0.113.10)"
 
     Other
       help                 Show this help

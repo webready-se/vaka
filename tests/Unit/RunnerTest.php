@@ -18,6 +18,28 @@ test('a site is not due before its next check', function () {
         ->and(due_uptime_sites($this->db, utc_now($this->now + 300)))->toHaveCount(1);
 });
 
+test('changing what a site is checked for makes it due on the next run', function (array $change) {
+    $id = add_site($this->db, ['url' => 'https://shop.example', 'paused' => true]);
+    save_check_state($this->db, $id, 'uptime', ['status' => 'ok', 'summary' => '', 'details' => [], 'fail_count' => 0, 'changed_at' => null], utc_now($this->now), utc_now($this->now + 300));
+    update_site($this->db, $id, ['paused' => false]);
+    save_check_state($this->db, $id, 'uptime', ['status' => 'ok', 'summary' => '', 'details' => [], 'fail_count' => 0, 'changed_at' => null], utc_now($this->now), utc_now($this->now + 300));
+
+    update_site($this->db, $id, $change);
+    expect(due_uptime_sites($this->db, utc_now($this->now)))->toHaveCount(1);
+})->with([
+    'url' => [['url' => 'https://shop.example/en']],
+    'keyword' => [['keyword' => 'Add to cart']],
+    'interval' => [['interval' => '1']],
+    'resumed' => [['paused' => false]],
+]);
+
+test('a change that does not affect the check keeps the schedule', function () {
+    $id = add_site($this->db, ['url' => 'https://shop.example']);
+    save_check_state($this->db, $id, 'uptime', ['status' => 'ok', 'summary' => '', 'details' => [], 'fail_count' => 0, 'changed_at' => null], utc_now($this->now), utc_now($this->now + 300));
+    update_site($this->db, $id, ['name' => 'The Shop']);
+    expect(due_uptime_sites($this->db, utc_now($this->now)))->toBe([]);
+});
+
 test('paused sites and sites with uptime turned off are never due', function () {
     add_site($this->db, ['url' => 'https://paused.example', 'paused' => true]);
     add_site($this->db, ['url' => 'https://off.example', 'disabled_checks' => 'uptime,ssl']);

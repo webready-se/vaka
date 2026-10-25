@@ -110,9 +110,11 @@ function next_uptime_state(array $state, array $result, int $downAfter, string $
         if ($previous === 'ok') return ['state' => $next, 'event' => null];
 
         $next['changed_at'] = $now;
-        $message = $previous === 'fail'
-            ? 'Up again after ' . human_duration(strtotime($now) - strtotime($details['failing_since'] ?? $state['changed_at'])) . ': '
-            : 'First check: ';
+        $message = 'First check: ';
+        if ($previous === 'fail') {
+            $next['details']['down_seconds'] = strtotime($now) - strtotime($details['failing_since'] ?? $state['changed_at']);
+            $message = 'Up again after ' . human_duration($next['details']['down_seconds']) . ': ';
+        }
         return ['state' => $next, 'event' => ['status' => 'ok', 'previous' => $previous, 'message' => $message . lcfirst($result['summary'])]];
     }
 

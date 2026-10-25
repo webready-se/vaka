@@ -59,6 +59,24 @@ test('find_site matches an id, a URL or a unique host', function () {
         ->and(find_site($this->db, 'nothing.example'))->toBeNull();
 });
 
+test('find_site finds an http site when no scheme is typed, port included', function () {
+    $id = add_site($this->db, ['url' => 'http://127.0.0.1:8791/second']);
+    add_site($this->db, ['url' => 'http://127.0.0.1:8792']);
+    expect(find_site($this->db, '127.0.0.1:8791/second')['id'])->toBe($id)
+        ->and(find_site($this->db, 'https://127.0.0.1:8791/second'))->toBeNull();
+});
+
+test('a bare domain means the site without a path when there are several', function () {
+    $root = add_site($this->db, ['url' => 'http://127.0.0.1:8791']);
+    add_site($this->db, ['url' => 'http://127.0.0.1:8791/second']);
+    add_site($this->db, ['url' => 'https://www.shop.example']);
+    $shop = add_site($this->db, ['url' => 'https://www.shop.example/en']);
+
+    expect(find_site($this->db, '127.0.0.1:8791')['id'])->toBe($root)
+        ->and(find_site($this->db, 'shop.example/en'))->toBeNull()
+        ->and(find_site($this->db, 'www.shop.example/en')['id'])->toBe($shop);
+});
+
 test('update_site changes only the given fields', function () {
     add_group($this->db, ['name' => 'Customers']);
     $id = add_site($this->db, ['url' => 'https://shop.example', 'keyword' => 'Add to cart', 'group' => 'Customers']);
