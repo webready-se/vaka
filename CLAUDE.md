@@ -284,8 +284,9 @@ Pest, dev dependency only. **No real network in tests.** Fixtures use reserved e
 
 - Conventional commits: `type(scope): short description` with types feat, fix, docs, test, chore, refactor, style.
 - One logical change per commit. Stage files explicitly (never `git add .` or `-A`).
-- **Always ask the user before committing or pushing.**
+- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. **Ask before merging to main.**
 - Feature branches, never push straight to main. Tests must pass before pushing (pre-push hook).
+- Before every commit, scan the staged diff for real names, domains, IPs and URLs.
 
 ## Roadmap
 
