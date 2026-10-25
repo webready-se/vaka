@@ -23,9 +23,9 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 
 ## Milestone 1: Uptime
 
-- [ ] Groups: `group:add`, `group:edit`, `group:remove`, `group:list`; each group has an alert policy and its own Slack webhook, JSON webhook and email
-- [ ] Sites: `site:add`, `site:edit`, `site:remove`, `site:list` with URL normalization; a site belongs to one group
-- [ ] `site:import <file.csv>` (`group,url,enabled`), read from wherever the file lives
+- [x] Groups: `group:add`, `group:edit`, `group:remove`, `group:list`; each group has an alert policy and its own Slack webhook, JSON webhook and email
+- [x] Sites: `site:add`, `site:edit`, `site:remove`, `site:list` with URL normalization; a site belongs to one group (or none)
+- [x] `site:import <file.csv>` (`group,url,enabled`), read from wherever the file lives
 - [ ] Runner: `php vaka run` with a lock file, due-check scheduling and a time budget
 - [ ] Parallel HTTP via `curl_multi` with a concurrency limit
 - [ ] Uptime check: status code, response time, optional keyword; down after 2 consecutive failures

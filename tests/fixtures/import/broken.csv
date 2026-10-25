@@ -1,0 +1,4 @@
+group,url,enabled
+Customers,https://shop.example,1
+Customers,not a url,1
+Own sites,https://blog.example.com,perhaps

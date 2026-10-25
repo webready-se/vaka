@@ -27,17 +27,92 @@ function parse_args(array $argv): array
     return [$args, $opts];
 }
 
-/** Ask for a line of input (readline when available, so arrow keys and history work). */
+/** Fail on options a command does not know, so a typo is not silently ignored. */
+function allow_options(array $opts, array $known): void
+{
+    foreach (array_keys($opts) as $name) {
+        if (!in_array($name, $known, true)) {
+            fail("Unknown option --{$name}. Run `php vaka help` to see the options.");
+        }
+    }
+}
+
+/**
+ * Ask for a line of input. Readline (arrow keys, history) on a terminal;
+ * plain reads from a pipe, so answers can be scripted.
+ */
 function prompt(string $label = ''): string
 {
-    if (function_exists('readline')) {
+    if (function_exists('readline') && stream_isatty(STDIN)) {
         return trim((string) readline($label));
     }
     if ($label !== '') {
         echo $label;
         flush();
     }
-    return trim((string) fgets(STDIN));
+    $line = fgets(STDIN);
+    if (!stream_isatty(STDIN)) echo "\n";
+    return trim((string) $line);
+}
+
+/** Ask with a default that Enter accepts. */
+function ask(string $label, string $default = ''): string
+{
+    $answer = prompt($default === '' ? "{$label}: " : "{$label} [{$default}]: ");
+    return $answer === '' ? $default : $answer;
+}
+
+/** Yes or no, where only an explicit yes counts. */
+function confirm(string $question): bool
+{
+    return parse_bool(prompt("{$question} [y/N] ")) === true;
+}
+
+/**
+ * Pick one of $options (value => label) by number. Enter picks $default,
+ * or returns null when there is none.
+ */
+function choose(string $question, array $options, int|string|null $default = null): int|string|null
+{
+    echo $question . "\n";
+    $values = array_keys($options);
+    foreach ($values as $i => $value) {
+        echo sprintf("  %d) %s\n", $i + 1, $options[$value]);
+    }
+    $defaultNumber = $default === null ? '' : (string) (array_search($default, $values, true) + 1);
+    $answer = ask('Choose', $defaultNumber);
+    if ($answer === '') return null;
+    if (!ctype_digit($answer) || !isset($values[(int) $answer - 1])) {
+        fail("\"{$answer}\" is not one of the numbers above.");
+    }
+    return $values[(int) $answer - 1];
+}
+
+/** Rows as aligned columns, with a header line. */
+function print_table(array $headers, array $rows): void
+{
+    $widths = array_map('text_length', $headers);
+    foreach ($rows as $row) {
+        foreach (array_values($row) as $i => $cell) {
+            $widths[$i] = max($widths[$i], text_length((string) $cell));
+        }
+    }
+    $line = function (array $cells) use ($widths) {
+        $out = '';
+        foreach (array_values($cells) as $i => $cell) {
+            $cell = (string) $cell;
+            $out .= $cell . str_repeat(' ', $widths[$i] - text_length($cell) + 2);
+        }
+        echo rtrim($out) . "\n";
+    };
+    $line($headers);
+    foreach ($rows as $row) $line($row);
+}
+
+/** "1 site", "3 sites". */
+function plural(int $count, string $one, string $many): string
+{
+    return $count . ' ' . ($count === 1 ? $one : $many);
 }
 
 /** Print to stderr and exit with $code. */

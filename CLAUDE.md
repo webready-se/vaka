@@ -69,8 +69,11 @@ config.php               Configuration: loads .env, resolves paths (Forge zero-d
 src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines functions only, no side effects
 src/config.php           parse_env(), load_env(), resolve_path(), int_list()
 src/db.php               get_db(), enable_wal(), migrations(), run_migrations()
-src/cli.php              parse_args(), prompt(), fail()
-src/sites.php            normalize_url(), sites, groups, servers
+src/cli.php              parse_args(), allow_options(), prompt(), ask(), confirm(), choose(), print_table(), fail()
+src/sites.php            CHECKS, POLICIES, normalize_url(), groups and sites (validation, storage, plain-words descriptions)
+src/import.php           parse_import_csv(), import_sites() (all or nothing, dry run)
+src/commands/groups.php  group:add, group:edit, group:remove, group:list
+src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:import
 src/http.php             fetch_many(): parallel requests over curl_multi
 src/checks/uptime.php    Uptime + response time + keyword
 src/checks/ssl.php       Peer certificate capture and expiry
@@ -94,7 +97,8 @@ data/vaka.lock           Run lock (flock)
 composer.json            Platform requirements (PHP 8.3+, pdo_sqlite, curl, openssl) + Pest (dev only)
 phpunit.xml              Test configuration (Pest)
 tests/                   Pest suite: Unit/, Feature/, fixtures/
-tests/Support/helpers.php temp_dir(), load_config() and vaka() (CLI as a subprocess, never reads the local .env)
+tests/Support/helpers.php temp_dir(), load_config(), cli_env() and vaka() (CLI as a subprocess, never reads the local .env)
+tests/fixtures/import/   CSV files for site:import (example domains only)
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups and servers
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps

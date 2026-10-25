@@ -28,6 +28,16 @@ function load_config(array $env = []): array
 }
 
 /**
+ * Environment for a CLI test with its own database and users file, so
+ * state carries over between vaka() calls in one test and no further.
+ */
+function cli_env(): array
+{
+    $dir = temp_dir();
+    return ['DB_PATH' => $dir . '/vaka.sqlite', 'USERS_FILE' => $dir . '/users.json'];
+}
+
+/**
  * Run `php vaka ...` as a subprocess. The local .env is never read, and the
  * database and users file live in a temp dir unless $env says otherwise.
  *
