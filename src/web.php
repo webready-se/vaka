@@ -313,6 +313,8 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'unstable' => $row['flapping_since'] !== null,
         'ssl' => $ssl,
         'uptime_24h' => site_uptime($db, $row, 86400, $now),
+        'uptime_30d' => site_uptime($db, $row, 30 * 86400, $now),
+        'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
         'hours' => hourly_buckets($samples, $now, 24),
     ];
 }
@@ -345,8 +347,20 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
         $groups[$key]['sites'][] = $site;
     }
 
+    // The latest outage among the visible sites, for "All quiet. Last outage: ..."
+    $lastIncident = null;
+    if ($rows) {
+        $ids = implode(', ', array_map('intval', array_column($rows, 'id')));
+        $last = $db->query("SELECT e.site_id, e.message, e.created_at FROM events e WHERE e.site_id IN ({$ids}) AND e.check_name = 'uptime' AND e.status = 'fail' ORDER BY e.created_at DESC, e.id DESC LIMIT 1")->fetch();
+        if ($last) {
+            $site = array_values(array_filter($rows, fn ($row) => $row['id'] === $last['site_id']))[0];
+            $lastIncident = ['site_id' => $last['site_id'], 'label' => display_url($site['url']), 'message' => $last['message'], 'at' => $last['created_at']];
+        }
+    }
+
     $lastRun = get_meta($db, 'last_run_at');
     return [
+        'last_incident' => $lastIncident,
         'generated_at' => utc_now($now),
         'timezone' => $config['timezone'],
         'last_run_at' => $lastRun,
@@ -373,6 +387,7 @@ function api_site(PDO $db, array $config, array $row, int $now): array
             'interval_minutes' => site_interval($row, $config),
             'created_at' => $row['created_at'],
         ],
+        'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
         'uptime' => [
             '24h' => site_uptime($db, $row, 86400, $now),
             '7d' => site_uptime($db, $row, 7 * 86400, $now),

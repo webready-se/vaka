@@ -166,7 +166,15 @@ test('site details have the history and response times, and are hidden from user
     expect($admin['status'])->toBe(200)
         ->and(array_column($admin['json']['events'], 'message'))->toBe(['Up again after 12 min: answered 200 OK in 230 ms', 'Down: no answer within 10 s'])
         ->and($admin['json']['samples'][0]['ms'])->toBe(230)
-        ->and($admin['json']['uptime']['24h'])->toBeGreaterThan(99.0)->toBeLessThan(99.2);
+        ->and($admin['json']['uptime']['24h'])->toBeGreaterThan(99.0)->toBeLessThan(99.2)
+        ->and($admin['json']['days'])->toHaveCount(30)
+        ->and(end($admin['json']['days'])['up'])->toBeLessThan(100.0);
+
+    $overview = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
+    expect($overview['groups'][0]['sites'][0]['days'])->toHaveCount(30)
+        // Watched for two days: 12 minutes down out of 48 hours
+        ->and($overview['groups'][0]['sites'][0]['uptime_30d'])->toBe(99.58)
+        ->and($overview['last_incident'])->toMatchArray(['label' => 'blog.example', 'message' => 'Down: no answer within 10 s']);
 
     $anna = http_request('GET', WEB . "/?api=site&id={$blog}", ['jar' => ($this->login)('anna', 'anna password')['jar']]);
     expect($anna['status'])->toBe(404);
