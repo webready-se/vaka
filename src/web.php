@@ -282,7 +282,7 @@ function handle_api(array $config, array $user, string $endpoint, string $method
         if ($allowed !== null) respond_json(403, ['error' => 'Only users who see every site can change groups']);
         $group = get_group($db, (int) ($_GET['id'] ?? 0));
         if (!$group) respond_json(404, ['error' => 'No such group']);
-        respond_json(200, ['group' => group_form_values($db, $group)]);
+        respond_json(200, ['group' => group_form_values($db, $group, $config)]);
     }
     if (in_array($endpoint, ['group-save', 'group-remove', 'alert-test'], true) && $method === 'POST') {
         if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
@@ -308,7 +308,41 @@ function handle_api(array $config, array $user, string $endpoint, string $method
         }
         $saved = save_group_form($db, $config, $input, $id, $user['name'], $now);
         if ($saved['errors']) respond_json(422, ['error' => reset($saved['errors']), 'errors' => $saved['errors']]);
-        respond_json(200, ['group' => group_form_values($db, get_group($db, (int) $saved['id'])), 'changes' => $saved['changes']]);
+        respond_json(200, ['group' => group_form_values($db, get_group($db, (int) $saved['id']), $config), 'changes' => $saved['changes']]);
+    }
+    if ($endpoint === 'server' && $method === 'GET') {
+        if ($allowed !== null) respond_json(403, ['error' => 'Only users who see every site can name servers']);
+        $site = visible_site($db, (int) ($_GET['site'] ?? 0), $allowed);
+        $server = $site ? server_form_values($db, $site) : null;
+        if (!$server) respond_json(404, ['error' => 'This site is not on a server Vaka can name: it is behind a CDN, has a server set by hand, or has not been checked yet']);
+        respond_json(200, ['server' => $server]);
+    }
+    if (in_array($endpoint, ['server-save', 'maintenance-add', 'maintenance-remove'], true) && $method === 'POST') {
+        if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
+        if ($allowed !== null) respond_json(403, ['error' => 'Only users who see every site can change this']);
+        $input = json_decode((string) file_get_contents('php://input'), true) ?: [];
+
+        if ($endpoint === 'server-save') {
+            $saved = save_server_form($db, $input, $user['name'], $now);
+            if ($saved['errors']) respond_json(422, ['error' => reset($saved['errors']), 'errors' => $saved['errors']]);
+            respond_json(200, ['moved' => $saved['moved']]);
+        }
+        if ($endpoint === 'maintenance-remove') {
+            $removed = remove_maintenance_form($db, $config, (int) ($input['id'] ?? 0), $user['name'], $now);
+            if ($removed === null) respond_json(404, ['error' => 'No such maintenance window']);
+            respond_json(200, ['removed' => $removed]);
+        }
+        $siteId = isset($input['site_id']) ? (int) $input['site_id'] : null;
+        $groupId = isset($input['group_id']) ? (int) $input['group_id'] : null;
+        if (($siteId === null) === ($groupId === null) || ($siteId !== null && !visible_site($db, $siteId, $allowed)) || ($groupId !== null && !get_group($db, $groupId))) {
+            respond_json(404, ['error' => 'No such site or group']);
+        }
+        try {
+            respond_json(200, add_maintenance_form($db, $config, $input, $siteId, $groupId, $user['name'], $now));
+        } catch (InvalidArgumentException $e) {
+            $field = str_starts_with($e->getMessage(), 'Label') ? 'label' : 'when';
+            respond_json(422, ['error' => $e->getMessage() . '.', 'errors' => [$field => $e->getMessage() . '.']]);
+        }
     }
     if (($endpoint === 'site-save' || $endpoint === 'site-remove') && $method === 'POST') {
         if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
@@ -554,6 +588,8 @@ function api_site(PDO $db, array $config, array $row, int $now): array
             // As the site's settings have it, for the edit form: null is the default interval
             'interval_custom' => $row['interval_minutes'],
             'checks_off' => array_values(array_filter(explode(',', $row['disabled_checks']))),
+            // The server's IP when it can be named (not behind a CDN, not set by hand)
+            'server_ip' => str_starts_with((string) server_key($row), 'ip:') ? $row['ip'] : null,
             'created_at' => $row['created_at'],
         ],
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
@@ -573,6 +609,8 @@ function site_maintenance(array $windows, array $row, string $timezone, int $now
 {
     $mine = array_filter($windows, fn ($w) => $w['site_id'] === $row['id'] || ($w['group_id'] !== null && $w['group_id'] === $row['group_id']));
     return array_values(array_map(fn ($w) => [
+        'id' => $w['id'],
+        'for' => $w['group_id'] !== null ? 'group' : 'site',
         'when' => describe_window($w, $timezone),
         'label' => $w['label'],
         'active' => window_active($w, $now, $timezone),

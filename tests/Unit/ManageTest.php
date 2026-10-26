@@ -111,3 +111,57 @@ test('save_group_form tells every site in the group what changed, never the webh
         ->and(find_site($this->db, 'shop.example')['group_id'])->toBeNull()
         ->and($this->db->query("SELECT message FROM events WHERE site_id = {$shop} ORDER BY id DESC")->fetchColumn())->toBe('Group Clients removed by admin: no group now, so its alerts go to the defaults in .env');
 });
+
+// =====================================================================
+// Maintenance windows and servers
+// =====================================================================
+
+test('maintenance_form_fields: every day, some days or once, from the form, with plain words for what is missing', function () {
+    $tz = 'Europe/Stockholm';
+    expect(maintenance_form_fields(['kind' => 'daily', 'start' => '00:00', 'end' => '07:00', 'label' => 'Nightly imports'], $tz))
+            ->toMatchArray(['days' => '1,2,3,4,5,6,7', 'start_time' => '00:00', 'end_time' => '07:00', 'label' => 'Nightly imports'])
+        ->and(maintenance_form_fields(['kind' => 'days', 'start' => '22:00', 'end' => '02:00', 'days' => ['mon', 'wed']], $tz)['days'])->toBe('1,3')
+        ->and(maintenance_form_fields(['kind' => 'once', 'from' => '2026-11-01T22:00', 'to' => '2026-11-02T02:00'], $tz))
+            ->toMatchArray(['starts_at' => '2026-11-01T21:00:00Z', 'ends_at' => '2026-11-02T01:00:00Z'])
+        ->and(fn () => maintenance_form_fields(['kind' => 'daily', 'start' => '', 'end' => '07:00'], $tz))->toThrow(InvalidArgumentException::class, 'Give the time it starts and the time it ends')
+        ->and(fn () => maintenance_form_fields(['kind' => 'days', 'start' => '00:00', 'end' => '07:00', 'days' => []], $tz))->toThrow(InvalidArgumentException::class, 'Tick the days it is for')
+        ->and(fn () => maintenance_form_fields(['kind' => 'once', 'from' => '', 'to' => ''], $tz))->toThrow(InvalidArgumentException::class, 'Give when it starts and when it ends');
+});
+
+test('a maintenance window added or removed in the dashboard is in the history of the sites it covers', function () {
+    $group = find_group($this->db, 'Customers')['id'];
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $cafe = add_site($this->db, ['url' => 'https://cafe.example', 'group' => 'Customers']);
+    $config = test_config(['timezone' => 'Europe/Stockholm']);
+    $last = fn (int $site) => $this->db->query("SELECT message FROM events WHERE site_id = {$site} ORDER BY id DESC")->fetchColumn();
+
+    $added = add_maintenance_form($this->db, $config, ['kind' => 'daily', 'start' => '00:00', 'end' => '07:00', 'label' => 'Imports'], null, $group, 'admin', $this->now);
+    expect($added['when'])->toBe('every day 00:00-07:00')
+        ->and($last($shop))->toBe('Maintenance window added by admin for group Customers: every day 00:00-07:00 (Imports)')
+        ->and($last($cafe))->toBe($last($shop));
+
+    $own = add_maintenance_form($this->db, $config, ['kind' => 'daily', 'start' => '12:00', 'end' => '13:00'], $shop, null, 'admin', $this->now);
+    expect(remove_maintenance_form($this->db, $config, $own['id'], 'admin', $this->now))->toBe('every day 12:00-13:00')
+        ->and($last($shop))->toBe('Maintenance window removed by admin: every day 12:00-13:00')
+        ->and(remove_maintenance_form($this->db, $config, 999, 'admin', $this->now))->toBeNull();
+});
+
+test('save_server_form names a server and can move every site on it to a group', function () {
+    $shop = add_site($this->db, ['url' => 'https://shop.example']);
+    $cafe = add_site($this->db, ['url' => 'https://cafe.example', 'group' => 'Customers']);
+    $cdn = add_site($this->db, ['url' => 'https://store.example']);
+    $this->db->exec("UPDATE sites SET ip = '203.0.113.10'");
+    $this->db->exec("UPDATE sites SET cdn = 'Cloudflare' WHERE id = {$cdn}");
+
+    $saved = save_server_form($this->db, ['ip' => '203.0.113.10', 'label' => 'web-1', 'group' => 'Customers'], 'admin', $this->now);
+    expect($saved)->toBe(['errors' => [], 'moved' => 1])
+        ->and(server_labels($this->db))->toBe(['203.0.113.10' => 'web-1'])
+        ->and(find_site($this->db, 'shop.example')['group_id'])->toBe(find_group($this->db, 'Customers')['id'])
+        ->and(find_site($this->db, 'store.example')['group_id'])->toBeNull()
+        ->and($this->db->query("SELECT message FROM events WHERE site_id = {$shop} ORDER BY id DESC")->fetchColumn())->toBe('Moved to group Customers by admin, with every site on server web-1 (203.0.113.10)');
+
+    expect(save_server_form($this->db, ['ip' => '203.0.113.10', 'label' => '', 'group' => null], 'admin', $this->now)['moved'])->toBe(0)
+        ->and(server_labels($this->db))->toBe([])
+        ->and(save_server_form($this->db, ['ip' => '203.0.113.10', 'label' => str_repeat('x', 61)], 'admin', $this->now)['errors'])->toHaveKey('label')
+        ->and(save_server_form($this->db, ['ip' => '203.0.113.10', 'label' => '', 'group' => 'Nobody'], 'admin', $this->now)['errors'])->toHaveKey('group');
+});

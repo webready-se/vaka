@@ -88,10 +88,10 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 
 - [x] Add a site, edit it (group, name, keyword, interval, paused, checks), remove it
 - [x] Groups: add, edit (policy, delay, Slack/webhook/email, a test alert), remove; move a site to a group
-- [ ] Move every site on a server to a group
-- [ ] Maintenance windows: add and remove
-- [ ] Server names (`server:label`)
-- [ ] Forms with CSRF, validation messages in plain words, and an entry in the history for each change
+- [x] Move every site on a server to a group
+- [x] Maintenance windows: add and remove
+- [x] Server names (`server:label`)
+- [x] Forms with CSRF, validation messages in plain words, and an entry in the history for each change
 
 ## Milestone 5: Open source
 

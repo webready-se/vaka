@@ -114,7 +114,7 @@ async function main() {
       const entry = data.params.entry;
       if (/Content Security Policy|Refused to/i.test(entry.text)) errors.push(`CSP: ${entry.text}`);
       // A refused form answers 422 on purpose: the page shows why
-      else if (entry.level === 'error' && !/favicon/.test(entry.url || '') && !(/status of 422/.test(entry.text) && /api=(site|group)-save/.test(entry.url || ''))) errors.push(`Log error: ${entry.text} ${entry.url || ''}`);
+      else if (entry.level === 'error' && !/favicon/.test(entry.url || '') && !(/status of 422/.test(entry.text) && /api=(site-save|group-save|maintenance-add)/.test(entry.url || ''))) errors.push(`Log error: ${entry.text} ${entry.url || ''}`);
     }
     listeners.forEach((l) => l(data));
   };
@@ -319,6 +319,37 @@ async function main() {
           }
         }
       }
+    }
+
+    // A maintenance window from a site's detail, and the server's name
+    all('.site-row').find((r) => /blog\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] [data-action="add-window"]'), 'the detail with its actions')) {
+      q('[data-action="add-window"]').click();
+      if (await waitFor(() => q('[data-form="window"]'), 'the maintenance window form')) {
+        q('[name="kind"][value="days"]').click();
+        await waitFor(() => q('.day-list'), 'the days to show for some days of the week');
+        all('.day-list input').forEach((box) => { box.checked = false; });
+        q('[data-form="window"]').requestSubmit();
+        if (await waitFor(() => q('#w-when-error'), 'the window form to say days are missing')) {
+          expect(/Tick the days/.test(q('#w-when-error').textContent), 'a window without days is explained');
+          q('.day-list input[value="sat"]').checked = true;
+          q('[data-form="window"]').requestSubmit();
+          if (await waitFor(() => all('dialog.drawer .settings dd').some((dd) => /^Sat 00:00-07:00/.test(dd.textContent)), 'the new window in the detail')) {
+            all('dialog.drawer [data-action="window-remove"]').find((b) => /Sat/.test(b.getAttribute('aria-label'))).click();
+            await waitFor(() => !all('dialog.drawer .settings dd').some((dd) => /^Sat 00:00-07:00/.test(dd.textContent)), 'the window to be removed');
+          }
+        }
+      }
+      if (await waitFor(() => q('dialog.drawer[open] [data-action="edit-server"]'), 'the server settings button')) {
+        q('[data-action="edit-server"]').click();
+        if (await waitFor(() => q('[data-form="server"]'), 'the server form')) {
+          expect(q('#s-label').value === 'web-2' && /5 sites answer on 198\.51\.100\.7/.test(q('dialog.drawer').textContent), 'the server form shows its name and how many sites are on it');
+          q('[data-action="form-cancel"]').click();
+          await waitFor(() => q('dialog.drawer[open] [data-action="edit-server"]'), 'cancel to go back to the detail');
+        }
+      }
+      q('dialog.drawer [data-action="close"]').click();
+      await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
     }
 
     // "/" jumps to the filter

@@ -213,9 +213,10 @@ function remove_group_form(PDO $db, array $config, int $id, string $user, string
     return ['name' => $group['name'], 'sites' => $sites];
 }
 
-/** A group as its form shows it: the webhooks masked, never in full. */
-function group_form_values(PDO $db, array $group): array
+/** A group as its form shows it: the webhooks masked, never in full, and its maintenance windows. */
+function group_form_values(PDO $db, array $group, array $config = []): array
 {
+    $windows = array_values(array_filter(list_maintenance($db), fn ($w) => $w['group_id'] === $group['id']));
     return [
         'id' => $group['id'],
         'name' => $group['name'],
@@ -225,5 +226,132 @@ function group_form_values(PDO $db, array $group): array
         'webhook' => mask_secret($group['webhook_url']),
         'email' => $group['email'],
         'sites' => (int) $db->query('SELECT COUNT(*) FROM sites WHERE group_id = ' . (int) $group['id'])->fetchColumn(),
+        'maintenance' => array_map(fn ($w) => ['id' => $w['id'], 'when' => describe_window($w, $config['timezone'] ?? 'UTC'), 'label' => $w['label']], $windows),
     ];
+}
+
+// =====================================================================
+// Maintenance windows and servers
+// =====================================================================
+
+/**
+ * A maintenance window from the dashboard's form, as maintenance_fields()
+ * makes it: `kind` daily, days (with `days`, like ['mon', 'wed']) or once
+ * (`from` and `to` as a browser's datetime-local values).
+ */
+function maintenance_form_fields(array $form, string $timezone): array
+{
+    $text = fn (string $key) => is_scalar($form[$key] ?? null) ? trim((string) $form[$key]) : '';
+    $label = $text('label');
+    if (($form['kind'] ?? '') === 'once') {
+        if ($text('from') === '' || $text('to') === '') throw new InvalidArgumentException('Give when it starts and when it ends');
+        return maintenance_fields(['from' => str_replace('T', ' ', $text('from')), 'to' => str_replace('T', ' ', $text('to')), 'label' => $label], $timezone);
+    }
+    if ($text('start') === '' || $text('end') === '') throw new InvalidArgumentException('Give the time it starts and the time it ends');
+    $opts = ['at' => $text('start') . '-' . $text('end'), 'label' => $label];
+    if (($form['kind'] ?? '') === 'days') {
+        $days = array_filter((array) ($form['days'] ?? []), 'is_string');
+        if (!$days) throw new InvalidArgumentException('Tick the days it is for');
+        $opts['days'] = implode(',', $days);
+    }
+    return maintenance_fields($opts, $timezone);
+}
+
+/** Write a change to a site's history, or to every site in a group. */
+function target_history(PDO $db, ?int $siteId, ?int $groupId, string $message, int $now): void
+{
+    if ($groupId !== null) {
+        group_history($db, $groupId, $message, $now);
+        return;
+    }
+    add_event($db, (int) $siteId, 'settings', ['status' => 'changed', 'previous' => '', 'message' => $message], utc_now($now));
+}
+
+/**
+ * Add a maintenance window for a site or a group from the dashboard, in the
+ * history of the sites it covers. Throws when the form says nothing usable.
+ *
+ * @return array{id: int, when: string}
+ */
+function add_maintenance_form(PDO $db, array $config, array $form, ?int $siteId, ?int $groupId, string $user, int $now): array
+{
+    $fields = maintenance_form_fields($form, $config['timezone']);
+    $id = add_maintenance($db, $siteId, $groupId, $fields);
+    $when = describe_window($fields, $config['timezone']);
+    $for = $groupId !== null ? ' for group ' . get_group($db, $groupId)['name'] : '';
+    target_history($db, $siteId, $groupId, "Maintenance window added by {$user}{$for}: {$when}" . ($fields['label'] !== '' ? " ({$fields['label']})" : ''), $now);
+    return ['id' => $id, 'when' => $when];
+}
+
+/** Remove a maintenance window from the dashboard. Returns it in words, or null when there is no such window. */
+function remove_maintenance_form(PDO $db, array $config, int $id, string $user, int $now): ?string
+{
+    $window = array_values(array_filter(list_maintenance($db), fn ($w) => $w['id'] === $id))[0] ?? null;
+    if (!$window) return null;
+    $when = describe_window($window, $config['timezone']);
+    $for = $window['group_id'] !== null ? " for group {$window['group_name']}" : '';
+    target_history($db, $window['site_id'], $window['group_id'], "Maintenance window removed by {$user}{$for}: {$when}", $now);
+    remove_maintenance($db, $id);
+    return $when;
+}
+
+/** The server a site answers on, for its form: its IP, its name and every site on it. Null behind a CDN, with a server set by hand, or before the first check. */
+function server_form_values(PDO $db, array $site): ?array
+{
+    $key = server_key($site);
+    if ($key === null || !str_starts_with($key, 'ip:')) return null;
+    $stmt = $db->prepare("SELECT s.* FROM sites s WHERE s.ip = ? AND s.cdn = '' AND s.server = ''");
+    $stmt->execute([$site['ip']]);
+    return ['ip' => $site['ip'], 'label' => server_labels($db)[$site['ip']] ?? '', 'sites' => array_map(fn ($s) => display_url($s['url']), sort_sites($stmt->fetchAll(), false))];
+}
+
+/**
+ * Name a server (an empty name removes it), and with `group` move every
+ * site on it to a group ('' for none). Both go in the history of its sites.
+ *
+ * @return array{errors: array<string, string>, moved: int}
+ */
+function save_server_form(PDO $db, array $form, string $user, int $now): array
+{
+    $ip = is_string($form['ip'] ?? null) ? trim($form['ip']) : '';
+    $errors = [];
+    if (!filter_var($ip, FILTER_VALIDATE_IP)) $errors['ip'] = "\"{$ip}\" is not an IP address.";
+    try {
+        $label = clean_text(is_string($form['label'] ?? null) ? $form['label'] : '', 60, 'server name');
+    } catch (InvalidArgumentException $e) {
+        $errors['label'] = $e->getMessage() . '.';
+    }
+    $groupId = null;
+    $move = is_string($form['group'] ?? null);
+    if ($move) {
+        try {
+            $groupId = clean_site_fields($db, ['group' => $form['group']])['group_id'];
+        } catch (InvalidArgumentException $e) {
+            $errors['group'] = $e->getMessage() . '.';
+        }
+    }
+    if ($errors) return ['errors' => $errors, 'moved' => 0];
+
+    $stmt = $db->prepare("SELECT id, group_id FROM sites WHERE ip = ? AND cdn = '' AND server = ''");
+    $stmt->execute([$ip]);
+    $sites = $stmt->fetchAll();
+    $before = server_labels($db)[$ip] ?? '';
+    set_server_label($db, $ip, $label);
+    $server = server_display(['server' => '', 'ip' => $ip], server_labels($db));
+    $history = fn (int $siteId, string $message) => add_event($db, $siteId, 'settings', ['status' => 'changed', 'previous' => '', 'message' => $message], utc_now($now));
+
+    if ($label !== $before) {
+        foreach ($sites as $site) $history($site['id'], $label === '' ? "Server {$ip} has no name now (by {$user})" : "Server {$ip} named {$label} by {$user}");
+    }
+    $moved = 0;
+    if ($move) {
+        $group = $groupId === null ? null : get_group($db, $groupId);
+        foreach ($sites as $site) {
+            if ($site['group_id'] === $groupId) continue;
+            $db->prepare('UPDATE sites SET group_id = ? WHERE id = ?')->execute([$groupId, $site['id']]);
+            $history($site['id'], ($group ? "Moved to group {$group['name']}" : 'Moved out of its group') . " by {$user}, with every site on server {$server}");
+            $moved++;
+        }
+    }
+    return ['errors' => [], 'moved' => $moved];
 }
