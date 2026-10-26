@@ -103,6 +103,18 @@ function notice_for(array $state, string $decision, int $recentOutages, int $now
     return ['action' => 'send', 'kind' => 'up'];
 }
 
+/**
+ * Whether a site that is still down is due a reminder: it was told it is
+ * down at least $hours ago, and nothing changed since. Snoozed and unstable
+ * sites and groups without live alerts get none; 0 hours turns them off.
+ */
+function reminder_due(array $state, ?array $group, int $hours, int $now): bool
+{
+    if ($hours <= 0 || $state['status'] !== 'fail' || $state['alerted_status'] !== 'fail' || $state['flapping_since'] !== null) return false;
+    if (in_array($group['policy'] ?? 'immediate', ['digest', 'silent'], true)) return false;
+    return $now - strtotime($state['alerted_at']) >= $hours * 3600;
+}
+
 /** Outages (changes to down) of a check within the flapping window. */
 function recent_outages(PDO $db, int $siteId, string $check, int $now): int
 {
@@ -165,7 +177,7 @@ function collect_notices(PDO $db, array $config, int $now): array
         JOIN sites s ON s.id = c.site_id
         LEFT JOIN groups g ON g.id = s.group_id
         WHERE c.check_name = 'uptime' AND s.paused = 0 AND c.status IN ('ok', 'fail')
-            AND (c.status != c.alerted_status OR c.flapping_since IS NOT NULL)
+            AND (c.status != c.alerted_status OR c.flapping_since IS NOT NULL OR c.status = 'fail')
         ORDER BY s.id")->fetchAll();
     $labels = server_labels($db);
     $windows = load_windows($db, $now);
@@ -183,7 +195,9 @@ function collect_notices(PDO $db, array $config, int $now): array
         $outages = $decision === 'send' && $row['status'] === 'fail' && $row['flapping_since'] === null
             ? recent_outages($db, $row['site_id'], 'uptime', $now)
             : 0;
-        $notice = notice_for($row, $decision, $outages, $now);
+        $notice = reminder_due($row, $group, $config['remind_every_hours'], $now)
+            ? ['action' => 'send', 'kind' => 'reminder']
+            : notice_for($row, $decision, $outages, $now);
 
         if ($notice['action'] === 'mark') {
             mark_alerted($db, $row['site_id'], 'uptime', $row['status'], null, $now);
@@ -207,8 +221,9 @@ function collect_notices(PDO $db, array $config, int $now): array
             'kind' => $notice['kind'],
             'summary' => $row['summary'],
             'since' => $row['changed_at'],
-            'down_seconds' => json_decode($row['details'], true)['down_seconds'] ?? 0,
+            'down_seconds' => $notice['kind'] === 'reminder' ? $now - strtotime($row['changed_at']) : json_decode($row['details'], true)['down_seconds'] ?? 0,
             'outages' => $outages,
+            'remind_hours' => $config['remind_every_hours'],
             'server_key' => $key,
             'server' => $key === null ? null : server_display($row, $labels),
             'destinations' => $destinations,
@@ -504,8 +519,8 @@ function bundle_notices(array $notices, array $serverSizes): array
         }
     }
 
-    $order = ['unstable' => 0, 'still_down' => 1, 'down' => 2, 'up' => 3, 'stable' => 4, 'ssl_invalid' => 5, 'ssl_expiring' => 6, 'ssl_fixed' => 7, 'ssl_renewed' => 8,
-        'domain_expired' => 9, 'domain_expiring' => 10, 'domain_renewed' => 11, 'exposed' => 12, 'exposed_minor' => 13, 'exposed_fixed' => 14, 'headers_worse' => 15];
+    $order = ['unstable' => 0, 'still_down' => 1, 'down' => 2, 'reminder' => 3, 'up' => 4, 'stable' => 5, 'ssl_invalid' => 6, 'ssl_expiring' => 7, 'ssl_fixed' => 8, 'ssl_renewed' => 9,
+        'domain_expired' => 10, 'domain_expiring' => 11, 'domain_renewed' => 12, 'exposed' => 13, 'exposed_minor' => 14, 'exposed_fixed' => 15, 'headers_worse' => 16];
     $bundles = [];
     foreach ($byDestination as $bundle) {
         $groups = [];
@@ -540,6 +555,7 @@ function alert_text(array $item): array
     $sites = $item['sites'];
     $quiet = 'Vaka stays quiet about it until it has been stable for ' . STABLE_MINUTES . ' min.';
     $window = FLAP_WINDOW_MINUTES . ' min';
+    $remind = fn (string $they, string $them) => 'Vaka reminds you every ' . ($sites[0]['remind_hours'] ?? 0) . " h while {$they} down. Snooze {$them} in Vaka if someone is already on it.";
 
     if ($item['server'] === null) {
         $site = $sites[0];
@@ -551,6 +567,7 @@ function alert_text(array $item): array
         return match ($item['kind']) {
             'down' => ['headline' => "{$who} is down", 'details' => [$site['summary']]],
             'still_down' => ['headline' => "{$who} is still down after the snooze", 'details' => [$site['summary']]],
+            'reminder' => ['headline' => "{$who} has been down for " . human_duration($site['down_seconds']), 'details' => [$site['summary'], $remind('it is', 'it')]],
             'up' => ['headline' => "{$who} is up again{$after}", 'details' => []],
             'unstable' => ['headline' => "{$who} is unstable: down {$site['outages']} times in {$window}", 'details' => [$site['summary'], $quiet]],
             'stable' => ['headline' => "{$who} is stable again: up for " . STABLE_MINUTES . ' min', 'details' => []],
@@ -603,6 +620,10 @@ function alert_text(array $item): array
         'still_down' => [
             'headline' => $all ? "Server {$server}: all {$count} sites are still down after the snooze" : "{$count} of {$item['total']} sites on server {$server} are still down after the snooze",
             'details' => site_reasons($sites, $list),
+        ],
+        'reminder' => [
+            'headline' => ($all ? "Server {$server} is still not answering: all {$count} sites have been down for " : "{$count} of {$item['total']} sites on server {$server} have been down for ") . human_duration($longest),
+            'details' => [...site_reasons($sites, $list), $remind('they are', 'them')],
         ],
         'up' => [
             'headline' => $all ? "Server {$server} is back: {$count} sites up again{$after}" : "{$count} sites on server {$server} are up again{$after}",

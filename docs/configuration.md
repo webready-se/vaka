@@ -26,6 +26,7 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | `SSL_CA_FILE` | (empty) | A CA bundle to verify certificates against instead of the system's, for an internal authority |
 | `USER_AGENT` | `Vaka/<version> (+<APP_URL>)` | The User-Agent of every check |
 | `HEARTBEAT_URL` | (empty) | Pinged at the end of every run, for a dead man's switch such as Healthchecks.io |
+| `REMIND_EVERY_HOURS` | `4` | Hours between reminders while a site stays down ("shop.example has been down for 4 h"). `0` sends none |
 | `DIGEST_TIME` | `08:00` | When groups with the digest policy get their daily summary (local time) |
 | `SLACK_WEBHOOK_URL` | (empty) | Default Slack incoming webhook, for groups without their own |
 | `WEBHOOK_URL` | (empty) | Default JSON webhook |

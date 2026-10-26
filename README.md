@@ -9,7 +9,7 @@ Know when a site goes down, hear about it once, and see what got worse since yes
 ## What makes it different
 
 - **One message, not fifty.** When a server goes down, Vaka sends one alert for every site on it: "server 203.0.113.10: 23 sites down". Recoveries too. Most monitors send one alert per site.
-- **Snooze.** Already on it? Snooze the incident for an hour, four hours or a day. If it is still down when the snooze ends, you hear about it again, so nothing is forgotten.
+- **Snooze.** Already on it? Snooze the incident for an hour, four hours or a day. A site that stays down is otherwise brought up again every four hours, and if it is still down when the snooze ends, you hear about it again, so nothing is forgotten.
 - **Rules per group.** Each group has its own Slack channel and alert policy: right away, after a few minutes down, a daily digest, or dashboard only. Maintenance windows (one-off or every night) keep planned work quiet while checks keep recording.
 - **Watches for things getting worse.** Exposed `.env` files, git folders and database dumps, security headers that disappear, mail DNS that changes. Checked every day, with an alert when something changes, not a one-off scan.
 - **Plain language.** It leads with what is wrong right now and what to do about it. Every number is explained; the detail is one click away.

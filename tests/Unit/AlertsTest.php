@@ -118,6 +118,63 @@ test('the unstable alert uses the warning emoji in Slack', function () {
 });
 
 // =====================================================================
+// A site that stays down
+// =====================================================================
+
+test('reminder_due: a site still down is reminded every few hours after the alert', function (array $state, ?array $group, int $hours, bool $due) {
+    $now = strtotime('2026-10-25T12:00:00Z');
+    $state += ['status' => 'fail', 'alerted_status' => 'fail', 'flapping_since' => null];
+    $state['alerted_at'] = utc_now($now - $state['told_minutes_ago'] * 60);
+    expect(reminder_due($state, $group, $hours, $now))->toBe($due);
+})->with([
+    'told 4 h ago' => [['told_minutes_ago' => 240], null, 4, true],
+    'told 3 h 59 min ago' => [['told_minutes_ago' => 239], null, 4, false],
+    'up again' => [['told_minutes_ago' => 300, 'status' => 'ok'], null, 4, false],
+    'not told yet' => [['told_minutes_ago' => 300, 'alerted_status' => 'ok'], null, 4, false],
+    'snoozed' => [['told_minutes_ago' => 300, 'alerted_status' => 'snoozed'], null, 4, false],
+    'unstable' => [['told_minutes_ago' => 300, 'flapping_since' => '2026-10-25T06:00:00Z'], null, 4, false],
+    'immediate' => [['told_minutes_ago' => 300], ['policy' => 'immediate'], 4, true],
+    'delayed' => [['told_minutes_ago' => 300], ['policy' => 'delayed'], 4, true],
+    'digest' => [['told_minutes_ago' => 300], ['policy' => 'digest'], 4, false],
+    'silent' => [['told_minutes_ago' => 300], ['policy' => 'silent'], 4, false],
+    'turned off' => [['told_minutes_ago' => 3000], null, 0, false],
+]);
+
+test('a reminder says how long the site has been down and how to stop the reminders', function () {
+    $reminder = ['kind' => 'reminder', 'down_seconds' => 4 * 3600 + 120, 'remind_hours' => 4];
+    expect(alert_text(bundle_notices([notice($reminder)], [])[0]['items'][0]))->toBe([
+        'headline' => 'shop.example (Customers) has been down for 4 h 2 min',
+        'details' => ['No answer within 10 s', 'Vaka reminds you every 4 h while it is down. Snooze it in Vaka if someone is already on it.'],
+    ]);
+
+    $server = array_map(fn ($n) => $reminder + $n, down_sites(4));
+    expect(alert_text(bundle_notices($server, ['ip:203.0.113.10' => 4])[0]['items'][0]))->toBe([
+        'headline' => 'Server 203.0.113.10 is still not answering: all 4 sites have been down for 4 h 2 min',
+        'details' => [
+            'site1.example, site2.example, site3.example, site4.example',
+            'No answer within 10 s',
+            'Vaka reminds you every 4 h while they are down. Snooze them in Vaka if someone is already on it.',
+        ],
+    ]);
+    expect(alert_text(bundle_notices(array_slice($server, 0, 2), ['ip:203.0.113.10' => 4])[0]['items'][0])['headline'])
+        ->toBe('2 of 4 sites on server 203.0.113.10 have been down for 4 h 2 min');
+});
+
+test('a reminder is red in Slack and comes after new outages', function () {
+    $bundle = bundle_notices([
+        notice(['site_id' => 1, 'url' => 'https://a.example', 'kind' => 'reminder', 'down_seconds' => 4 * 3600, 'remind_hours' => 4, 'server_key' => null]),
+        notice(['site_id' => 2, 'url' => 'https://b.example', 'server_key' => null]),
+    ], [])[0];
+
+    expect(array_map(fn ($item) => alert_text($item)['headline'], $bundle['items']))->toBe([
+        'b.example (Customers) is down',
+        'a.example (Customers) has been down for 4 h',
+    ])
+        ->and(slack_payload($bundle, '')['text'])->toContain(':red_circle: *a.example (Customers) has been down for 4 h*')
+        ->and(webhook_payload($bundle, '2026-10-25T16:00:00Z')['alerts'][1]['kind'])->toBe('reminder');
+});
+
+// =====================================================================
 // One message, not fifty
 // =====================================================================
 

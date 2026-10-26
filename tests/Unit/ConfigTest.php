@@ -113,6 +113,7 @@ test('config.php has defaults for every setting', function () {
         ->and($config['down_after_failures'])->toBe(2)
         ->and($config['ssl_alert_days'])->toBe([14, 7, 1])
         ->and($config['domain_alert_days'])->toBe([30, 14, 7, 1])
+        ->and($config['remind_every_hours'])->toBe(4)
         ->and($config['digest_time'])->toBe('08:00')
         ->and($config['trusted_proxies'])->toBe([]);
 });

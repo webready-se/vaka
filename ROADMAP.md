@@ -108,7 +108,7 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [ ] Public status pages
 - [ ] DKIM (selectors are site specific)
 - [ ] SMTP delivery for email alerts
-- [ ] Reminder alerts while a site stays down
+- [x] Reminder alerts while a site stays down (every `REMIND_EVERY_HOURS`, 4; held back by a snooze)
 - [ ] Heartbeat monitoring: cron jobs and queues ping Vaka, alert when a ping is missing
 - [ ] Slow-response alerts (response time over a threshold)
 - [ ] TLS details: protocol versions, chain completeness
