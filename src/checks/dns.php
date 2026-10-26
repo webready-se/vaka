@@ -145,7 +145,10 @@ function dns_items(array $details): array
             'level' => !$records['dmarc'] ? 'missing' : ($monitoring ? 'weak' : 'good'),
             'note' => $monitoring ? 'p=none only monitors: email that fails the check is still delivered' : '',
             'fix_label' => $monitoring ? "Change the TXT record at _dmarc.{$shown} to:" : "Add a TXT record at _dmarc.{$shown}:",
-            'fix' => 'v=DMARC1; p=' . ($monitoring ? 'quarantine' : 'none') . "; rua=mailto:dmarc@{$domain}",
+            // A record that only monitors keeps its own reports and options: only p= changes
+            'fix' => $monitoring
+                ? preg_replace('/(^|;)(\s*)p\s*=\s*none\b/i', '$1$2p=quarantine', $records['dmarc'][0], 1)
+                : "v=DMARC1; p=none; rua=mailto:dmarc@{$domain}",
             'tip' => $monitoring
                 ? 'Do it once the reports show only your own servers sending; reject is the step after that.'
                 : 'Point rua at a mailbox you read. Start with p=none and read the reports for a few weeks, then move to quarantine or reject.',
