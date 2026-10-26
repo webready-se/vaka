@@ -25,12 +25,17 @@ function dns_lookup(string $name, int $type): array|false
 
 /**
  * The domain whose mail records matter for a site: the one the domain check
- * found, else the domain its host is on. Null for a site reached by its IP.
+ * found ($checked, only when the registry answered), else the one it had
+ * ($previous) while the site is still on it, else the domain its host is on.
+ * Keeping the previous one means a failed registry lookup never flips
+ * www.shop.example.co.uk to co.uk and back. Null for a site reached by its IP.
  */
-function mail_domain(string $url, ?string $checked): ?string
+function mail_domain(string $url, ?string $checked, ?string $previous = null): ?string
 {
     if ($checked !== null && $checked !== '' && !filter_var($checked, FILTER_VALIDATE_IP)) return $checked;
-    return registrable_candidates((string) parse_url($url, PHP_URL_HOST))[0] ?? null;
+    $candidates = registrable_candidates((string) parse_url($url, PHP_URL_HOST));
+    if ($previous !== null && in_array($previous, $candidates, true)) return $previous;
+    return $candidates[0] ?? null;
 }
 
 /**
@@ -150,8 +155,9 @@ function dns_items(array $details): array
  * Confirm a change before it counts: records that differ from the last
  * confirmed ones are looked up again after DNS_CONFIRM_SECONDS, and count
  * only when that look agrees (resolvers can disagree for a while after a
- * change). Returns the details to store, with the `confirmed` records,
- * when to look next, and the change to record.
+ * change). Another domain (the site moved) is a new start, not a change.
+ * Returns the details to store, with the `confirmed` records and
+ * `confirmed_domain`, when to look next, and the change to record.
  *
  * @return array{details: array, wait: int, change: ?string}
  */
@@ -160,17 +166,17 @@ function confirm_mail_dns(?array $before, array $result): array
     $confirmed = $before['confirmed'] ?? null;
     if ($result['status'] === 'unknown') {
         $wait = $result['details']['problem'] === 'lookup_failed' ? DNS_RETRY_SECONDS : DNS_INTERVAL_SECONDS;
-        return ['details' => $result['details'] + ['confirmed' => $confirmed], 'wait' => $wait, 'change' => null];
+        return ['details' => $result['details'] + ['confirmed' => $confirmed, 'confirmed_domain' => $before['confirmed_domain'] ?? null], 'wait' => $wait, 'change' => null];
     }
 
     $records = $result['details']['records'];
-    $counts = fn (?string $change) => ['details' => $result['details'] + ['confirmed' => $records], 'wait' => DNS_INTERVAL_SECONDS, 'change' => $change];
-    if ($confirmed === null) return $counts('First check: ' . lcfirst($result['summary']));
+    $counts = fn (?string $change) => ['details' => $result['details'] + ['confirmed' => $records, 'confirmed_domain' => $result['details']['domain']], 'wait' => DNS_INTERVAL_SECONDS, 'change' => $change];
+    if ($confirmed === null || ($before['confirmed_domain'] ?? null) !== $result['details']['domain']) return $counts('First check: ' . lcfirst($result['summary']));
     if ($records === $confirmed) return $counts(null);
     if (($before['unconfirmed'] ?? false) && $records === ($before['records'] ?? null)) {
         return $counts('Mail DNS changed: ' . implode('; ', dns_changes($confirmed, $records)));
     }
-    return ['details' => $result['details'] + ['confirmed' => $confirmed, 'unconfirmed' => true], 'wait' => DNS_CONFIRM_SECONDS, 'change' => null];
+    return ['details' => $result['details'] + ['confirmed' => $confirmed, 'confirmed_domain' => $before['confirmed_domain'], 'unconfirmed' => true], 'wait' => DNS_CONFIRM_SECONDS, 'change' => null];
 }
 
 /** What changed between two sets of records, one line per record type: "MX now 10 b.example (was 10 a.example)". */
@@ -194,7 +200,8 @@ function dns_changes(array $from, array $to): array
  * The alert due for a domain's mail records, if any. Any confirmed change
  * from what was last told alerts, since an attacker who changes MX or SPF
  * can read or send the domain's email; a first look is noted without a
- * message, so missing records never alert by themselves. `snapshot` is the
+ * message, so missing records never alert by themselves, and neither do the
+ * records of another domain (the site moved). `snapshot` is the domain and
  * records to store as told.
  *
  * @return array{action: 'send'|'mark'|'none', kind: ?string, snapshot: string, changes: list<string>}
@@ -202,16 +209,17 @@ function dns_changes(array $from, array $to): array
 function dns_notice(array $state, ?array $group): array
 {
     $records = $state['details']['confirmed'] ?? null;
+    $domain = $state['details']['confirmed_domain'] ?? null;
     $told = json_decode($state['alerted_snapshot'] ?: '[]', true) ?: [];
     $result = fn (string $action, ?string $kind = null) => [
         'action' => $action,
         'kind' => $kind,
-        'snapshot' => json_encode($records),
-        'changes' => $told && $records ? dns_changes($told, $records) : [],
+        'snapshot' => json_encode(['domain' => $domain, 'records' => $records]),
+        'changes' => isset($told['records']) && $records ? dns_changes($told['records'], $records) : [],
     ];
 
-    if (in_array($state['status'], ['pending', 'unknown'], true) || $records === null || $records == $told) return $result('none');
-    if (!$told) return $result('mark');
+    if (in_array($state['status'], ['pending', 'unknown'], true) || $records === null || $told == ['domain' => $domain, 'records' => $records]) return $result('none');
+    if (($told['domain'] ?? null) !== $domain || !isset($told['records'])) return $result('mark');
     if (in_array($group['policy'] ?? '', ['silent', 'digest'], true)) return $result('mark');
     return $result('send', 'dns_changed');
 }

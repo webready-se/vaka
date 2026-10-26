@@ -29,6 +29,25 @@ test('lookup_mail_dns: MX by priority, the SPF and DMARC records, in one spellin
     expect(lookup_mail_dns('shop.example', $this->resolve))->toBeNull();
 });
 
+test('mail_domain keeps the domain it had while the domain check cannot say, as long as the site is still on it', function () {
+    expect(mail_domain('https://www.shop.example.co.uk', null, 'shop.example.co.uk'))->toBe('shop.example.co.uk')
+        ->and(mail_domain('https://www.shop.example.co.uk', 'shop.example.co.uk', 'example.co.uk'))->toBe('shop.example.co.uk')
+        ->and(mail_domain('https://b.example', null, 'a.example'))->toBe('b.example');
+});
+
+test('a new mail domain is a new start, not a change, and its first look never alerts', function () {
+    $a = evaluate_mail_dns('a.example', ['mx' => ['10 mx.a.example'], 'spf' => ['v=spf1 -all'], 'dmarc' => []]);
+    $b = evaluate_mail_dns('b.example', ['mx' => ['10 mx.b.example'], 'spf' => ['v=spf1 -all'], 'dmarc' => []]);
+    $first = confirm_mail_dns(null, $a);
+    $moved = confirm_mail_dns($first['details'], $b);
+    expect($moved['change'])->toBe('First check: mail for b.example: DMARC is missing')
+        ->and($moved['wait'])->toBe(DNS_INTERVAL_SECONDS)
+        ->and($moved['details']['confirmed_domain'])->toBe('b.example');
+
+    $told = dns_notice(['status' => 'warn', 'details' => $first['details'], 'alerted_snapshot' => '[]'], null)['snapshot'];
+    expect(dns_notice(['status' => 'warn', 'details' => $moved['details'], 'alerted_snapshot' => $told], ['policy' => 'immediate'])['action'])->toBe('mark');
+});
+
 test('mail_domain: the domain check\'s domain, else the domain the site is on', function () {
     expect(mail_domain('https://www.shop.example/path', 'shop.example'))->toBe('shop.example')
         ->and(mail_domain('https://app.shop.example', null))->toBe('shop.example')
@@ -120,13 +139,14 @@ test('dns_changes: what was added, removed or changed, record by record', functi
 
 test('dns_notice: any confirmed change alerts, a first look never does', function () {
     $records = ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 -all'], 'dmarc' => []];
-    $state = ['status' => 'warn', 'details' => ['confirmed' => $records], 'alerted_snapshot' => '[]'];
+    $snapshot = json_encode(['domain' => 'shop.example', 'records' => $records]);
+    $state = ['status' => 'warn', 'details' => ['confirmed' => $records, 'confirmed_domain' => 'shop.example'], 'alerted_snapshot' => '[]'];
 
-    expect(dns_notice($state, null))->toMatchArray(['action' => 'mark', 'kind' => null, 'snapshot' => json_encode($records)])
-        ->and(dns_notice(['alerted_snapshot' => json_encode($records)] + $state, null)['action'])->toBe('none')
+    expect(dns_notice($state, null))->toMatchArray(['action' => 'mark', 'kind' => null, 'snapshot' => $snapshot])
+        ->and(dns_notice(['alerted_snapshot' => $snapshot] + $state, null)['action'])->toBe('none')
         ->and(dns_notice(['status' => 'unknown'] + $state, null)['action'])->toBe('none');
 
-    $told = json_encode(['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=reject']]);
+    $told = json_encode(['domain' => 'shop.example', 'records' => ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=reject']]]);
     $notice = dns_notice(['alerted_snapshot' => $told] + $state, ['policy' => 'immediate']);
     expect($notice)->toMatchArray(['action' => 'send', 'kind' => 'dns_changed', 'changes' => ['DMARC removed (was v=DMARC1; p=reject)']])
         ->and(dns_notice(['alerted_snapshot' => $told] + $state, ['policy' => 'digest'])['action'])->toBe('mark');

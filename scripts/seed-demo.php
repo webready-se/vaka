@@ -158,7 +158,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         $confirmed = confirm_mail_dns(null, $mail)['details'];
         save_check_state($db, $id, 'dns', ['status' => $mail['status'], 'summary' => $mail['summary'], 'details' => $confirmed, 'fail_count' => 0, 'changed_at' => utc_now($month)], utc_now($now - 3 * 3600), utc_now($now + 3 * 3600));
         $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_snapshot = ? WHERE site_id = ? AND check_name = 'dns'")
-            ->execute([$mail['status'], json_encode($confirmed['confirmed']), $id]);
+            ->execute([$mail['status'], json_encode(['domain' => $domain, 'records' => $confirmed['confirmed']]), $id]);
     }
 
     $alerted = in_array($story, ['down', 'snoozed', 'hostile'], true) ? 'fail' : 'ok';
