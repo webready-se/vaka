@@ -187,6 +187,14 @@ test('site:edit on a server changes only the group', function () {
         ->and($r['err'])->toContain('For a whole server, only --group can change');
 });
 
+test('site messages show an international domain as it is written, not as xn--', function () {
+    expect(vaka(['site:add', 'https://xn--rksmrgs-5wao1o.example'], $this->env)['out'])->toContain('Added https://räksmörgås.example.')
+        ->and(vaka(['site:list'], $this->env)['out'])->toContain('https://räksmörgås.example');
+    $r = vaka(['site:remove', 'räksmörgås.example'], $this->env, "y\n");
+    expect($r['out'])->toContain('Remove https://räksmörgås.example and its history? (y/N)')
+        ->and($r['out'])->toContain('Removed https://räksmörgås.example.');
+})->skip(!function_exists('idn_to_utf8'), 'needs the intl extension');
+
 test('site:add without arguments asks for what it needs', function () {
     // URL, then Enter for name, keyword and interval (no groups exist, so no group question)
     $r = vaka(['site:add'], $this->env, "shop.example\n\n\n\n");
