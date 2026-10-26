@@ -29,15 +29,21 @@ function load_config(array $env = []): array
 
 /**
  * Stop with a clear message when another process already listens on $port:
- * otherwise the tests would quietly talk to that process instead.
+ * otherwise the tests would quietly talk to that process instead. The
+ * workers of a server the previous test file just stopped can hold the
+ * port a moment longer, so it gets three seconds to come free first.
  */
 function assert_port_free(int $port): void
 {
     set_error_handler(fn () => true);
-    $sock = fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2);
+    for ($i = 0; $i < 30; $i++) {
+        $sock = fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2);
+        if (!$sock) break;
+        fclose($sock);
+        usleep(100_000);
+    }
     restore_error_handler();
     if (!$sock) return;
-    fclose($sock);
     throw new RuntimeException("Port {$port} is already taken by another process, so the tests cannot start their server there. See what holds it with `lsof -nP -iTCP:{$port} -sTCP:LISTEN`.");
 }
 
