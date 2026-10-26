@@ -3,7 +3,7 @@
 require_once __DIR__ . '/src/config.php';
 
 // VAKA_ENV_FILE points somewhere else (tests use /dev/null to skip the local .env)
-load_env(getenv('VAKA_ENV_FILE') ?: __DIR__ . '/.env');
+load_env(getenv('VAKA_ENV_FILE') ?: env_file(__DIR__));
 
 $env = fn (string $key, string $default = '') => (string) ($_ENV[$key] ?? $default);
 

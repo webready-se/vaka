@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Configuration from an optional `.env` file, with OS environment variables taking precedence.
+- Configuration from an optional `.env` file, with OS environment variables taking precedence. On a Forge zero-downtime deploy it is read from the site root, where Forge keeps it.
 - SQLite database in WAL mode with versioned, lazy migrations.
 - `php vaka` command line tool with `help` and `version`.
 - Groups: `group:add`, `group:edit`, `group:remove` and `group:list`. Each group has an alert policy (right away, after a number of minutes down, a daily summary, or dashboard only) and its own Slack webhook, JSON webhook and email addresses; a group without its own destinations uses the defaults in `.env`. Webhook URLs are shown masked.

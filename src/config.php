@@ -47,6 +47,16 @@ function resolve_path(string $path, string $root): string
     return rtrim($root, '/') . '/' . $path;
 }
 
+/**
+ * The .env file for a project root: next to the code, or on a Forge
+ * zero-downtime deploy in the site root, where Forge's Environment tab keeps
+ * it (whether or not a release links to it).
+ */
+function env_file(string $root): string
+{
+    return resolve_path('.env', $root);
+}
+
 /** The cron line that runs Vaka from $root; on a Forge zero-downtime deploy through current/, which follows every release. */
 function cron_line(string $root): string
 {

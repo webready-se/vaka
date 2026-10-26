@@ -48,9 +48,9 @@ php vaka alert:test
 ## Laravel Forge
 
 1. Create a site (for example `vaka.example.com`) on a server that hosts none of the watched sites, and connect the repository. Set the **web directory** to `/public`.
-2. Turn on **zero-downtime deployments** if you like: Vaka notices the `releases/` directory and keeps `data/` and `users.json` next to it, so they survive every deploy, and Forge shares `.env` between releases.
+2. Turn on **zero-downtime deployments** if you like: Vaka notices the `releases/` directory and keeps `data/` and `users.json` next to it, so they survive every deploy, and reads `.env` from there too, where the Environment tab saves it.
 3. In the site's **Environment** tab, set what you need from `.env.example` (at least `APP_URL`, `SLACK_WEBHOOK_URL` and `HEARTBEAT_URL`).
-4. Add a **scheduled job**, every minute: `php /home/forge/vaka.example.com/current/vaka run` (or `.../vaka.example.com/vaka run` without zero-downtime deployments).
+4. Add a **scheduled job**, every minute: `php /home/forge/vaka.example.com/current/vaka run` (or `.../vaka.example.com/vaka run` without zero-downtime deployments). The dashboard shows the exact line once you have logged in.
 5. Add the first user over SSH: `php vaka user:add admin`.
 6. Turn on Let's Encrypt for the site.
 
