@@ -8,7 +8,7 @@
 
 - `.private/real-names.txt` (gitignored) lists the real names: the sites from the real site list, servers, IPs, customers and services. Keep it up to date when sites or servers change.
 - `scripts/hooks/pre-commit` stops a commit that adds a line with one of them; `scripts/hooks/commit-msg` stops a commit message with one. Both use `scripts/hooks/real-names`, and `composer install` turns them on (`core.hooksPath`).
-- `.claude/hooks/no-real-names.sh` (PreToolUse) stops `gh pr|issue create/edit/comment/review` and `gh release create/edit` when the text, inline or in `--body-file`, contains one.
+- `.claude/hooks/no-real-names.sh` (PreToolUse) stops `gh pr|issue create/edit/comment/review` and `gh release create/edit` when the text, inline or in `--body-file`, contains one. Local paths in the command are not checked (they never reach GitHub); give `--body-file` a path without shell variables, so the hook can read it.
 - Without `.private/real-names.txt` (a fresh clone, a contributor) nothing is checked: the list is what is private.
 
 When a hook stops you, rewrite the text with example names. Never bypass it with `--no-verify`, and never weaken the list to get a commit through.

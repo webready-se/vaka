@@ -9,9 +9,15 @@ if ! printf '%s' "$CMD" | grep -qE 'gh (pr|issue) (create|edit|comment|review)|g
   exit 0
 fi
 
-TEXT="$CMD"
+# What reaches GitHub is the text, not local paths (which hold the user name):
+# leave out absolute, home and $VAR/ paths, and add the files they point to
+TEXT=$(printf '%s' "$CMD" | sed -E 's#(^|[[:space:]=])(/|~/|\$[A-Za-z_]+/)[^[:space:];&|"'"'"']*#\1#g')
 for FILE in $(printf '%s' "$CMD" | grep -oE -- '--body-file[= ]+[^ ;&|]+' | sed -E 's/^--body-file[= ]+//; s/^["'\'']//; s/["'\'']$//'); do
-  [ -f "$FILE" ] && TEXT="$TEXT
+  if [ ! -f "$FILE" ]; then
+    echo "Stopped: cannot read --body-file $FILE to check it for real names. Give it as a path without shell variables." >&2
+    exit 2
+  fi
+  TEXT="$TEXT
 $(cat "$FILE")"
 done
 
