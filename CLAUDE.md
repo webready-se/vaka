@@ -102,6 +102,7 @@ src/checks/headers.php   SECURITY_HEADERS, header_level() (good/weak/missing), h
 src/checks/dns.php       lookup_mail_dns() (MX, SPF, DMARC in one spelling; resolver injected), mail_domain(), evaluate_mail_dns(), dns_items(), confirm_mail_dns() (a change counts after a second look), dns_notice() (any confirmed change)
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
 src/silence.php          Maintenance windows (parse, window_active() in local time, describe), active_silence(), snooze_site()
+src/manage.php           Changing sites from the dashboard: site_form_input() (an error per field, the CLI's rules), save_site_form(), describe_site_changes() (history in words), remove_site_form() (kept in the audit log); CHECK_LABELS
 src/share.php            Read tokens: create_share_token() (only a SHA-256 and the first 8 characters are kept), find_share_token(), share_scope(), share_expiry()
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
@@ -111,7 +112,7 @@ src/web.php              handle_request() routing, CSP and security headers, log
 src/commands/users.php   user:add, user:edit, user:remove, user:list
 public/index.php         Web front controller (three lines: bootstrap, config, handle_request())
 public/dashboard.html    Dashboard markup (no inline script or style; {{csrf}}, {{version}}, {{user}} filled in by show_dashboard())
-public/app.js            Dashboard JS: hero, "Needs your attention" (outages first, one card per server), sites by group with 24 h sparklines, filter, detail dialog (#site-N), snooze, theme; one click listener (data-action), DOM built with textContent
+public/app.js            Dashboard JS: hero, "Needs your attention" (outages first, one card per server), sites by group with 24 h sparklines, filter, detail dialog (#site-N), snooze, theme, the site form (add, change, remove) in the drawer; one click listener (data-action) and one submit listener (data-form), DOM built with textContent
 public/app.css           Styles for the login and the dashboard (light + dark)
 public/theme.js          Applies a saved light/dark choice before paint (loaded in <head>, no inline script needed)
 public/favicon.svg       The kit's owl mark on deep teal (favicon-alert.svg: on red, eyes wide, shown while a site is down)
@@ -245,6 +246,8 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 | `GET /` | Yes | Dashboard (redirects to `/?login` without a session) |
 | `GET /?api=overview` | Yes | Totals, last run, the last outage, `setup` (this server's PHP command, the directory to run commands in, the cron line, whether alerts can go anywhere; only for users who see everything), and every visible site by group: status, summary, advice, since, response time, server, snooze, maintenance, unstable, 24 h and 30 d uptime, 30 daily bars, hourly buckets, and the certificate, domain, exposed files and headers grade |
 | `GET /?api=site&id=N` | Yes | One site: the overview's fields plus each security header (what it does, how to add it), uptime 24 h / 7 d / 30 d, samples of the last 24 h, last 100 uptime events, maintenance windows. 404 when not visible |
+| `POST /?api=site-save` | Yes, a user who sees every site | Add (`{url, group, name, keyword, interval, paused, checks}`) or change (`id` too) a site; needs `X-CSRF-Token`; 422 `{error, errors: {field: message}}` and nothing saved when a field is wrong; a change goes in the site's history (`settings` event, who and what) |
+| `POST /?api=site-remove` | Yes, a user who sees every site | `{id}`: remove a site and its history; needs `X-CSRF-Token`; kept in the audit log |
 | `POST /?api=snooze` | Yes | `{site_id, for: "1h"\|"4h"\|"24h"}` or `{site_id, action: "unsnooze"}`; needs `X-CSRF-Token`; 404 when not visible |
 | `GET /?api` | Read token or session | The read API (docs/api.md): every site in the token's group or site (or the user's), in stable field names; `&site=` one site with 30 days, samples (`&hours=`, up to 720) and the last 100 events of every check; `&format=csv`. Token as `Authorization: Bearer` or `&share=`, needs no session and sets no cookie; an unknown, revoked or expired token is a 404 |
 

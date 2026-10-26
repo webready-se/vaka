@@ -13,7 +13,7 @@
     regions[node.getAttribute('data-region')] = node;
   });
   var filterInput = document.querySelector('[data-filter]');
-  var state = { data: null, filter: '', detailId: null, detail: null, timezone: undefined, failed: false, open: {}, autoOpen: null };
+  var state = { data: null, filter: '', detailId: null, detail: null, form: null, timezone: undefined, failed: false, open: {}, autoOpen: null };
 
   // =================================================================
   // DOM helpers
@@ -76,7 +76,8 @@
     moon: ['M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z'],
     monitor: ['M4 5h16v11H4z', 'M9 20h6M12 16v4'],
     chevron: ['m6 9 6 6 6-6'],
-    info: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 11v5', 'M12 8h.01']
+    info: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 11v5', 'M12 8h.01'],
+    plus: ['M12 5v14', 'M5 12h14']
   };
 
   function icon(name) {
@@ -217,7 +218,11 @@
           throw new Error('Logged out');
         }
         return response.json().then(function (body) {
-          if (!response.ok) throw new Error(body.error || 'Something went wrong');
+          if (!response.ok) {
+            var error = new Error(body.error || 'Something went wrong');
+            error.body = body;
+            throw error;
+          }
           return body;
         });
       });
@@ -283,6 +288,8 @@
     renderGroups();
     // No list to show or filter before the first site
     regions.sites.hidden = state.data.totals.sites === 0;
+    // Only users who see every site can change sites
+    document.querySelector('[data-add-site]').hidden = !state.data.setup;
     renderTab();
     document.getElementById('app').setAttribute('aria-busy', 'false');
   }
@@ -435,6 +442,8 @@
       h('p', {}, ['Three steps, and Vaka keeps watch from the next minute on. Run the commands on the server, in ', h('code', {}, setup.dir), '.']),
       h('ol', { class: 'steps' }, [
         step(false, 'Add a site, or import a whole list', [
+          h('button', { type: 'button', class: 'button is-primary', 'data-action': 'add-site' }, [icon('plus'), 'Add a site']),
+          h('small', {}, 'Or on the server:'),
           command(setup.php + ' vaka site:add https://shop.example'),
           command(setup.php + ' vaka site:import sites.csv'),
           h('small', {}, 'A list is a CSV file with a url column, and optionally group and enabled.')
@@ -774,6 +783,7 @@
   function closeDetail() {
     state.detailId = null;
     state.detail = null;
+    state.form = null;
     if (regions.detail.open) regions.detail.close();
     if (window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search);
     if (state.opener && document.body.contains(state.opener)) state.opener.focus();
@@ -841,8 +851,189 @@
       h('dl', { class: 'settings' }, settings.reduce(function (list, row) {
         return list.concat([h('dt', {}, row[0]), h('dd', {}, row[1])]);
       }, [])),
-      h('p', { class: 'drawer-hint' }, ['Change this site with ', h('code', {}, 'php vaka site:edit ' + site.label)])
+      state.data.setup ? h('div', { class: 'actions' }, [
+        h('button', { type: 'button', class: 'button', 'data-action': 'edit-site' }, 'Change settings')
+      ]) : null
     ]));
+  }
+
+  // =================================================================
+  // Adding and changing a site, in the drawer (users who see every site)
+  // =================================================================
+
+  /** Open the form: for a new site (detail null) or for the site in the drawer. */
+  function openSiteForm(detail, opener) {
+    var setup = state.data.setup;
+    var site = detail ? detail.site : null;
+    state.form = {
+      id: site ? site.id : null,
+      label: site ? site.label : null,
+      errors: {},
+      confirmRemove: false,
+      values: site ? {
+        url: site.url, group: site.group || '', name: site.name, keyword: site.keyword,
+        interval: site.interval_custom === null ? '' : String(site.interval_custom), paused: site.status === 'paused',
+        checks: setup.checks.map(function (c) { return c.key; }).filter(function (key) { return site.checks_off.indexOf(key) === -1; })
+      } : {
+        // A good start: every check on, the only group if there is one
+        url: '', group: setup.groups.length === 1 ? setup.groups[0] : '', name: '', keyword: '', interval: '', paused: false,
+        checks: setup.checks.map(function (c) { return c.key; })
+      }
+    };
+    if (opener) state.opener = opener;
+    renderSiteForm();
+    if (!regions.detail.open) regions.detail.showModal();
+    var first = regions.detail.querySelector('[aria-invalid="true"]') || regions.detail.querySelector('#f-url');
+    if (first) first.focus();
+  }
+
+  /** A labelled field with its hint and, after a failed save, what was wrong. */
+  function field(name, label, control, hint) {
+    var id = 'f-' + name;
+    var error = state.form.errors[name];
+    control.id = id;
+    var describedBy = [hint ? id + '-hint' : null, error ? id + '-error' : null].filter(Boolean).join(' ');
+    if (describedBy) control.setAttribute('aria-describedby', describedBy);
+    if (error) control.setAttribute('aria-invalid', 'true');
+    return h('div', { class: 'field' + (error ? ' is-invalid' : '') }, [
+      h('label', { for: id }, label),
+      control,
+      error ? h('p', { class: 'field-error', id: id + '-error' }, error) : null,
+      hint ? h('p', { class: 'field-hint', id: id + '-hint' }, hint) : null
+    ]);
+  }
+
+  function textInput(name, value, attrs) {
+    var input = h('input', Object.assign({ type: 'text', name: name, autocomplete: 'off', spellcheck: 'false' }, attrs || {}));
+    input.value = value || '';
+    return input;
+  }
+
+  function renderSiteForm() {
+    var form = state.form;
+    var setup = state.data.setup;
+    var v = form.values;
+    var node = regions.detail;
+    clear(node);
+
+    var group = h('select', { name: 'group' }, [h('option', { value: '' }, 'No group')].concat(setup.groups.map(function (name) {
+      return h('option', { value: name }, name);
+    })));
+    group.value = v.group;
+
+    var minutes = [1, 2, 5, 10, 15, 30, 60].filter(function (m) { return m !== setup.interval; });
+    if (v.interval !== '' && minutes.indexOf(Number(v.interval)) === -1) minutes.push(Number(v.interval));
+    var interval = h('select', { name: 'interval' }, [h('option', { value: '' }, 'Every ' + setup.interval + ' min (the default)')].concat(minutes.sort(function (a, b) { return a - b; }).map(function (m) {
+      return h('option', { value: String(m) }, m === 1 ? 'Every minute' : 'Every ' + m + ' min');
+    })));
+    interval.value = v.interval;
+
+    var checks = h('fieldset', { class: 'field' + (form.errors.checks ? ' is-invalid' : '') }, [
+      h('legend', {}, 'Checks'),
+      h('ul', { class: 'check-list' }, setup.checks.map(function (check) {
+        var box = h('input', { type: 'checkbox', name: 'checks', value: check.key });
+        box.checked = v.checks.indexOf(check.key) !== -1;
+        return h('li', {}, h('label', {}, [box, check.label]));
+      })),
+      form.errors.checks ? h('p', { class: 'field-error' }, form.errors.checks) : null
+    ]);
+
+    var paused = null;
+    if (form.id) {
+      var box = h('input', { type: 'checkbox', name: 'paused', id: 'f-paused' });
+      box.checked = v.paused;
+      paused = h('div', { class: 'field' }, h('label', { class: 'check' }, [box, 'Paused: no checks and no alerts until it is resumed']));
+    }
+
+    var remove = null;
+    if (form.id) {
+      remove = form.confirmRemove
+        ? h('div', { class: 'confirm', role: 'alert' }, [
+          h('p', {}, ['Remove ', h('b', {}, form.label), ' and its whole history? This cannot be undone.']),
+          h('div', { class: 'actions' }, [
+            h('button', { type: 'button', class: 'button is-danger', 'data-action': 'remove-site' }, 'Remove site'),
+            h('button', { type: 'button', class: 'button', 'data-action': 'remove-cancel' }, 'Keep it')
+          ])
+        ])
+        : h('div', { class: 'danger-zone' }, h('button', { type: 'button', class: 'button is-quiet-danger', 'data-action': 'remove-ask' }, 'Remove this site…'));
+    }
+
+    append(node, h('div', { class: 'drawer-inner is-form' }, [
+      h('div', { class: 'drawer-head' }, [
+        h('div', { class: 'medallion' }, icon(form.id ? 'pending' : 'plus')),
+        h('div', {}, [
+          h('h2', { id: 'detail-title' }, form.id ? 'Change ' + form.label : 'Add a site'),
+          h('p', {}, form.id ? 'The change counts from the next check.' : 'Vaka checks it within a minute of saving.')
+        ]),
+        h('button', { type: 'button', class: 'close-button', 'data-action': 'close', 'aria-label': 'Close' }, icon('close'))
+      ]),
+      h('form', { class: 'site-form', 'data-form': 'site', novalidate: true }, [
+        field('url', 'Address', textInput('url', v.url, { inputmode: 'url', placeholder: 'https://shop.example' }), 'The page Vaka checks. A domain alone means https.'),
+        field('group', 'Group', group, setup.groups.length ? 'Alerts go where the group says.' : 'No groups yet: alerts go to the defaults in .env.'),
+        field('name', 'Name', textInput('name', v.name, { spellcheck: 'true' }), 'Optional, shown with the address.'),
+        field('keyword', 'Text that must be on the page', textInput('keyword', v.keyword), 'Optional. Catches an error page that still answers 200 OK.'),
+        field('interval', 'Check uptime', interval, 'A site that fails is checked again every minute regardless.'),
+        checks,
+        paused,
+        h('div', { class: 'actions' }, [
+          h('button', { type: 'submit', class: 'button is-primary' }, form.id ? 'Save changes' : 'Add site'),
+          h('button', { type: 'button', class: 'button', 'data-action': 'form-cancel' }, 'Cancel')
+        ]),
+        remove
+      ])
+    ]));
+  }
+
+  /** The form's values, as the API takes them. */
+  function formValues(formNode) {
+    var data = new FormData(formNode);
+    return {
+      url: data.get('url') || '', group: data.get('group') || '', name: data.get('name') || '', keyword: data.get('keyword') || '',
+      interval: data.get('interval') || '', paused: data.get('paused') === 'on', checks: data.getAll('checks')
+    };
+  }
+
+  function saveSite(formNode) {
+    var form = state.form;
+    var body = formValues(formNode);
+    form.values = body;
+    if (form.id) body = Object.assign({ id: form.id }, body);
+    var submit = formNode.querySelector('[type="submit"]');
+    submit.disabled = true;
+    return api('/?api=site-save', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify(body)
+    }).then(function (result) {
+      toast(form.id ? (result.changes.length ? 'Saved ' + result.site.label : 'Nothing changed') : 'Added ' + result.site.label + ': the first check runs within a minute');
+      state.form = null;
+      return load().then(function () { return openDetail(result.site.id); });
+    }).catch(function (error) {
+      if (error.message === 'Logged out') return;
+      submit.disabled = false;
+      if (!error.body || !error.body.errors) return toast(error.message);
+      form.errors = error.body.errors;
+      renderSiteForm();
+      var invalid = regions.detail.querySelector('[aria-invalid="true"]');
+      if (invalid) invalid.focus();
+    });
+  }
+
+  function removeSite(button) {
+    var form = state.form;
+    button.disabled = true;
+    return api('/?api=site-remove', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ id: form.id })
+    }).then(function (result) {
+      toast('Removed ' + result.removed);
+      closeDetail();
+      return load();
+    }).catch(function (error) {
+      if (error.message !== 'Logged out') toast(error.message);
+      button.disabled = false;
+    });
   }
 
   function capitalize(text) {
@@ -1019,6 +1210,24 @@
 
     if (action === 'open') openDetail(target.getAttribute('data-site'), target);
     if (action === 'close') closeDetail();
+    if (action === 'add-site') openSiteForm(null, target);
+    if (action === 'edit-site' && state.detail) openSiteForm(state.detail);
+    if (action === 'form-cancel') {
+      if (state.form && state.form.id && state.detail) {
+        state.form = null;
+        renderDetail();
+      } else {
+        closeDetail();
+      }
+    }
+    if (action === 'remove-ask' || action === 'remove-cancel') {
+      state.form.values = formValues(regions.detail.querySelector('[data-form="site"]'));
+      state.form.confirmRemove = action === 'remove-ask';
+      renderSiteForm();
+      var next = regions.detail.querySelector(action === 'remove-ask' ? '[data-action="remove-site"]' : '[data-action="remove-ask"]');
+      if (next) next.focus();
+    }
+    if (action === 'remove-site') removeSite(target);
     if (action === 'snooze') snooze(target.getAttribute('data-sites').split(','), { 'for': target.getAttribute('data-for') }, target);
     if (action === 'unsnooze') snooze(target.getAttribute('data-sites').split(','), { action: 'unsnooze' }, target);
     if (action === 'copy') {
@@ -1029,6 +1238,14 @@
       try { localStorage.setItem('vaka-theme', next); } catch (e) { /* storage blocked: the choice lasts for this page */ }
       applyTheme(next);
     }
+  });
+
+  // The site form saves through the API, not as a page load
+  document.addEventListener('submit', function (event) {
+    var formNode = event.target.closest && event.target.closest('[data-form="site"]');
+    if (!formNode) return;
+    event.preventDefault();
+    saveSite(formNode);
   });
 
   // "/" jumps to the filter, as in most tools
@@ -1044,8 +1261,9 @@
   regions.detail.addEventListener('click', function (event) {
     if (event.target === regions.detail) closeDetail();
   });
+  // Esc closes it too. The event comes a moment later, so one from an earlier close must not shut a drawer opened since
   regions.detail.addEventListener('close', function () {
-    if (state.detailId) closeDetail();
+    if (!regions.detail.open && (state.detailId || state.form)) closeDetail();
   });
 
   // Remember which rows people opened or closed, so a refresh does not undo it

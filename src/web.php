@@ -278,6 +278,21 @@ function handle_api(array $config, array $user, string $endpoint, string $method
         $row = overview_rows($db, 's.id = ' . $site['id'])[0];
         respond_json(200, ['site' => site_summary($db, $config, $row, server_labels($db), load_windows($db, $now), [], $now)]);
     }
+    if (($endpoint === 'site-save' || $endpoint === 'site-remove') && $method === 'POST') {
+        if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
+        if ($allowed !== null) respond_json(403, ['error' => 'Only users who see every site can change sites']);
+        $input = json_decode((string) file_get_contents('php://input'), true) ?: [];
+        $id = isset($input['id']) ? (int) $input['id'] : null;
+        if (($id !== null || $endpoint === 'site-remove') && !visible_site($db, (int) $id, $allowed)) respond_json(404, ['error' => 'No such site']);
+
+        if ($endpoint === 'site-remove') {
+            respond_json(200, ['removed' => remove_site_form($db, (int) $id, $user['name'], client_ip($_SERVER, $config['trusted_proxies']), $now)]);
+        }
+        $saved = save_site_form($db, $config, $input, $id, $user['name'], $now);
+        if ($saved['errors']) respond_json(422, ['error' => reset($saved['errors']), 'errors' => $saved['errors']]);
+        $row = overview_rows($db, 's.id = ' . (int) $saved['id'])[0];
+        respond_json(200, ['site' => site_summary($db, $config, $row, server_labels($db), load_windows($db, $now), [], $now), 'changes' => $saved['changes']]);
+    }
     respond_json(404, ['error' => 'No such API call']);
 }
 
@@ -464,6 +479,10 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
             'dir' => run_dir(dirname(__DIR__)),
             'cron' => cron_line(dirname(__DIR__), php_cli()),
             'alerts' => alerts_configured($db, $config),
+            // For adding and changing sites in the dashboard
+            'groups' => array_column(list_groups($db), 'name'),
+            'checks' => array_map(fn ($key, $label) => ['key' => $key, 'label' => $label], array_keys(CHECK_LABELS), CHECK_LABELS),
+            'interval' => $config['uptime_interval'],
         ] : null,
         'last_incident' => $lastIncident,
         'generated_at' => utc_now($now),
@@ -480,7 +499,8 @@ function api_site(PDO $db, array $config, array $row, int $now): array
     $samples = $db->prepare('SELECT checked_at, status_code, ms, ok FROM samples WHERE site_id = ? AND checked_at >= ? ORDER BY checked_at');
     $samples->execute([$row['id'], utc_now($now - 86400)]);
     $samples = $samples->fetchAll();
-    $events = $db->prepare("SELECT status, previous, message, silenced_by, created_at FROM events WHERE site_id = ? AND check_name = 'uptime' ORDER BY created_at DESC, id DESC LIMIT 100");
+    // Uptime and the site's own changes; the other checks show in their own sections
+    $events = $db->prepare("SELECT status, previous, message, silenced_by, created_at FROM events WHERE site_id = ? AND check_name IN ('uptime', 'settings') ORDER BY created_at DESC, id DESC LIMIT 100");
     $events->execute([$row['id']]);
 
     $windows = load_windows($db, $now);
@@ -492,6 +512,9 @@ function api_site(PDO $db, array $config, array $row, int $now): array
         'site' => $site + [
             'keyword' => $row['keyword'],
             'interval_minutes' => site_interval($row, $config),
+            // As the site's settings have it, for the edit form: null is the default interval
+            'interval_custom' => $row['interval_minutes'],
+            'checks_off' => array_values(array_filter(explode(',', $row['disabled_checks']))),
             'created_at' => $row['created_at'],
         ],
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),

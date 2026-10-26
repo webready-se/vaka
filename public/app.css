@@ -392,6 +392,8 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 
 .sites-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 14px; }
 .sites-head .section-title { margin: 0; }
+.sites-head .add-site { margin-left: auto; }
+.add-site[hidden] { display: none; }
 .filter { position: relative; display: block; }
 .filter .icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-3); pointer-events: none; }
 .filter input { width: 280px; max-width: 100%; height: 38px; padding: 0 40px 0 34px; font: inherit; font-size: 14.5px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 11px; }
@@ -569,3 +571,28 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
+
+/* Adding and changing a site, in the drawer */
+.drawer-inner.is-form .medallion { background: var(--accent-soft); color: var(--accent); }
+.site-form { display: grid; gap: 18px; margin-top: 22px; }
+.field { display: grid; gap: 6px; min-width: 0; margin: 0; padding: 0; border: 0; }
+.field > label, .field legend { padding: 0; font-weight: 650; font-size: 14px; }
+.field input[type="text"], .field select { width: 100%; height: 42px; padding: 0 12px; font: inherit; font-size: 15px; color: var(--text); background: var(--surface); border: 1px solid var(--line-strong); border-radius: var(--radius-sm); }
+.field input[type="text"]:focus-visible, .field select:focus-visible, .check-list input:focus-visible, .field .check input:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.field-hint { margin: 0; color: var(--text-3); font-size: 13px; }
+.field-error { margin: 0; color: var(--down); font-size: 13.5px; font-weight: 650; }
+.field.is-invalid input[type="text"], .field.is-invalid select { border-color: var(--down); }
+.check-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 12px; margin: 0; padding: 0; list-style: none; }
+.check-list label, .field .check { display: flex; align-items: center; gap: 10px; min-height: 44px; font-size: 14.5px; font-weight: 500; cursor: pointer; }
+.check-list input, .field .check input { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+.button.is-primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); }
+.button.is-primary:hover { background: var(--accent); border-color: var(--accent); filter: brightness(1.08); }
+.button.is-danger { background: var(--down-soft); border-color: var(--down); color: var(--down); }
+.button.is-quiet-danger { color: var(--down); }
+.site-form .actions { margin-top: 4px; }
+.danger-zone { padding-top: 16px; border-top: 1px solid var(--line); }
+.confirm { padding: 14px 16px; border: 1px solid color-mix(in srgb, var(--down) 40%, transparent); border-radius: var(--radius-sm); background: var(--down-soft); }
+.confirm p { margin: 0; }
+.confirm .actions { margin-top: 10px; }
+.steps .button.is-primary { margin: 2px 0 4px; }
+
