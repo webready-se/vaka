@@ -105,6 +105,13 @@ function sort_sites(array $sites, bool $byGroup = true): array
     return $sites;
 }
 
+/** A URL with its scheme, and an international domain as it is written: https://räksmörgås.example/shop. */
+function readable_url(string $url): string
+{
+    $scheme = (string) parse_url($url, PHP_URL_SCHEME);
+    return ($scheme !== '' ? "{$scheme}://" : '') . display_url($url);
+}
+
 /** A URL without its scheme, as people say it: an international domain as it is written (with intl), not as xn--. */
 function display_url(string $url): string
 {

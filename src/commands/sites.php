@@ -108,7 +108,7 @@ function cmd_site_add(array $config, array $args, array $opts): void
         echo "Added {$site['url']}{$where}, paused: Vaka does not check it until you run `php vaka site:edit " . display_url($site['url']) . " --resume`.\n";
         return;
     }
-    echo "Added {$site['url']}{$where}. Vaka checks it every " . site_interval($site, $config) . " min.\n";
+    echo 'Added ' . readable_url($site['url']) . "{$where}. Vaka checks it every " . site_interval($site, $config) . " min.\n";
 }
 
 function cmd_site_edit(array $config, array $args, array $opts): void
@@ -136,7 +136,7 @@ function cmd_site_edit(array $config, array $args, array $opts): void
         fail($e->getMessage() . '.');
     }
     $site = site_with_group($db, $site['id']);
-    echo "Updated {$site['url']}: " . describe_site($site, $config) . ".\n";
+    echo 'Updated ' . readable_url($site['url']) . ': ' . describe_site($site, $config) . ".\n";
 }
 
 /** site:edit <server> --group=<name|none>: every site on a server into a group, or out of one. Nothing else changes for a whole server. */
@@ -165,12 +165,12 @@ function cmd_site_remove(array $config, array $args, array $opts): void
     $db = get_db($config['db_path']);
     $site = pick_site($db, $args[1] ?? null);
 
-    if (empty($opts['force']) && !confirm("Remove {$site['url']} and its history?")) {
+    if (empty($opts['force']) && !confirm('Remove ' . readable_url($site['url']) . ' and its history?')) {
         echo "Nothing removed.\n";
         exit(1);
     }
     remove_site($db, $site['id']);
-    echo "Removed {$site['url']}.\n";
+    echo 'Removed ' . readable_url($site['url']) . ".\n";
 }
 
 function cmd_site_list(array $config, array $args, array $opts): void
@@ -191,7 +191,7 @@ function cmd_site_list(array $config, array $args, array $opts): void
         if ($site['keyword'] !== '') $notes[] = "looks for \"{$site['keyword']}\"";
         if ($site['server'] !== '') $notes[] = "server {$site['server']}";
         if ($site['disabled_checks'] !== '') $notes[] = 'skips ' . str_replace(',', ', ', $site['disabled_checks']);
-        return [$site['url'], $site['group_name'] ?? '-', site_interval($site, $config) . ' min', implode('; ', $notes)];
+        return [readable_url($site['url']), $site['group_name'] ?? '-', site_interval($site, $config) . ' min', implode('; ', $notes)];
     }, $sites));
 
     $paused = count(array_filter(array_column($sites, 'paused')));
