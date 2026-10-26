@@ -115,6 +115,7 @@ function vaka(array $args, array $env = [], ?string $stdin = null, array $ini = 
     $dir ??= temp_dir();
     $env += [
         'VAKA_ENV_FILE' => '/dev/null',
+        'RUN_AT_SECOND' => '0',
         'DB_PATH' => $dir . '/vaka.sqlite',
         'USERS_FILE' => $dir . '/users.json',
         'PATH' => getenv('PATH'),

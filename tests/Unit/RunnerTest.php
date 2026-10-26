@@ -1,5 +1,19 @@
 <?php
 
+test('run_delay waits for the calm part of the minute, from cron only', function () {
+    expect(run_delay(2, 15, false))->toBe(13)
+        ->and(run_delay(15, 15, false))->toBe(0)
+        ->and(run_delay(40, 15, false))->toBe(0)
+        ->and(run_delay(2, 15, true))->toBe(0)
+        ->and(run_delay(2, 0, false))->toBe(0);
+});
+
+test('RUN_AT_SECOND is 15 by default, and kept within the first 45 seconds', function () {
+    expect(load_config()['run_at_second'])->toBe(15)
+        ->and(load_config(['RUN_AT_SECOND' => '0'])['run_at_second'])->toBe(0)
+        ->and(load_config(['RUN_AT_SECOND' => '59'])['run_at_second'])->toBe(45);
+});
+
 beforeEach(function () {
     $this->db = get_db(temp_dir() . '/vaka.sqlite');
     $this->now = strtotime('2026-10-25T12:00:00Z');

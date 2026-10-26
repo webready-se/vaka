@@ -32,6 +32,10 @@ return [
 
     'down_after_failures' => max(1, (int) $env('DOWN_AFTER_FAILURES', '2')),
 
+    // Second of the minute a cron run starts checking: servers start their own scheduled jobs at :00
+    // and answer slowly for a few seconds, so checks then would not show what visitors get
+    'run_at_second' => min(45, max(0, (int) $env('RUN_AT_SECOND', '15'))),
+
     'ssl_alert_days' => int_list($env('SSL_ALERT_DAYS', '14,7,1')),
 
     'domain_alert_days' => int_list($env('DOMAIN_ALERT_DAYS', '30,14,7,1')),

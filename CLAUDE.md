@@ -204,6 +204,7 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 
 ### Run flow (`php vaka run`, every minute from cron)
 
+0. From cron (no terminal), wait until second `RUN_AT_SECOND` (15) of the minute: servers start their own scheduled jobs at :00 and answer several times slower for a few seconds (measured on the first real deploy: 2.5 s at :02, 0.4 s at :15).
 1. Take `data/vaka.lock` with `flock(LOCK_EX | LOCK_NB)`. If another run holds it, exit 0 quietly.
 2. Collect due `(site, check)` pairs: `next_at <= now`, or no state yet.
 3. Uptime requests go through one `curl_multi` batch with a concurrency limit.
