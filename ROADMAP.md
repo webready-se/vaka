@@ -82,7 +82,17 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [ ] Mail DNS: MX, SPF and DMARC via `dns_get_record`; alert on change
 - [x] Domain expiry via RDAP (IANA bootstrap, cached); WHOIS for .se and .nu, which have no RDAP; "unknown" where neither gives a date
 
-## Milestone 4: Open source
+## Milestone 4: Manage from the dashboard
+
+Everything the CLI does day to day should also be possible in the dashboard, for users who see every site (restricted users keep a read-only view). Decided 2026-10-26, after the first real setup.
+
+- [ ] Add a site, edit it (group, name, keyword, interval, paused, checks), remove it
+- [ ] Groups: add, edit (policy, delay, Slack/webhook/email), remove; move a site, or every site on a server, to a group
+- [ ] Maintenance windows: add and remove
+- [ ] Server names (`server:label`)
+- [ ] Forms with CSRF, validation messages in plain words, and an entry in the history for each change
+
+## Milestone 5: Open source
 
 - [ ] Release zip with runtime files only, first tagged release (0.1.0)
 - [ ] README screenshots generated from the seeded demo database
@@ -99,7 +109,6 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [ ] DKIM (selectors are site specific)
 - [ ] SMTP delivery for email alerts
 - [ ] Reminder alerts while a site stays down
-- [ ] Manage sites and groups from the dashboard
 - [ ] Heartbeat monitoring: cron jobs and queues ping Vaka, alert when a ping is missing
 - [ ] Slow-response alerts (response time over a threshold)
 - [ ] TLS details: protocol versions, chain completeness

@@ -159,6 +159,34 @@ test('site:import says where it looked, and why ".." misleads from a linked dire
         ->and($r['err'])->toMatch('#php[\d.]* vaka site:import ' . preg_quote("{$site}/sites.csv", '#') . '#');
 });
 
+test('site:edit moves every site on a server into a group, by IP or by its name', function () {
+    vaka(['group:add', 'Customers'], $this->env);
+    vaka(['group:add', 'web-1'], $this->env);
+    foreach (['shop.example', 'blog.example', 'other.example', 'cdn.example'] as $domain) vaka(['site:add', $domain, '--group=Customers'], $this->env);
+    $db = get_db($this->env['DB_PATH']);
+    $db->exec("UPDATE sites SET ip = '203.0.113.10' WHERE url IN ('https://shop.example', 'https://blog.example')");
+    $db->exec("UPDATE sites SET ip = '198.51.100.7' WHERE url = 'https://other.example'");
+    // Behind a CDN the IP is the CDN's, so the site is not on that server
+    $db->exec("UPDATE sites SET ip = '203.0.113.10', cdn = 'Cloudflare' WHERE url = 'https://cdn.example'");
+    $groups = fn () => array_column($db->query('SELECT s.url, g.name FROM sites s LEFT JOIN groups g ON g.id = s.group_id ORDER BY s.url')->fetchAll(), 'name', 'url');
+
+    $r = vaka(['site:edit', '203.0.113.10', '--group=web-1'], $this->env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->toBe("Moved 2 sites on server 203.0.113.10 to web-1: blog.example and shop.example.\n")
+        ->and($groups())->toBe(['https://blog.example' => 'web-1', 'https://cdn.example' => 'Customers', 'https://other.example' => 'Customers', 'https://shop.example' => 'web-1']);
+
+    vaka(['server:label', '198.51.100.7', 'web-2'], $this->env);
+    expect(vaka(['site:edit', 'web-2', '--group=none'], $this->env)['out'])->toContain('Moved 1 site on server web-2 (198.51.100.7) out of its group: other.example.');
+});
+
+test('site:edit on a server changes only the group', function () {
+    vaka(['site:add', 'shop.example'], $this->env);
+    get_db($this->env['DB_PATH'])->exec("UPDATE sites SET ip = '203.0.113.10'");
+    $r = vaka(['site:edit', '203.0.113.10', '--keyword=Buy'], $this->env);
+    expect($r['exit'])->toBe(1)
+        ->and($r['err'])->toContain('For a whole server, only --group can change');
+});
+
 test('site:add without arguments asks for what it needs', function () {
     // URL, then Enter for name, keyword and interval (no groups exist, so no group question)
     $r = vaka(['site:add'], $this->env, "shop.example\n\n\n\n");
