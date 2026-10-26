@@ -186,7 +186,7 @@ function show_login(array $config, ?string $error = null): never
       <h1>vaka</h1>
       <p class="login-tagline">Keeps watch while you sleep.</p>
     {$panel}
-      <p class="login-foot">Made by Webready in Sweden</p>
+      <p class="login-foot">Made by <a href="https://webready.se">Webready</a> in Sweden</p>
     </main>
     </body>
     </html>

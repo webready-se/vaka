@@ -178,6 +178,8 @@ body.login {
 .login-card button:hover { background: #67e8f9; }
 .login-error { margin: 0 0 16px; padding: 11px 13px; color: #fecaca; background: rgb(220 38 38 / 0.18); border: 1px solid rgb(248 113 113 / 0.35); border-radius: 11px; text-align: left; }
 .login-foot { margin: 20px 0 0; color: #64748b; font-size: 13px; }
+.login-foot a { color: inherit; text-decoration: none; }
+.login-foot a:hover, .login-foot a:focus-visible { color: #cbd5e1; text-decoration: underline; text-underline-offset: 3px; }
 .login-steps { text-align: left; padding: 24px; background: rgb(30 41 59 / 0.72); border: 1px solid #334155; border-radius: 18px; backdrop-filter: blur(6px); color: #cbd5e1; }
 .login-steps h2 { margin: 0 0 8px; font-size: 18px; color: #f1f5f9; }
 .login-steps p { margin: 12px 0 0; font-size: 14.5px; }

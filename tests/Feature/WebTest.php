@@ -117,6 +117,10 @@ test('too many failed logins lock the IP out, even with a fresh cookie', functio
         ->and((int) $this->db->query("SELECT COUNT(*) FROM audit_log WHERE action = 'login_failed'")->fetchColumn())->toBe(3);
 });
 
+test('the login page credits Webready with a link', function () {
+    expect(http_request('GET', WEB . '/?login')['body'])->toContain('Made by <a href="https://webready.se">Webready</a> in Sweden');
+});
+
 test('what people type is never echoed back as markup', function () {
     $r = ($this->login)('<script>alert(1)</script>', 'x')['response'];
     expect($r['body'])->not->toContain('<script>alert(1)</script>');
