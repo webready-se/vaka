@@ -98,7 +98,7 @@ Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other C
 
 | | What you run | Set up in | Database | License |
 |---|---|---|---|---|
-| **Vaka** | PHP 8.3 files and one cron line, also on shared hosting | The dashboard for sites, the command line for the rest ([more is coming](ROADMAP.md)) | SQLite, built in | MIT |
+| **Vaka** | PHP 8.3 files and one cron line, also on shared hosting | The dashboard for sites and groups, the command line for the rest ([more is coming](ROADMAP.md)) | SQLite, built in | MIT |
 | [Uptime Kuma](https://github.com/louislam/uptime-kuma) | Node.js 20.4+, or Docker | A web interface | SQLite, or MariaDB since 2.0 | MIT |
 | [Gatus](https://github.com/TwiN/gatus) | A Go binary, or Docker | A YAML file | In memory, SQLite or PostgreSQL | Apache 2.0 |
 | [UptimeRobot](https://uptimerobot.com) | Nothing, they host it. Free: 50 monitors every 5 min, for hobby and non-profit projects | A web interface | Their servers | Proprietary |

@@ -13,17 +13,12 @@ function cmd_alert_test(array $config, array $args, array $opts): void
             . ' yet: set SLACK_WEBHOOK_URL in .env, or use `php vaka group:edit <name> --slack=<webhook url>`.');
     }
 
-    $item = ['kind' => 'test', 'sites' => [], 'text' => [
-        'headline' => "This is a test alert from Vaka{$for}",
-        'details' => ['If you can read this, alerts' . ($group ? ' for this group' : '') . ' reach you here.'],
-    ]];
     $failed = false;
-    foreach ($destinations as $destination) {
-        $ok = deliver($destination, ['destination' => $destination, 'items' => [$item]], $config, time());
-        if ($ok) {
-            echo 'Sent a test alert to ' . describe_destination($destination) . ".\n";
+    foreach (send_test_alert($config, $group) as $sent) {
+        if ($sent['ok']) {
+            echo "Sent a test alert to {$sent['to']}.\n";
         } else {
-            fwrite(STDERR, 'Could not send a test alert to ' . describe_destination($destination) . ($destination['type'] === 'email' ? ': mail() failed, is a mail server set up?' : '') . "\n");
+            fwrite(STDERR, "Could not send a test alert to {$sent['to']}" . (str_contains($sent['to'], '@') ? ': mail() failed, is a mail server set up?' : '') . "\n");
             $failed = true;
         }
     }

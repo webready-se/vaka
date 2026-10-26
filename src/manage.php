@@ -103,3 +103,127 @@ function remove_site_form(PDO $db, int $id, string $user, string $ip, int $now):
     audit_log($db, $user, 'site_removed ' . $site['url'], $ip, $now);
     return display_url($site['url']);
 }
+
+// =====================================================================
+// Groups
+// =====================================================================
+
+/** Form names for group columns, to tie an error to its field. */
+const GROUP_FORM_FIELDS = ['name' => 'name', 'policy' => 'policy', 'delay_minutes' => 'delay', 'slack_webhook' => 'slack', 'webhook_url' => 'webhook', 'email' => 'email'];
+
+/**
+ * A group form's values as clean_group_fields() takes them, and an error
+ * for each field it would refuse. The webhooks are secrets the browser
+ * never gets back in full, so an empty field keeps the current one; a new
+ * one replaces it, and `slack_clear` or `webhook_clear` removes it.
+ *
+ * @return array{input: array, errors: array<string, string>}
+ */
+function group_form_input(PDO $db, array $form, ?array $current): array
+{
+    $text = fn (string $key) => is_scalar($form[$key] ?? null) ? trim((string) $form[$key]) : '';
+    $input = ['name' => $text('name'), 'policy' => $text('policy') ?: 'immediate', 'delay_minutes' => $text('delay'), 'email' => $text('email')];
+    foreach (['slack' => 'slack_webhook', 'webhook' => 'webhook_url'] as $key => $column) {
+        if (!empty($form[$key . '_clear'])) $input[$column] = '';
+        elseif ($text($key) !== '') $input[$column] = $text($key);
+    }
+
+    $errors = [];
+    foreach ($input as $column => $value) {
+        try {
+            $fields = clean_group_fields([$column => $value]);
+            if ($column === 'name') assert_group_name_free($db, $fields['name'], (int) ($current['id'] ?? 0));
+        } catch (InvalidArgumentException $e) {
+            $errors[GROUP_FORM_FIELDS[$column]] = $e->getMessage() . '.';
+        }
+    }
+    if (!isset($errors['policy'], $errors['delay']) && $input['policy'] === 'delayed' && (int) $input['delay_minutes'] < 1) {
+        $errors['delay'] ??= 'Say after how many minutes down, from 1 to 1440.';
+    }
+    // In the order of the form, so the first error is the first field to fix
+    $errors = array_filter(array_merge(array_fill_keys(GROUP_FORM_FIELDS, null), $errors));
+    return ['input' => $input, 'errors' => $errors];
+}
+
+/** What changed in a group, in words for its sites' history. Webhooks are named, never shown. */
+function describe_group_changes(array $old, array $new, string $digestTime): array
+{
+    $changes = [];
+    if ($old['name'] !== $new['name']) $changes[] = "renamed to {$new['name']}";
+    if (describe_policy($old, $digestTime) !== describe_policy($new, $digestTime)) $changes[] = 'alerts go out ' . describe_policy($new, $digestTime);
+    foreach (['slack_webhook' => 'Slack webhook', 'webhook_url' => 'JSON webhook'] as $column => $label) {
+        if ($old[$column] === $new[$column]) continue;
+        $changes[] = $label . ' ' . match (true) {
+            $new[$column] === '' => 'removed',
+            $old[$column] === '' => 'added',
+            default => 'replaced',
+        };
+    }
+    if ($old['email'] !== $new['email']) $changes[] = $new['email'] === '' ? 'no email' : "email to {$new['email']}";
+    return $changes;
+}
+
+/** Write a change to the history of every site in a group. */
+function group_history(PDO $db, int $groupId, string $message, int $now): void
+{
+    $stmt = $db->prepare('SELECT id FROM sites WHERE group_id = ?');
+    $stmt->execute([$groupId]);
+    foreach ($stmt->fetchAll(PDO::FETCH_COLUMN) as $siteId) {
+        add_event($db, (int) $siteId, 'settings', ['status' => 'changed', 'previous' => '', 'message' => $message], utc_now($now));
+    }
+}
+
+/**
+ * Add a group ($id null) or change one from the dashboard. Nothing is saved
+ * while a field has an error. A change goes in the history of its sites.
+ *
+ * @return array{id: ?int, changes: list<string>, errors: array<string, string>}
+ */
+function save_group_form(PDO $db, array $config, array $form, ?int $id, string $user, int $now): array
+{
+    $old = $id === null ? null : get_group($db, $id);
+    $checked = group_form_input($db, $form, $old);
+    if ($checked['errors']) return ['id' => $id, 'changes' => [], 'errors' => $checked['errors']];
+
+    if ($id === null) return ['id' => add_group($db, $checked['input']), 'changes' => [], 'errors' => []];
+    update_group($db, $id, $checked['input']);
+    $new = get_group($db, $id);
+    // Users limited to the group keep it under its new name (as group:edit does), and never get another group that takes the old name
+    if ($new['name'] !== $old['name']) rename_group_in_users($config['users_file'], $old['name'], $new['name']);
+    $changes = describe_group_changes($old, $new, $config['digest_time']);
+    if ($changes) group_history($db, $id, "Group {$new['name']} changed by {$user}: " . implode(', ', $changes), $now);
+    return ['id' => $id, 'changes' => $changes, 'errors' => []];
+}
+
+/**
+ * Remove a group: its sites stay, without a group, and say so in their
+ * history. Kept in the audit log too. Throws while users are limited to
+ * the group (see assert_group_unused()).
+ *
+ * @return array{name: string, sites: int}
+ */
+function remove_group_form(PDO $db, array $config, int $id, string $user, string $ip, int $now): array
+{
+    $group = get_group($db, $id);
+    assert_group_unused($config['users_file'], $group['name']);
+    $sites = (int) $db->query('SELECT COUNT(*) FROM sites WHERE group_id = ' . $id)->fetchColumn();
+    group_history($db, $id, "Group {$group['name']} removed by {$user}: no group now, so its alerts go to the defaults in .env", $now);
+    remove_group($db, $id);
+    audit_log($db, $user, 'group_removed ' . $group['name'], $ip, $now);
+    return ['name' => $group['name'], 'sites' => $sites];
+}
+
+/** A group as its form shows it: the webhooks masked, never in full. */
+function group_form_values(PDO $db, array $group): array
+{
+    return [
+        'id' => $group['id'],
+        'name' => $group['name'],
+        'policy' => $group['policy'],
+        'delay_minutes' => $group['delay_minutes'],
+        'slack' => mask_secret($group['slack_webhook']),
+        'webhook' => mask_secret($group['webhook_url']),
+        'email' => $group['email'],
+        'sites' => (int) $db->query('SELECT COUNT(*) FROM sites WHERE group_id = ' . (int) $group['id'])->fetchColumn(),
+    ];
+}

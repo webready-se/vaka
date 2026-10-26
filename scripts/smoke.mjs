@@ -114,7 +114,7 @@ async function main() {
       const entry = data.params.entry;
       if (/Content Security Policy|Refused to/i.test(entry.text)) errors.push(`CSP: ${entry.text}`);
       // A refused form answers 422 on purpose: the page shows why
-      else if (entry.level === 'error' && !/favicon/.test(entry.url || '') && !(/status of 422/.test(entry.text) && /api=site-save/.test(entry.url || ''))) errors.push(`Log error: ${entry.text} ${entry.url || ''}`);
+      else if (entry.level === 'error' && !/favicon/.test(entry.url || '') && !(/status of 422/.test(entry.text) && /api=(site|group)-save/.test(entry.url || ''))) errors.push(`Log error: ${entry.text} ${entry.url || ''}`);
     }
     listeners.forEach((l) => l(data));
   };
@@ -283,6 +283,39 @@ async function main() {
             expect(/cannot be undone/.test(q('.confirm').textContent), 'removing asks first, in the page');
             q('[data-action="remove-site"]').click();
             await waitFor(() => !q('dialog.drawer[open]') && !all('.site-row').some((r) => /new\.example/.test(r.textContent)), 'the removed site to leave the list');
+          }
+        }
+      }
+    }
+
+    // Groups: a webhook shows masked, a new group shows empty with a way to fill it
+    q('[data-action="edit-group"][aria-label="Change the group Customers"]')?.click();
+    if (await waitFor(() => q('dialog.drawer[open] [data-form="group"]'), 'the group form to open')) {
+      expect(q('#g-name').value === 'Customers' && q('[name="policy"][value="immediate"]').checked, 'the group form shows the group as it is');
+      expect(/^Set: hooks\.example\/\.\.\.1234/.test(q('#g-slack').getAttribute('placeholder') || '') && q('#g-slack').value === '', 'the Slack webhook shows masked, never in full');
+      expect(!document.documentElement.innerHTML.includes('demo/demo/demo1234'), 'the webhook is nowhere in the page');
+      q('[data-action="close"]').click();
+      await waitFor(() => !q('dialog.drawer[open]'), 'the group form to close');
+    }
+    q('[data-add-group]').click();
+    if (await waitFor(() => q('dialog.drawer[open] [data-form="group"]'), 'the add-group form to open')) {
+      q('#g-name').value = 'Smoke group';
+      q('[name="policy"][value="delayed"]').checked = true;
+      q('#g-delay').value = '';
+      q('[data-form="group"]').requestSubmit();
+      if (await waitFor(() => q('#g-delay-error'), 'the group form to say the delay is missing')) {
+        expect(document.activeElement === q('#g-delay'), 'the missing delay gets the focus');
+        q('#g-delay').value = '15';
+        q('[data-form="group"]').requestSubmit();
+        if (await waitFor(() => all('.group-head h3').some((n) => n.textContent === 'Smoke group'), 'the new group to show')) {
+          const section = all('.group').find((g) => g.querySelector('h3').textContent === 'Smoke group');
+          expect(/after 15 min down/.test(section.textContent) && section.querySelector('[data-action="add-site"][data-group="Smoke group"]'), 'an empty group says when it alerts and offers to add a site to it');
+          section.querySelector('[data-action="edit-group"]').click();
+          if (await waitFor(() => q('[data-action="group-remove-ask"]'), 'the group to open for a change')) {
+            q('[data-action="group-remove-ask"]').click();
+            await waitFor(() => q('[data-action="remove-group"]'), 'the remove confirmation for the group');
+            q('[data-action="remove-group"]').click();
+            await waitFor(() => !all('.group-head h3').some((n) => n.textContent === 'Smoke group'), 'the removed group to leave the list');
           }
         }
       }

@@ -563,6 +563,23 @@ function process_alerts(PDO $db, array $config, int $now): array
     return ['alerts' => $results, 'nowhere' => $collected['nowhere']];
 }
 
+/**
+ * Send a test alert to a group's destinations (or the defaults in .env).
+ *
+ * @return list<array{to: string, ok: bool}> where it went, secrets masked, and whether it was taken
+ */
+function send_test_alert(array $config, ?array $group): array
+{
+    $item = ['kind' => 'test', 'sites' => [], 'text' => [
+        'headline' => 'This is a test alert from Vaka' . ($group ? " for {$group['name']}" : ''),
+        'details' => ['If you can read this, alerts' . ($group ? ' for this group' : '') . ' reach you here.'],
+    ]];
+    return array_map(fn (array $destination) => [
+        'to' => describe_destination($destination),
+        'ok' => deliver($destination, ['destination' => $destination, 'items' => [$item]], $config, time()),
+    ], alert_destinations($group, $config));
+}
+
 // =====================================================================
 // One message, not fifty
 // =====================================================================
