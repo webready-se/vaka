@@ -98,6 +98,12 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [ ] Release zip with runtime files only, first tagged release (0.1.0)
 - [x] README screenshots generated from the seeded demo database (`node scripts/readme-media.mjs`)
 - [ ] Make the repository public
+
+### Before going public
+
+- [ ] Scan the whole git history (not only the last commit) for real names, domains, IPs and webhook URLs
+- [ ] Turn on private vulnerability reporting (Settings > Security, or `gh api -X PUT repos/webready-se/vaka/private-vulnerability-reporting`): SECURITY.md links to `../../security/advisories/new`, which only works then
+- [ ] Upload `docs/screenshots/social-preview.png` as the social preview (Settings > General); GitHub accepts it only on a public repository
 - [ ] Vaka's own mark in the footer credit, linked to the repository, once it is public (design kit docs/layout.md); Snoka and Hamstra join when they are released
 
 ## Ideas
