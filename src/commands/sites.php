@@ -62,7 +62,13 @@ function pick_site(PDO $db, ?string $ref): array
     if ($ref === null) {
         $sites = list_sites($db);
         if (!$sites) fail('No sites yet. Add one with `php vaka site:add <url>`.');
-        foreach ($sites as $i => $site) echo sprintf("  %d) %s\n", $i + 1, $site['url']);
+        $label = fn (array $site) => display_url($site['url']) . ' (' . ($site['group_name'] ?? 'no group') . ')';
+        if (count($sites) === 1) {
+            echo 'Which site? ' . display_url($sites[0]['url']) . " (the only one)\n";
+            return site_with_group($db, $sites[0]['id']);
+        }
+        echo "Which site?\n";
+        foreach ($sites as $i => $site) echo sprintf("  %d) %s\n", $i + 1, $label($site));
         $ref = ask('Site (number, URL or domain)');
         if (ctype_digit($ref) && isset($sites[(int) $ref - 1])) return site_with_group($db, $sites[(int) $ref - 1]['id']);
     }

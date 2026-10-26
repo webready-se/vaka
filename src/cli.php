@@ -91,7 +91,7 @@ function ask(string $label, string $default = ''): string
 /** Yes or no, where only an explicit yes counts. */
 function confirm(string $question): bool
 {
-    return parse_bool(prompt("{$question} [y/N] ")) === true;
+    return parse_bool(prompt("{$question} (y/N) ")) === true;
 }
 
 /**
@@ -100,8 +100,13 @@ function confirm(string $question): bool
  */
 function choose(string $question, array $options, int|string|null $default = null): int|string|null
 {
-    echo $question . "\n";
     $values = array_keys($options);
+    // Nothing to choose between: take it, and say so
+    if (count($values) === 1) {
+        echo "{$question} {$options[$values[0]]} (the only one)\n";
+        return $values[0];
+    }
+    echo $question . "\n";
     foreach ($values as $i => $value) {
         echo sprintf("  %d) %s\n", $i + 1, $options[$value]);
     }
@@ -112,6 +117,26 @@ function choose(string $question, array $options, int|string|null $default = nul
         fail("\"{$answer}\" is not one of the numbers above.");
     }
     return $values[(int) $answer - 1];
+}
+
+/**
+ * Pick several of $options by number, comma-separated. Enter or 0 picks
+ * none of them in particular, which means all ($all says what that is):
+ * returns [] then.
+ */
+function choose_many(string $question, array $options, string $all): array
+{
+    echo $question . "\n";
+    $values = array_keys($options);
+    foreach ($values as $i => $value) echo sprintf("  %d) %s\n", $i + 1, $options[$value]);
+    $answer = trim(ask("Numbers, comma-separated (Enter or 0 for {$all})"));
+    if ($answer === '' || $answer === '0') return [];
+    $picked = [];
+    foreach (preg_split('/[\s,]+/', $answer) as $number) {
+        if (!ctype_digit($number) || !isset($values[(int) $number - 1])) fail("\"{$number}\" is not one of the numbers above.");
+        $picked[] = $values[(int) $number - 1];
+    }
+    return array_values(array_unique($picked));
 }
 
 /** Rows as aligned columns, with a header line. */

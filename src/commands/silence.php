@@ -8,6 +8,22 @@ function maintenance_target(PDO $db, string $target): array
     fail("No group or site matches \"{$target}\". See `php vaka group:list` and `php vaka site:list`.");
 }
 
+/** A group or a site to give a maintenance window, picked from a list: groups first. Returns its name as maintenance_target() takes it. */
+function pick_maintenance_target(PDO $db): string
+{
+    $options = [];
+    foreach (list_groups($db) as $group) {
+        $options['group:' . $group['name']] = "The group {$group['name']} (" . ($group['site_count'] ? plural((int) $group['site_count'], 'site', 'sites') : 'no sites') . ')';
+    }
+    foreach (list_sites($db) as $site) {
+        $options['site:' . $site['url']] = display_url($site['url']) . ' (' . ($site['group_name'] ?? 'no group') . ')';
+    }
+    if (!$options) fail('No groups or sites yet. Add a site with `php vaka site:add <url>`.');
+    $choice = choose('For which group or site?', $options);
+    if ($choice === null) fail('Nothing chosen.');
+    return substr($choice, strpos($choice, ':') + 1);
+}
+
 /** Ask when a maintenance window is, as the options maintenance_fields() takes. */
 function ask_window(): array
 {
@@ -31,7 +47,7 @@ function cmd_maintenance_add(array $config, array $args, array $opts): void
 {
     allow_options($opts, ['at', 'days', 'from', 'to', 'label']);
     $db = get_db($config['db_path']);
-    [$siteId, $groupId, $name] = maintenance_target($db, $args[1] ?? ask('For which group or site'));
+    [$siteId, $groupId, $name] = maintenance_target($db, $args[1] ?? pick_maintenance_target($db));
     if (!$opts) $opts = ask_window();
 
     try {
@@ -70,10 +86,7 @@ function cmd_maintenance_remove(array $config, array $args, array $opts): void
     $db = get_db($config['db_path']);
     $windows = array_column(list_maintenance($db), null, 'id');
     if (!$windows) fail('There are no maintenance windows to remove.');
-    if (!isset($args[1])) {
-        foreach ($windows as $window) echo "  {$window['id']}) " . window_target($window) . ', ' . describe_window($window, $config['timezone']) . "\n";
-    }
-    $id = $args[1] ?? ask('Remove which one (number)');
+    $id = $args[1] ?? choose('Which window?', array_map(fn (array $window) => window_target($window) . ', ' . describe_window($window, $config['timezone']), $windows));
     $window = ctype_digit((string) $id) ? ($windows[(int) $id] ?? null) : null;
     if (!$window) fail("There is no maintenance window {$id}. See `php vaka maintenance:list`.");
 
@@ -152,7 +165,21 @@ function cmd_unsnooze(array $config, array $args, array $opts): void
 {
     allow_options($opts, []);
     $db = get_db($config['db_path']);
-    [$sites, $name, $isServer] = snooze_targets($db, $args[1] ?? ask('Which site or server'));
+    $target = $args[1] ?? null;
+    if ($target === null) {
+        $snoozedNow = $db->prepare("SELECT s.url, c.snoozed_until FROM sites s JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime' WHERE c.snoozed_until > ?");
+        $snoozedNow->execute([utc_now()]);
+        $options = [];
+        foreach (sort_sites($snoozedNow->fetchAll(), false) as $site) {
+            $options[$site['url']] = display_url($site['url']) . ' (until ' . local_time($site['snoozed_until'], time()) . ')';
+        }
+        if (!$options) {
+            echo "Nothing is snoozed right now.\n";
+            return;
+        }
+        $target = choose('Unsnooze which site?', $options);
+    }
+    [$sites, $name, $isServer] = snooze_targets($db, $target);
     $snoozed = array_filter($sites, fn ($site) => $site['snoozed_until'] !== null && $site['snoozed_until'] > utc_now());
     if (!$snoozed) fail("{$name} is not snoozed.");
 

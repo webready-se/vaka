@@ -54,7 +54,10 @@ function pick_group(PDO $db, ?string $name): array
     }
     $groups = list_groups($db);
     if (!$groups) fail('No groups yet. Add one with `php vaka group:add <name>`.');
-    $id = choose('Which group?', array_column($groups, 'name', 'id'));
+    $id = choose('Which group?', array_column(array_map(fn ($group) => [
+        'id' => $group['id'],
+        'label' => $group['name'] . ' (' . ($group['site_count'] ? plural((int) $group['site_count'], 'site', 'sites') : 'no sites') . ')',
+    ], $groups), 'label', 'id'));
     if ($id === null) fail('No group chosen.');
     return get_group($db, (int) $id);
 }
