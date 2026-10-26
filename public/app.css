@@ -508,15 +508,20 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .header-list .icon { width: 16px; height: 16px; margin-top: 2px; stroke-width: 2.4; }
 .header-list .is-good .icon { color: var(--up); }
 .header-list .is-weak .icon { color: var(--warn); }
-.header-list .is-missing .icon { color: var(--text-3); }
+.header-list .is-missing .icon, .header-list .is-none .icon { color: var(--text-3); }
 .header-list p { margin: 0; }
 .header-list b { font-weight: 650; }
 .header-list .header-what { color: var(--text-3); font-size: 13px; }
 .header-list .header-level { color: var(--text-3); font-weight: 600; }
 .header-list .is-weak .header-level, .header-list .is-weak .header-why { color: var(--warn); }
 .header-list .header-why { margin-top: 4px; color: var(--text-2); font-weight: 600; }
-.header-list code { display: inline-block; margin-top: 6px; }
+.header-list code { display: inline-block; margin-top: 6px; overflow-wrap: anywhere; }
+.header-list .records { display: grid; justify-items: start; gap: 4px; }
+.header-list .records code { margin-top: 6px; }
+.header-list .records code + code { margin-top: 0; }
 .header-list .header-tip { margin-top: 4px; color: var(--text-3); font-size: 13px; }
+.header-list .fix-label { margin-top: 6px; color: var(--text-2); font-size: 13px; }
+.header-list .fix-label + code { margin-top: 2px; }
 .settings { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; font-size: 14px; }
 .settings dt { color: var(--text-3); }
 .settings dd { margin: 0; overflow-wrap: anywhere; }

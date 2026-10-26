@@ -53,7 +53,7 @@ Run Vaka on a different server than the sites it watches: if that server goes do
 
 - **Snooze, and nothing is forgotten.** Already on it? Snooze the incident for an hour, four hours or a day. A site that stays down is brought up again every four hours, and if it is still down when a snooze ends, you hear about it again.
 - **Rules per group.** Each group has its own Slack channel and alert policy: right away, after a few minutes down, a daily summary, or dashboard only. Maintenance windows (one-off or every night) keep planned work quiet while the checks keep recording.
-- **Watches for things getting worse.** Exposed `.env` files, Git folders and database dumps, and security headers that disappear. Checked every day, with an alert when something changes, not a one-off scan.
+- **Watches for things getting worse.** Exposed `.env` files, Git folders and database dumps, security headers that disappear, and mail records that change. Checked every day, with an alert when something changes, not a one-off scan.
 - **Plain language.** The dashboard leads with what is wrong right now and what to do about it. Every number is explained; the detail is one click away.
 
 ## Everything it checks
@@ -63,7 +63,7 @@ Run Vaka on a different server than the sites it watches: if that server goes do
 - **Domain expiry** through RDAP, the registries' own structured data, and WHOIS for .se and .nu.
 - **Exposed files** like `.env`, `.git/`, database dumps and backup zips, matched on their content, so a site that answers 200 for everything does not cry wolf.
 - **Security headers** graded A to F, with what each one does and the line to add.
-- **Coming next:** mail DNS (MX, SPF and DMARC).
+- **Mail DNS:** MX, SPF and DMARC, with the record to add when one is missing, and an alert when they change.
 
 Everything is also in a [read API](docs/api.md), as JSON or CSV, with a read-only token per site or group: for your own reports, for a customer, or for the AI assistant in a site's own project.
 

@@ -303,7 +303,8 @@ function overview_rows(PDO $db, string $where): array
             cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details,
             ce.status AS exposed_status, ce.summary AS exposed_summary, ce.details AS exposed_details, ce.changed_at AS exposed_changed_at,
             ch.status AS headers_status, ch.summary AS headers_summary, ch.details AS headers_details,
-            cd.status AS domain_status, cd.summary AS domain_summary, cd.details AS domain_details
+            cd.status AS domain_status, cd.summary AS domain_summary, cd.details AS domain_details,
+            cm.status AS dns_status, cm.summary AS dns_summary, cm.details AS dns_details
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
@@ -311,6 +312,7 @@ function overview_rows(PDO $db, string $where): array
         LEFT JOIN check_state ce ON ce.site_id = s.id AND ce.check_name = 'exposed'
         LEFT JOIN check_state ch ON ch.site_id = s.id AND ch.check_name = 'headers'
         LEFT JOIN check_state cd ON cd.site_id = s.id AND cd.check_name = 'domain'
+        LEFT JOIN check_state cm ON cm.site_id = s.id AND cm.check_name = 'dns'
         WHERE {$where}
         ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE")->fetchAll();
     return sort_sites($rows);
@@ -373,6 +375,17 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
     if (in_array($row['headers_status'], ['ok', 'warn', 'unknown'], true)) {
         $headers = ['status' => $row['headers_status'], 'grade' => (json_decode((string) $row['headers_details'], true) ?: [])['grade'] ?? null, 'summary' => $row['headers_summary']];
     }
+    // Mail records in words; what each record is comes with the site detail (see api_site())
+    $dns = null;
+    if (in_array($row['dns_status'], ['ok', 'warn', 'unknown'], true)) {
+        $dnsDetails = json_decode((string) $row['dns_details'], true) ?: [];
+        $dns = [
+            'status' => $row['dns_status'],
+            'summary' => $row['dns_summary'],
+            'domain' => $dnsDetails['domain'] ?? null,
+            'advice' => $row['dns_status'] === 'warn' ? advice_for($dnsDetails['problem'] ?? '', 0) : '',
+        ];
+    }
     $serverKey = server_key($row);
 
     return [
@@ -396,6 +409,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'domain' => $domain,
         'exposed' => $exposed,
         'headers' => $headers,
+        'dns' => $dns,
         'uptime_24h' => site_uptime($db, $row, 86400, $now),
         'uptime_30d' => site_uptime($db, $row, 30 * 86400, $now),
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
@@ -472,6 +486,7 @@ function api_site(PDO $db, array $config, array $row, int $now): array
     $windows = load_windows($db, $now);
     $site = site_summary($db, $config, $row, server_labels($db), $windows, $samples, $now);
     if ($site['headers'] !== null) $site['headers']['items'] = header_items(json_decode((string) $row['headers_details'], true) ?: []);
+    if ($site['dns'] !== null) $site['dns']['items'] = dns_items(json_decode((string) $row['dns_details'], true) ?: []);
 
     return [
         'site' => $site + [
@@ -554,10 +569,10 @@ function read_api(array $config, array $scope, string $method, int $now): never
     }
     if ($csv) {
         respond_csv(
-            ['url', 'group', 'status', 'since', 'response_ms', 'uptime_24h', 'uptime_7d', 'uptime_30d', 'ssl_days_left', 'domain_days_left', 'headers_grade', 'exposed'],
+            ['url', 'group', 'status', 'since', 'response_ms', 'uptime_24h', 'uptime_7d', 'uptime_30d', 'ssl_days_left', 'domain_days_left', 'headers_grade', 'exposed', 'mail_dns'],
             array_map(fn ($s) => [
                 $s['url'], $s['group'], $s['status'], $s['since'], $s['response_ms'], $s['uptime']['24h'], $s['uptime']['7d'], $s['uptime']['30d'],
-                $s['ssl']['days_left'] ?? null, $s['domain']['days_left'] ?? null, $s['headers']['grade'] ?? null, $s['exposed']['status'] ?? null,
+                $s['ssl']['days_left'] ?? null, $s['domain']['days_left'] ?? null, $s['headers']['grade'] ?? null, $s['exposed']['status'] ?? null, $s['dns']['status'] ?? null,
             ], $sites),
         );
     }
@@ -588,6 +603,7 @@ function api_site_fields(PDO $db, array $summary, array $row, int $now): array
         'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'days_left', 'expires', 'registrar', 'advice']),
         'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice']),
         'headers' => api_pick($summary['headers'], ['status', 'grade', 'summary']),
+        'dns' => api_pick($summary['dns'], ['status', 'summary', 'domain', 'advice']),
     ];
 }
 
@@ -611,6 +627,9 @@ function read_api_site(PDO $db, array $config, array $row, int $hours, int $now)
     ];
     if ($site['headers'] !== null) {
         $site['headers']['items'] = array_map(fn ($item) => api_pick($item, ['key', 'label', 'level', 'note', 'what', 'fix', 'tip']), header_items(json_decode((string) $row['headers_details'], true) ?: []));
+    }
+    if ($site['dns'] !== null) {
+        $site['dns']['items'] = array_map(fn ($item) => api_pick($item, ['key', 'label', 'level', 'records', 'note', 'what', 'fix_label', 'fix', 'tip']), dns_items(json_decode((string) $row['dns_details'], true) ?: []));
     }
     $samples = $db->prepare('SELECT checked_at, status_code, ms, ok FROM samples WHERE site_id = ? AND checked_at >= ? ORDER BY checked_at');
     $samples->execute([$row['id'], utc_now($now - $hours * 3600)]);

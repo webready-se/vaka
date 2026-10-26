@@ -201,6 +201,27 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and(array_column($anna['groups'], 'name'))->toBe(['Customers']);
 });
 
+test('mail DNS shows in words on the overview, and record by record in the site detail and the read API', function () {
+    $shop = add_site($this->db, ['url' => 'https://shop.example']);
+    $now = time();
+    $result = evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 -all'], 'dmarc' => []]);
+    save_check_state($this->db, $shop, 'dns', ['status' => $result['status'], 'summary' => $result['summary'], 'details' => confirm_mail_dns(null, $result)['details'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
+    $jar = ($this->login)('admin', 'admin password')['jar'];
+
+    $site = http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['json']['groups'][0]['sites'][0];
+    expect($site['dns'])->toMatchArray(['status' => 'warn', 'summary' => 'Mail for shop.example: DMARC is missing', 'domain' => 'shop.example'])
+        ->and($site['dns']['advice'])->toStartWith('Add a DMARC record');
+
+    $detail = http_request('GET', WEB . "/?api=site&id={$shop}", ['jar' => $jar])['json'];
+    expect(array_column($detail['site']['dns']['items'], 'level', 'key'))->toBe(['mx' => 'good', 'spf' => 'good', 'dmarc' => 'missing'])
+        ->and($detail['site']['dns']['items'][0]['records'])->toBe(['10 mx1.mail.example']);
+
+    $token = create_share_token($this->db, $shop, null, '', null, $now)['token'];
+    $api = http_request('GET', WEB . '/?api&site=shop.example&share=' . $token)['json'];
+    expect($api['site']['dns'])->toMatchArray(['status' => 'warn', 'domain' => 'shop.example'])
+        ->and(array_keys($api['site']['dns']['items'][2]))->toBe(['key', 'label', 'level', 'records', 'note', 'what', 'fix_label', 'fix', 'tip']);
+});
+
 test('uptime counts from the first check: a site not checked yet has no figures', function () {
     $now = time();
     $new = add_site($this->db, ['url' => 'https://new.example']);
@@ -294,7 +315,7 @@ test('the read API answers a share token with the sites in its scope, in stable 
         ->and($r['json']['totals'])->toMatchArray(['sites' => 1, 'down' => 1])
         ->and($r['json']['sites'])->toHaveCount(1);
     $site = $r['json']['sites'][0];
-    expect(array_keys($site))->toBe(['url', 'label', 'name', 'group', 'status', 'summary', 'advice', 'since', 'checked_at', 'response_ms', 'server', 'cdn', 'snoozed_until', 'maintenance', 'unstable', 'uptime', 'ssl', 'domain', 'exposed', 'headers'])
+    expect(array_keys($site))->toBe(['url', 'label', 'name', 'group', 'status', 'summary', 'advice', 'since', 'checked_at', 'response_ms', 'server', 'cdn', 'snoozed_until', 'maintenance', 'unstable', 'uptime', 'ssl', 'domain', 'exposed', 'headers', 'dns'])
         ->and($site)->toMatchArray(['url' => 'https://shop.example', 'label' => 'shop.example', 'group' => 'Customers', 'status' => 'down', 'summary' => 'No answer within 10 s', 'since' => utc_now($now - 600)])
         ->and(array_keys($site['uptime']))->toBe(['24h', '7d', '30d'])
         ->and($site['ssl'])->toMatchArray(['status' => 'warn', 'days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z']);
@@ -354,7 +375,7 @@ test('one site in detail: every check\'s history and response times, and CSV for
         ->and(explode("\n", trim($csv['body'])))->toBe(['checked_at,status_code,ms,ok', utc_now($now - 600) . ',200,230,1', utc_now($now - 300) . ',503,120,0']);
 
     $list = http_request('GET', WEB . '/?api&format=csv&share=' . $token);
-    expect(explode("\n", trim($list['body']))[0])->toBe('url,group,status,since,response_ms,uptime_24h,uptime_7d,uptime_30d,ssl_days_left,domain_days_left,headers_grade,exposed')
+    expect(explode("\n", trim($list['body']))[0])->toBe('url,group,status,since,response_ms,uptime_24h,uptime_7d,uptime_30d,ssl_days_left,domain_days_left,headers_grade,exposed,mail_dns')
         ->and(explode("\n", trim($list['body']))[1])->toStartWith('https://shop.example,,up,');
 });
 

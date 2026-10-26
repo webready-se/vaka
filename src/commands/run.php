@@ -80,7 +80,10 @@ function cmd_check(array $config, array $args, array $opts): void
     }
     // Even when the site is down: an expired domain may be why
     if (registrable_candidates((string) parse_url($url, PHP_URL_HOST))) {
-        echo '  Domain: ' . check_domain($url, $config, time())['summary'] . "\n";
+        $domain = check_domain($url, $config, time());
+        echo '  Domain: ' . $domain['summary'] . "\n";
+        $mail = mail_domain($url, in_array($domain['status'], ['ok', 'warn', 'fail'], true) ? ($domain['details']['domain'] ?? null) : null);
+        echo '  Mail DNS: ' . lcfirst(evaluate_mail_dns($mail, lookup_mail_dns($mail, $config['dns_resolve'] ?? 'dns_lookup'))['summary']) . "\n";
     }
     if ($result['ok']) {
         echo '  Security headers: ' . lcfirst(evaluate_headers($response, $config['uptime_timeout'])['summary']) . "\n";

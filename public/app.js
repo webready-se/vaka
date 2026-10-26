@@ -75,7 +75,8 @@
     sun: ['M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4'],
     moon: ['M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z'],
     monitor: ['M4 5h16v11H4z', 'M9 20h6M12 16v4'],
-    chevron: ['m6 9 6 6 6-6']
+    chevron: ['m6 9 6 6 6-6'],
+    info: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 11v5', 'M12 8h.01']
   };
 
   function icon(name) {
@@ -832,6 +833,8 @@
       chart(d.samples),
       h('h3', {}, 'Security headers'),
       headerList(site.headers),
+      h('h3', {}, 'Mail'),
+      mailList(site.dns),
       h('h3', {}, 'History'),
       timeline(d.events),
       h('h3', {}, 'Settings'),
@@ -867,6 +870,36 @@
             item.note ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
             good ? null : h('code', {}, item.fix),
             !good && item.tip ? h('p', { class: 'header-tip' }, item.tip) : null
+          ])
+        ]);
+      }))
+    ]);
+  }
+
+  /** MX, SPF and DMARC: what each does, what the domain has, and the record to add when it is missing or weak. */
+  function mailList(dns) {
+    if (!dns) return h('p', { class: 'chart-note' }, 'Not checked yet.');
+    if (!dns.items || !dns.items.length) return h('p', { class: 'chart-note' }, dns.summary);
+    var words = { good: 'In place', weak: 'Weak', missing: 'Missing', none: 'None' };
+    var icons = { good: 'up', weak: 'failing', missing: 'down', none: 'info' };
+    return h('div', {}, [
+      h('p', { class: 'headers-summary' }, dns.summary),
+      h('ul', { class: 'header-list' }, dns.items.map(function (item) {
+        var good = item.level === 'good';
+        var fix = item.level === 'missing' || item.level === 'weak';
+        return h('li', { class: 'is-' + item.level }, [
+          icon(icons[item.level]),
+          h('div', {}, [
+            h('p', {}, [
+              h('b', {}, item.label),
+              good ? h('span', { class: 'visually-hidden' }, ': ' + words.good) : h('span', { class: 'header-level' }, ' · ' + words[item.level])
+            ]),
+            h('p', { class: 'header-what' }, item.what),
+            item.records.length ? h('p', { class: 'records' }, item.records.map(function (record) { return h('code', {}, record); })) : null,
+            item.note ? h('p', { class: 'header-why' }, item.note + (/[.:]$/.test(item.note) ? '' : '.')) : null,
+            fix && item.fix ? h('p', { class: 'fix-label' }, item.fix_label) : null,
+            fix && item.fix ? h('code', {}, item.fix) : null,
+            fix && item.tip ? h('p', { class: 'header-tip' }, item.tip) : null
           ])
         ]);
       }))

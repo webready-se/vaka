@@ -46,6 +46,7 @@ function run(PDO $db, array $config, ?int $now = null): array
     $summary = run_uptime($db, $config, $now);
     $summary['ssl'] = run_ssl($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['domain'] = run_domain($db, $config, $now, $started + RUN_BUDGET_SECONDS);
+    $summary['dns'] = run_dns($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['headers'] = run_headers($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['exposed'] = run_exposed($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $alerts = process_alerts($db, $config, $now);
@@ -332,6 +333,80 @@ function run_domain(PDO $db, array $config, int $now, float $deadline): array
         }
         $summary['checked']++;
     }
+    return $summary;
+}
+
+/**
+ * Active sites with mail DNS on, by the domain whose mail records they
+ * share (see mail_domain()); a site without a domain stands alone. Sites
+ * that are down are looked up too: mail does not depend on the web server.
+ *
+ * @return array<string, list<array>> domain (or "site:<id>") => its sites, each with `mail_domain`
+ */
+function dns_sites_by_domain(PDO $db): array
+{
+    $sites = $db->query("SELECT s.*, c.status AS state_status, c.details AS state_details, c.changed_at AS state_changed_at, c.next_at AS state_next_at,
+            d.status AS domain_status, d.details AS domain_details
+        FROM sites s
+        LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'dns'
+        LEFT JOIN check_state d ON d.site_id = s.id AND d.check_name = 'domain'
+        WHERE s.paused = 0 AND (',' || s.disabled_checks || ',') NOT LIKE '%,dns,%'
+        ORDER BY c.next_at IS NOT NULL, c.next_at, s.id")->fetchAll();
+    $byDomain = [];
+    foreach ($sites as $site) {
+        // The domain check's domain counts only when the registry answered
+        $checked = in_array($site['domain_status'], ['ok', 'warn', 'fail'], true) ? (json_decode((string) $site['domain_details'], true)['domain'] ?? null) : null;
+        $site['mail_domain'] = mail_domain($site['url'], $checked, json_decode((string) $site['state_details'], true)['confirmed_domain'] ?? null);
+        $byDomain[$site['mail_domain'] ?? 'site:' . $site['id']][] = $site;
+    }
+    return $byDomain;
+}
+
+/**
+ * Read due domains' mail records (MX, SPF, DMARC) one domain at a time
+ * until $deadline (microtime). A domain is due when one of its sites is,
+ * and then all its sites are looked at together, so they stay in step and
+ * a change is one alert. A change is looked at again before it counts
+ * (see confirm_mail_dns()); a confirmed one is recorded in the history.
+ * $config['dns_resolve'] replaces the resolver in tests.
+ */
+function run_dns(PDO $db, array $config, int $now, float $deadline): array
+{
+    $summary = ['checked' => 0, 'left' => 0, 'events' => []];
+    $checkedAt = utc_now($now);
+    $resolve = $config['dns_resolve'] ?? 'dns_lookup';
+    $due = array_values(array_filter(dns_sites_by_domain($db), fn (array $sites) => (bool) array_filter($sites, fn (array $site) => $site['state_next_at'] === null || $site['state_next_at'] <= $checkedAt)));
+    foreach ($due as $i => $sites) {
+        if (microtime(true) >= $deadline) {
+            $summary['left'] = array_sum(array_map('count', array_slice($due, $i)));
+            break;
+        }
+        $domain = $sites[0]['mail_domain'];
+        $result = evaluate_mail_dns($domain, $domain === null ? null : lookup_mail_dns($domain, $resolve));
+        foreach ($sites as $site) $summary = dns_site_result($db, $site, $result, $now, $summary);
+    }
+    return $summary;
+}
+
+/** Store one site's mail DNS result, and record a confirmed change in its history. */
+function dns_site_result(PDO $db, array $site, array $result, int $now, array $summary): array
+{
+    $checkedAt = utc_now($now);
+    $before = $site['state_status'] === null ? null : (json_decode((string) $site['state_details'], true) ?: []);
+    $next = confirm_mail_dns($before, $result);
+    save_check_state($db, $site['id'], 'dns', [
+        'status' => $result['status'],
+        'summary' => $result['summary'],
+        'details' => $next['details'],
+        'fail_count' => 0,
+        'changed_at' => $next['change'] !== null ? $checkedAt : $site['state_changed_at'],
+    ], $checkedAt, utc_now($now + $next['wait']));
+    if ($next['change'] !== null) {
+        $event = ['status' => $result['status'], 'previous' => $site['state_status'] ?? 'pending', 'message' => $next['change']];
+        add_event($db, $site['id'], 'dns', $event, $checkedAt);
+        $summary['events'][] = ['url' => $site['url']] + $event;
+    }
+    $summary['checked']++;
     return $summary;
 }
 

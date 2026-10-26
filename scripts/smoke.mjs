@@ -248,8 +248,11 @@ async function main() {
       expect(all('dialog.drawer .days i').length === 30, 'thirty days in the detail');
       expect(all('dialog.drawer .timeline li').length >= 2, 'the history lists what happened');
       expect(/Grade C: 4 of 6 in place, missing HSTS and CSP/.test(q('dialog.drawer .headers-summary')?.textContent || ''), 'the detail says the headers grade in words');
-      expect(all('dialog.drawer .header-list li').length === 6, 'the detail lists the six protections');
-      expect(all('dialog.drawer .header-list code').some((c) => /^Content-Security-Policy:/.test(c.textContent)), 'a missing protection comes with the line that adds it');
+      const [headerList, mailList] = all('dialog.drawer .header-list');
+      expect(headerList?.querySelectorAll('li').length === 6, 'the detail lists the six protections');
+      expect([...(headerList?.querySelectorAll('code') || [])].some((c) => /^Content-Security-Policy:/.test(c.textContent)), 'a missing protection comes with the line that adds it');
+      expect(all('dialog.drawer .headers-summary')[1]?.textContent === 'Mail for shop.example: SPF and DMARC in place', 'the detail says how the mail records are in words');
+      expect(mailList?.querySelectorAll('li').length === 3 && /10 mx1\.mail\.example/.test(mailList.textContent), 'the detail lists MX, SPF and DMARC with what the domain has');
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
       expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');

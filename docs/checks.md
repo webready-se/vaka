@@ -102,8 +102,20 @@ A low grade is shown, never alerted: many sites start at D or E, and that is som
 
 Vaka grades its own pages A over https.
 
-## Coming next
+## Mail DNS
 
-- **Mail DNS**: MX, SPF and DMARC, and an alert when they change.
+Every six hours, Vaka reads three DNS records of the site's domain (the one the domain check found, so `www.shop.example` and `app.shop.example` both mean `shop.example`). Sites that share a domain cause one lookup.
 
-See the [roadmap](../ROADMAP.md).
+| Record | What it does | Where |
+|--------|--------------|-------|
+| MX | Where email to the domain is delivered | `shop.example` |
+| SPF | Which servers may send email in the domain's name | A TXT record at `shop.example` starting `v=spf1` |
+| DMARC | What receivers do with email that pretends to come from the domain, and where they send reports | A TXT record at `_dmarc.shop.example` starting `v=DMARC1` |
+
+The check is **ok** when SPF and DMARC are in place, and **warn** when one of them is missing or there are two SPF records (receivers then treat SPF as broken). Without them, anyone can send email that looks like it comes from the domain, which is how most phishing in a company's name starts. A domain without MX, or with a null MX (`0 .`, which says so on purpose), receives no email, which is fine on its own, and a DMARC record with `p=none` only collects reports: both are shown, neither is a warning.
+
+The site detail lists each record with what the domain has and, when one is missing or weak, the value to add and where. A domain that sends no email at all is protected with `v=spf1 -all` and a DMARC record with `p=reject`.
+
+Missing records are shown, never alerted. What alerts is a change: MX pointing somewhere new, an SPF record that now allows other servers, a DMARC record that disappears. Someone who can change those can read or send the domain's email; see [Alerts](alerts.md#mail-dns). A change is looked up again 15 minutes later and only counts when that look agrees, since resolvers can disagree for a while after a change. A lookup that fails keeps what was known and tries again within the hour.
+
+Turn it off for a site with `php vaka site:edit <site> --disable=dns`.
