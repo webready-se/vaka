@@ -102,7 +102,7 @@ function cmd_status(array $config, array $args, array $opts): void
 
     $lastRun = get_meta($db, 'last_run_at');
     if ($lastRun === null) {
-        echo 'Vaka has not run yet. Add this line to cron: ' . cron_line(dirname(__DIR__, 2)) . "\n";
+        echo 'Vaka has not run yet. Add this line to cron: ' . cron_line(dirname(__DIR__, 2), php_cli()) . "\n";
     } elseif ($now - strtotime($lastRun) > 300) {
         echo 'Last run ' . ago($lastRun, $now) . ": is cron still running `php vaka run` every minute?\n";
     } else {

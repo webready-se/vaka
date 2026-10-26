@@ -62,10 +62,24 @@ test('int_list parses a comma-separated list into unique integers, largest first
         ->and(int_list(''))->toBe([]);
 });
 
-test('cron_line runs Vaka through current/ on a Forge zero-downtime deploy, which follows every release', function () {
+test('run_dir is where commands run: current/ on a Forge zero-downtime deploy, which follows every release', function () {
+    expect(run_dir('/var/www/vaka'))->toBe('/var/www/vaka')
+        ->and(run_dir('/home/forge/vaka.example.com/releases/20261026120000'))->toBe('/home/forge/vaka.example.com/current')
+        ->and(run_dir('/home/forge/vaka.example.com'))->toBe('/home/forge/vaka.example.com');
+});
+
+test('cron_line runs Vaka from run_dir() with the given PHP', function () {
     expect(cron_line('/var/www/vaka'))->toBe('* * * * * php /var/www/vaka/vaka run')
-        ->and(cron_line('/home/forge/vaka.example.com/releases/20261026120000'))->toBe('* * * * * php /home/forge/vaka.example.com/current/vaka run')
-        ->and(cron_line('/home/forge/vaka.example.com'))->toBe('* * * * * php /home/forge/vaka.example.com/vaka run');
+        ->and(cron_line('/home/forge/vaka.example.com/releases/20261026120000', 'php8.5'))->toBe('* * * * * php8.5 /home/forge/vaka.example.com/current/vaka run');
+});
+
+test('php_cli is the CLI of this PHP version when the server has one by that name, else php', function () {
+    $dir = temp_dir();
+    $versioned = 'php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+    expect(php_cli([$dir]))->toBe('php');
+    touch("{$dir}/{$versioned}");
+    chmod("{$dir}/{$versioned}", 0755);
+    expect(php_cli([$dir]))->toBe($versioned);
 });
 
 test('pair_list parses "key=value" pairs, keys lowercased', function () {

@@ -415,7 +415,12 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
     $lastRun = get_meta($db, 'last_run_at');
     return [
         // The first steps, for users who see everything (only they can run the CLI)
-        'setup' => $allowed === null ? ['cron' => cron_line(dirname(__DIR__)), 'alerts' => alerts_configured($db, $config)] : null,
+        'setup' => $allowed === null ? [
+            'php' => php_cli(),
+            'dir' => run_dir(dirname(__DIR__)),
+            'cron' => cron_line(dirname(__DIR__), php_cli()),
+            'alerts' => alerts_configured($db, $config),
+        ] : null,
         'last_incident' => $lastIncident,
         'generated_at' => utc_now($now),
         'timezone' => $config['timezone'],

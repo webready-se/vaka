@@ -356,6 +356,8 @@ async function main() {
       steps: steps.length,
       done: steps.filter((li) => li.classList.contains('is-done')).length,
       cron: steps[1]?.querySelector('code')?.textContent || '',
+      dir: document.querySelector('.empty > p code')?.textContent || '',
+      pillStale: document.querySelector('[data-region="run-state"]').classList.contains('is-stale'),
       imports: /site:import/.test(steps[0]?.textContent || ''),
       sitesHidden: document.querySelector('[data-region="sites"]').hidden,
       pill: document.querySelector('[data-run-text]').textContent,
@@ -364,7 +366,9 @@ async function main() {
   });
   if (empty.title !== 'Nothing to watch yet' || empty.steps !== 3) fails.push(`the first visit shows the three first steps (got "${empty.title}", ${empty.steps} steps)`);
   if (empty.done !== 0) fails.push('nothing is ticked off before cron runs and alerts are set');
-  if (!/^\* \* \* \* \* php \/.+\/vaka run$/.test(empty.cron) || /path\/to/.test(empty.cron)) fails.push(`the cron step shows this server's real line (got "${empty.cron}")`);
+  if (!/^\* \* \* \* \* php[\d.]* \/.+\/vaka run$/.test(empty.cron) || /path\/to/.test(empty.cron)) fails.push(`the cron step shows this server's real line (got "${empty.cron}")`);
+  if (!empty.dir.startsWith('/')) fails.push(`the first steps say where to run the commands (got "${empty.dir}")`);
+  if (empty.pillStale) fails.push('no red top bar before the first site');
   if (!empty.imports) fails.push('the first step shows how to import a list');
   if (!empty.sitesHidden) fails.push('the empty site list and its filter are hidden');
   if (empty.pill !== 'No sites yet') fails.push(`the top bar says there are no sites yet (got "${empty.pill}")`);
