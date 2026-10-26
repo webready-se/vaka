@@ -91,7 +91,8 @@ src/commands/groups.php  group:add, group:edit, group:remove, group:list
 src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:import
 src/commands/run.php     run, check, status
 src/commands/alerts.php  alert:test, server:list, server:label
-src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, snooze, unsnooze
+src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, snooze, unsnooze; group_or_site() and pick_group_or_site()
+src/commands/share.php   share:create, share:list, share:revoke
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
 src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), advice_for(), plain-words errors and durations
 src/checks/ssl.php       fetch_certificate() (verified, then unverified to describe a bad one), certificate_info(), host_matches(), evaluate_ssl(), ssl_notice() (thresholds once per certificate)
@@ -101,11 +102,12 @@ src/checks/headers.php   SECURITY_HEADERS, header_level() (good/weak/missing), h
 src/checks/dns.php       MX, SPF, DMARC snapshots
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
 src/silence.php          Maintenance windows (parse, window_active() in local time, describe), active_silence(), snooze_site()
+src/share.php            Read tokens: create_share_token() (only a SHA-256 and the first 8 characters are kept), find_share_token(), share_scope(), share_expiry()
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
 src/stats.php            downtime_seconds(), uptime_percent(), site_uptime(), hourly_buckets()
-src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze; `advice` from advice_for())
+src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze; `advice` from advice_for()), read_api() with stable field names (api_site_fields(), CSV)
 src/commands/users.php   user:add, user:edit, user:remove, user:list
 public/index.php         Web front controller (three lines: bootstrap, config, handle_request())
 public/dashboard.html    Dashboard markup (no inline script or style; {{csrf}}, {{version}}, {{user}} filled in by show_dashboard())
@@ -135,7 +137,7 @@ scripts/seed-demo.php    Demo database with fake sites, groups, servers, history
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail, phone, and the first visit (no users, no sites)
 scripts/readme-media.mjs README screenshots and the social preview in docs/screenshots/, from the seeded demo (no hostile names), each cut to a dashboard element
 scripts/hooks/pre-push   Git hook: runs Pest before push
-docs/                    install.md, configuration.md, checks.md, alerts.md (alerts.md: when, where, JSON fields)
+docs/                    install.md, configuration.md, checks.md, alerts.md (alerts.md: when, where, JSON fields), api.md (the read API's fields; change them only with a changelog note)
 docs/screenshots/        README images, made by scripts/readme-media.mjs (run it again after a visual change)
 .claude/settings.json    Project hooks (PHP lint after edit) and read denies for .env / users.json
 .claude/hooks/php-lint.sh PostToolUse hook: php -l on edited PHP files and the vaka CLI
@@ -164,6 +166,8 @@ samples      site_id, checked_at, status_code, ms, ok, ip        (uptime only, t
              (`check` is an SQL keyword, hence check_name)
 audit_log    id, username, action, ip, created_at               (login lockout, trimmed after 30 days)
 meta         key, value                                          (last_run_at, last_cleanup_on, last_digest_on, last_digest_at)
+share_tokens id, token_hash, prefix, site_id | group_id, label, expires_at, last_used_at, created_at
+             (read tokens: SHA-256 of the token and its first 8 characters only; go with their site or group)
 ```
 
 Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are stored in UTC (ISO 8601); the dashboard shows local time.
@@ -242,6 +246,7 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 | `GET /?api=overview` | Yes | Totals, last run, the last outage, `setup` (this server's PHP command, the directory to run commands in, the cron line, whether alerts can go anywhere; only for users who see everything), and every visible site by group: status, summary, advice, since, response time, server, snooze, maintenance, unstable, 24 h and 30 d uptime, 30 daily bars, hourly buckets, and the certificate, domain, exposed files and headers grade |
 | `GET /?api=site&id=N` | Yes | One site: the overview's fields plus each security header (what it does, how to add it), uptime 24 h / 7 d / 30 d, samples of the last 24 h, last 100 uptime events, maintenance windows. 404 when not visible |
 | `POST /?api=snooze` | Yes | `{site_id, for: "1h"\|"4h"\|"24h"}` or `{site_id, action: "unsnooze"}`; needs `X-CSRF-Token`; 404 when not visible |
+| `GET /?api` | Read token or session | The read API (docs/api.md): every site in the token's group or site (or the user's), in stable field names; `&site=` one site with 30 days, samples (`&hours=`, up to 720) and the last 100 events of every check; `&format=csv`. Token as `Authorization: Bearer` or `&share=`, needs no session and sets no cookie; an unknown, revoked or expired token is a 404 |
 
 Any other path answers 404. Restricted users (`groups` in users.json) only ever see their groups' sites, and a site they may not see is a 404, so its existence does not leak.
 
@@ -279,6 +284,7 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka alert:test [<group>]` | Send a test alert to a group's destinations (no group: the defaults in .env) |
 | `php vaka server:list` | Servers (by IP or hand-set name) and their sites; CDN sites counted apart |
 | `php vaka user:add [<name>]` / `user:edit` / `user:remove` / `user:list` | Manage dashboard users |
+| `php vaka share:create [<group\|site>] [--label=] [--expires=YYYY-MM-DD]` / `share:list` / `share:revoke [<#>]` | Read tokens for the read API: shown once, stored hashed |
 
 ## Development
 

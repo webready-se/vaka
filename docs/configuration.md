@@ -97,3 +97,11 @@ Every command asks for what it needs when you leave out its arguments. `php vaka
 | `php vaka user:list` | Every user and what they see |
 
 A user limited to groups never sees other groups' sites, or sites without a group.
+
+### Read API
+
+| Command | What it does |
+|---------|--------------|
+| `php vaka share:create <group or site> [--label=] [--expires=YYYY-MM-DD]` | A read token for the [read API](api.md): a group's sites or one site, read-only, shown once. `--expires` is the last day it works |
+| `php vaka share:list` | Every read token: what it reads, its label, the start of the token, when it expires and when it was last used |
+| `php vaka share:revoke <#>` | Revoke a read token, by its number in `share:list` or the start of the token |

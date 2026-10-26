@@ -158,6 +158,20 @@ function migrations(): array
             // What a change check (exposed files, later headers and DNS) last told, to compare against
             "ALTER TABLE check_state ADD COLUMN alerted_snapshot TEXT NOT NULL DEFAULT '[]'",
         ],
+        8 => [
+            // Read tokens for the API: only a hash of the token is kept, and its start to tell them apart
+            "CREATE TABLE share_tokens (
+                id INTEGER PRIMARY KEY,
+                token_hash TEXT NOT NULL UNIQUE,
+                prefix TEXT NOT NULL,
+                site_id INTEGER REFERENCES sites (id) ON DELETE CASCADE,
+                group_id INTEGER REFERENCES groups (id) ON DELETE CASCADE,
+                label TEXT NOT NULL DEFAULT '',
+                expires_at TEXT,
+                last_used_at TEXT,
+                created_at TEXT NOT NULL
+            )",
+        ],
     ];
 }
 

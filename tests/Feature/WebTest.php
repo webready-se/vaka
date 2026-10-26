@@ -271,6 +271,106 @@ test('snoozing from the dashboard needs the CSRF token and access to the site', 
     expect($r['status'])->toBe(404);
 });
 
+// =====================================================================
+// The read API (docs/api.md)
+// =====================================================================
+
+test('the read API answers a share token with the sites in its scope, in stable fields', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    add_group($this->db, ['name' => 'Own']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    add_site($this->db, ['url' => 'https://blog.example', 'group' => 'Own']);
+    $now = time();
+    save_check_state($this->db, $shop, 'uptime', ['status' => 'fail', 'summary' => 'No answer within 10 s', 'details' => ['problem' => 'timeout', 'status_code' => 0], 'fail_count' => 2, 'changed_at' => utc_now($now - 600)], utc_now($now - 30), utc_now($now + 30));
+    save_check_state($this->db, $shop, 'ssl', ['status' => 'warn', 'summary' => 'The certificate expires in 6 days (31 Oct 2026)', 'details' => ['days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z', 'problem' => 'expiring'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
+    set_meta($this->db, 'last_run_at', utc_now($now - 30));
+    $token = create_share_token($this->db, null, $customers, 'AI assistant', null, $now)['token'];
+
+    $r = http_request('GET', WEB . '/?api&share=' . $token);
+    expect($r['status'])->toBe(200)
+        ->and($r['headers'])->not->toHaveKey('set-cookie')
+        ->and($r['json'])->toMatchArray(['version' => VAKA_VERSION, 'scope' => ['type' => 'group', 'name' => 'Customers'], 'run_ok' => true])
+        ->and($r['json'])->not->toHaveKey('setup')
+        ->and($r['json']['totals'])->toMatchArray(['sites' => 1, 'down' => 1])
+        ->and($r['json']['sites'])->toHaveCount(1);
+    $site = $r['json']['sites'][0];
+    expect(array_keys($site))->toBe(['url', 'label', 'name', 'group', 'status', 'summary', 'advice', 'since', 'checked_at', 'response_ms', 'server', 'cdn', 'snoozed_until', 'maintenance', 'unstable', 'uptime', 'ssl', 'domain', 'exposed', 'headers'])
+        ->and($site)->toMatchArray(['url' => 'https://shop.example', 'label' => 'shop.example', 'group' => 'Customers', 'status' => 'down', 'summary' => 'No answer within 10 s', 'since' => utc_now($now - 600)])
+        ->and(array_keys($site['uptime']))->toBe(['24h', '7d', '30d'])
+        ->and($site['ssl'])->toMatchArray(['status' => 'warn', 'days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z']);
+
+    // The same with the token in a header, which keeps it out of URLs and logs
+    $r = http_request('GET', WEB . '/?api', ['headers' => ['Authorization: Bearer ' . $token]]);
+    expect($r['status'])->toBe(200)
+        ->and(array_column($r['json']['sites'], 'label'))->toBe(['shop.example']);
+});
+
+test('an unknown, revoked or expired share token is a 404, and a token reads nothing outside its scope', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    add_site($this->db, ['url' => 'https://blog.example']);
+    $now = time();
+    $expired = create_share_token($this->db, null, $customers, '', utc_now($now - 1), $now - 86400)['token'];
+    $revoked = create_share_token($this->db, null, $customers, '', null, $now);
+    revoke_share_token($this->db, $revoked['id']);
+    $token = create_share_token($this->db, null, $customers, '', null, $now)['token'];
+
+    foreach ([str_repeat('0', 64), $expired, $revoked['token'], 'nonsense'] as $bad) {
+        $r = http_request('GET', WEB . '/?api&share=' . $bad);
+        expect($r['status'])->toBe(404)
+            ->and($r['json'])->toBe(['error' => 'No such read token: it may have been revoked or have expired']);
+    }
+    expect(http_request('GET', WEB . '/?api&site=blog.example&share=' . $token)['status'])->toBe(404)
+        ->and(http_request('GET', WEB . '/?api=overview&share=' . $token)['status'])->toBe(401)
+        ->and(http_request('POST', WEB . '/?api&share=' . $token)['status'])->toBe(405)
+        ->and(http_request('GET', WEB . '/?api')['status'])->toBe(401);
+});
+
+test('one site in detail: every check\'s history and response times, and CSV for spreadsheets', function () {
+    $shop = add_site($this->db, ['url' => 'https://shop.example']);
+    $now = time();
+    add_event($this->db, $shop, 'uptime', ['status' => 'ok', 'previous' => 'pending', 'message' => 'First check: answered 200 OK in 210 ms'], utc_now($now - 7200));
+    add_event($this->db, $shop, 'ssl', ['status' => 'warn', 'previous' => 'ok', 'message' => 'The certificate expires in 14 days'], utc_now($now - 3600));
+    $this->db->exec("INSERT INTO samples (site_id, checked_at, status_code, ms, ok) VALUES ({$shop}, '" . utc_now($now - 600) . "', 200, 230, 1), ({$shop}, '" . utc_now($now - 300) . "', 503, 120, 0), ({$shop}, '" . utc_now($now - 2 * 86400) . "', 200, 250, 1)");
+    save_check_state($this->db, $shop, 'uptime', ['status' => 'ok', 'summary' => 'Answered 200 OK in 230 ms', 'details' => ['ms' => 230], 'fail_count' => 0, 'changed_at' => utc_now($now - 7200)], utc_now($now - 60), utc_now($now + 240));
+    $token = create_share_token($this->db, $shop, null, '', null, $now)['token'];
+
+    $r = http_request('GET', WEB . '/?api&site=shop.example&share=' . $token);
+    expect($r['status'])->toBe(200)
+        ->and($r['json']['scope'])->toBe(['type' => 'site', 'name' => 'shop.example'])
+        ->and($r['json']['site'])->toMatchArray(['url' => 'https://shop.example', 'status' => 'up', 'response_ms' => 230, 'keyword' => '', 'interval_minutes' => 5])
+        ->and(array_column($r['json']['events'], 'check'))->toBe(['ssl', 'uptime'])
+        ->and($r['json']['events'][0])->toMatchArray(['status' => 'warn', 'previous' => 'ok', 'message' => 'The certificate expires in 14 days'])
+        ->and(array_column($r['json']['samples'], 'ms'))->toBe([230, 120])
+        ->and($r['json']['samples'][1])->toMatchArray(['status_code' => 503, 'ok' => false])
+        ->and($r['json']['days'])->toHaveCount(30)
+        ->and($r['json']['maintenance'])->toBe([]);
+
+    // Further back, up to the 30 days that are kept
+    expect(http_request('GET', WEB . '/?api&site=shop.example&hours=72&share=' . $token)['json']['samples'])->toHaveCount(3);
+
+    $csv = http_request('GET', WEB . '/?api&site=shop.example&format=csv&share=' . $token);
+    expect($csv['headers']['content-type'])->toBe('text/csv; charset=utf-8')
+        ->and(explode("\n", trim($csv['body'])))->toBe(['checked_at,status_code,ms,ok', utc_now($now - 600) . ',200,230,1', utc_now($now - 300) . ',503,120,0']);
+
+    $list = http_request('GET', WEB . '/?api&format=csv&share=' . $token);
+    expect(explode("\n", trim($list['body']))[0])->toBe('url,group,status,since,response_ms,uptime_24h,uptime_7d,uptime_30d,ssl_days_left,domain_days_left,headers_grade,exposed')
+        ->and(explode("\n", trim($list['body']))[1])->toStartWith('https://shop.example,,up,');
+});
+
+test('a logged-in user reads the same API for the sites they may see', function () {
+    add_group($this->db, ['name' => 'Customers']);
+    add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    add_site($this->db, ['url' => 'https://blog.example']);
+
+    $anna = http_request('GET', WEB . '/?api', ['jar' => ($this->login)('anna', 'anna password')['jar']]);
+    expect($anna['status'])->toBe(200)
+        ->and($anna['json']['scope'])->toBe(['type' => 'user', 'name' => 'anna'])
+        ->and(array_column($anna['json']['sites'], 'label'))->toBe(['shop.example']);
+    $admin = http_request('GET', WEB . '/?api', ['jar' => ($this->login)('admin', 'admin password')['jar']]);
+    expect(array_column($admin['json']['sites'], 'label'))->toBe(['shop.example', 'blog.example']);
+});
+
 test('logging out needs the CSRF token and ends the session', function () {
     $jar = ($this->login)('admin', 'admin password')['jar'];
     expect(http_request('GET', WEB . '/?logout', ['jar' => $jar])['status'])->toBe(405);
