@@ -89,9 +89,9 @@ function ask(string $label, string $default = ''): string
 }
 
 /** Yes or no, where only an explicit yes counts. */
-function confirm(string $question): bool
+function confirm(string $question, bool $default = false): bool
 {
-    return parse_bool(prompt("{$question} (y/N) ")) === true;
+    return parse_bool(prompt($question . ($default ? ' (Y/n) ' : ' (y/N) '))) ?? $default;
 }
 
 /**
@@ -120,21 +120,25 @@ function choose(string $question, array $options, int|string|null $default = nul
 }
 
 /**
- * Pick several of $options by number, comma-separated. Enter or 0 picks
- * none of them in particular, which means all ($all says what that is):
- * returns [] then.
+ * Pick several of $options by number: comma-separated, or ranges like 3-7.
+ * Returns the picked keys, true for 0 (all of them), or null for Enter.
+ * $hint says what 0 and Enter mean for the question.
  */
-function choose_many(string $question, array $options, string $all): array
+function choose_many(string $question, array $options, string $hint): array|bool|null
 {
     echo $question . "\n";
     $values = array_keys($options);
     foreach ($values as $i => $value) echo sprintf("  %d) %s\n", $i + 1, $options[$value]);
-    $answer = trim(ask("Numbers, comma-separated (Enter or 0 for {$all})"));
-    if ($answer === '' || $answer === '0') return [];
+    $answer = trim(ask("Numbers, comma-separated or ranges like 3-7 ({$hint})"));
+    if ($answer === '') return null;
+    if ($answer === '0') return true;
     $picked = [];
-    foreach (preg_split('/[\s,]+/', $answer) as $number) {
-        if (!ctype_digit($number) || !isset($values[(int) $number - 1])) fail("\"{$number}\" is not one of the numbers above.");
-        $picked[] = $values[(int) $number - 1];
+    foreach (preg_split('/[\s,]+/', $answer) as $part) {
+        [$from, $to] = preg_match('/^(\d+)-(\d+)$/', $part, $m) ? [(int) $m[1], (int) $m[2]] : [(int) $part, (int) $part];
+        if (!preg_match('/^\d+(-\d+)?$/', $part) || $from < 1 || $to > count($values) || $from > $to) {
+            fail("\"{$part}\" is not one of the numbers above.");
+        }
+        for ($n = $from; $n <= $to; $n++) $picked[] = $values[$n - 1];
     }
     return array_values(array_unique($picked));
 }

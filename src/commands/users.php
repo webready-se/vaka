@@ -81,7 +81,8 @@ function cmd_user_add(array $config, array $args, array $opts): void
     if (isset($opts['groups'])) {
         $groups = group_names($db, (string) $opts['groups']);
     } elseif (!isset($args[1]) && ($all = list_groups($db))) {
-        $groups = choose_many('Which groups may ' . $name . ' see?', array_column($all, 'name', 'name'), 'every site');
+        $picked = choose_many('Which groups may ' . $name . ' see?', array_column($all, 'name', 'name'), '0 or Enter for every site');
+        $groups = is_array($picked) ? $picked : [];
     } else {
         $groups = [];
     }
