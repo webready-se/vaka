@@ -114,8 +114,11 @@ function handle_login(array $config, int $now): never
         show_login($config, "Too many failed attempts. Wait {$config['lockout_minutes']} minutes and try again.");
     }
 
+    $users = load_users($config['users_file']);
+    // Before the first user exists there is nothing to log in to: no failed attempt to count
+    if (!$users) show_login($config);
     $name = strtolower(trim((string) ($_POST['username'] ?? '')));
-    $user = load_users($config['users_file'])[$name] ?? null;
+    $user = $users[$name] ?? null;
     // Verify against a dummy hash for unknown users too, so timing does not tell which names exist
     $hash = $user['password'] ?? '$2y$12$FKKe7nUCFf6k3/.WVUVIRuEPI.d6R0F75pyM5t4qCqSCqQ6kIkfFi';
     if (password_verify((string) ($_POST['password'] ?? ''), $hash) && $user !== null) {
@@ -145,6 +148,25 @@ function show_login(array $config, ?string $error = null): never
     $message = $error === null ? '' : '<p class="login-error" id="login-error" role="alert">' . e($error) . '</p>';
     $described = $error === null ? '' : ' aria-describedby="login-error"';
     $owl = owl_tile();
+    $panel = load_users($config['users_file']) ? <<<HTML
+      <form method="post" action="/?login">
+        {$message}
+        <input type="hidden" name="_token" value="{$token}">
+        <label for="username">User name</label>
+        <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus{$described}>
+        <label for="password">Password</label>
+        <input id="password" name="password" type="password" autocomplete="current-password" required{$described}>
+        <button type="submit">Log in</button>
+      </form>
+    HTML : <<<HTML
+      <div class="login-steps">
+        <h2>No users yet</h2>
+        <p>Create the first one on the server where Vaka runs:</p>
+        <code>php vaka user:add your-name</code>
+        <p>No SSH there? Run it on your own computer instead, and upload the <code>users.json</code> it creates next to the <code>vaka</code> file.</p>
+        <p>Then reload this page and log in.</p>
+      </div>
+    HTML;
 
     respond(200, <<<HTML
     <!doctype html>
@@ -163,15 +185,7 @@ function show_login(array $config, ?string $error = null): never
       {$owl}
       <h1>vaka</h1>
       <p class="login-tagline">Keeps watch while you sleep.</p>
-      <form method="post" action="/?login">
-        {$message}
-        <input type="hidden" name="_token" value="{$token}">
-        <label for="username">User name</label>
-        <input id="username" name="username" autocomplete="username" autocapitalize="none" spellcheck="false" required autofocus{$described}>
-        <label for="password">Password</label>
-        <input id="password" name="password" type="password" autocomplete="current-password" required{$described}>
-        <button type="submit">Log in</button>
-      </form>
+    {$panel}
       <p class="login-foot">Made by Webready in Sweden</p>
     </main>
     </body>
@@ -400,6 +414,8 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
 
     $lastRun = get_meta($db, 'last_run_at');
     return [
+        // The first steps, for users who see everything (only they can run the CLI)
+        'setup' => $allowed === null ? ['cron' => cron_line(dirname(__DIR__)), 'alerts' => alerts_configured($db, $config)] : null,
         'last_incident' => $lastIncident,
         'generated_at' => utc_now($now),
         'timezone' => $config['timezone'],

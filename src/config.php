@@ -47,6 +47,13 @@ function resolve_path(string $path, string $root): string
     return rtrim($root, '/') . '/' . $path;
 }
 
+/** The cron line that runs Vaka from $root; on a Forge zero-downtime deploy through current/, which follows every release. */
+function cron_line(string $root): string
+{
+    if (preg_match('#^(/home/forge/[^/]+)/releases/\d+#', $root, $m)) $root = $m[1] . '/current';
+    return '* * * * * php ' . rtrim($root, '/') . '/vaka run';
+}
+
 /** "se=whois.iis.se,nu=whois.iis.nu" as key => value, keys lowercased. Pairs without both halves are dropped. */
 function pair_list(string $value): array
 {

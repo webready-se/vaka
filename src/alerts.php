@@ -128,6 +128,13 @@ function destination_list(string $slack, string $webhook, array $emails): array
     return $list;
 }
 
+/** Whether alerts can go anywhere yet: a default destination in .env, or a group with its own. */
+function alerts_configured(PDO $db, array $config): bool
+{
+    if (destination_list($config['slack_webhook_url'], $config['webhook_url'], $config['alert_email'])) return true;
+    return (bool) $db->query("SELECT 1 FROM groups WHERE slack_webhook != '' OR webhook_url != '' OR email != '' LIMIT 1")->fetchColumn();
+}
+
 /** A destination in words, secrets masked. */
 function describe_destination(array $destination): string
 {

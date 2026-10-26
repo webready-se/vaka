@@ -16,6 +16,8 @@ import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PHP_PORT = 8789;
+const EMPTY_PORT = 8786;
+const NO_USERS_PORT = 8787;
 const CDP_PORT = 9334;
 const shotsArg = process.argv.find((a) => a.startsWith('--screenshots='));
 const shotsDir = shotsArg ? resolve(shotsArg.slice('--screenshots='.length)) : null;
@@ -314,6 +316,60 @@ async function main() {
   await evaluate(() => document.querySelector('.site-row').click());
   await sleep(600);
   await screenshot('phone-detail');
+
+  // 7. The very first visit: before the first user, then with no sites and cron not running yet
+  await send('Emulation.clearDeviceMetricsOverride');
+  const emptyEnv = { ...env, DB_PATH: join(tmp, 'empty.sqlite') };
+  children.push(spawn('php', ['-S', `127.0.0.1:${EMPTY_PORT}`, '-t', join(root, 'public')], { env: emptyEnv, stdio: 'ignore' }));
+  children.push(spawn('php', ['-S', `127.0.0.1:${NO_USERS_PORT}`, '-t', join(root, 'public')], { env: { ...emptyEnv, USERS_FILE: join(tmp, 'no-users.json') }, stdio: 'ignore' }));
+  const emptyBase = `http://127.0.0.1:${EMPTY_PORT}`;
+  const noUsersBase = `http://127.0.0.1:${NO_USERS_PORT}`;
+  await waitForHttp(`${emptyBase}/?login`);
+  await waitForHttp(`${noUsersBase}/?login`);
+
+  wait = loaded();
+  await send('Page.navigate', { url: `${noUsersBase}/?login` });
+  await wait;
+  const noUsers = await evaluate(() => ({
+    title: document.querySelector('.login-steps h2')?.textContent || '',
+    command: document.querySelector('.login-steps > code')?.textContent || '',
+    form: Boolean(document.querySelector('#password')),
+  }));
+  if (noUsers.title !== 'No users yet' || !/^php vaka user:add/.test(noUsers.command) || noUsers.form) fails.push('before the first user, the login page says how to create one instead of showing the form');
+  await screenshot('no-users');
+
+  wait = loaded();
+  await send('Page.navigate', { url: `${emptyBase}/?login` });
+  await wait;
+  wait = loaded();
+  await evaluate(() => {
+    document.querySelector('#username').value = 'smoke';
+    document.querySelector('#password').value = 'smoke password';
+    document.querySelector('form').submit();
+  });
+  await wait;
+  const empty = await evaluate(async () => {
+    for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
+    const steps = [...document.querySelectorAll('.empty .steps li')];
+    return {
+      title: document.querySelector('.empty h2')?.textContent || '',
+      steps: steps.length,
+      done: steps.filter((li) => li.classList.contains('is-done')).length,
+      cron: steps[1]?.querySelector('code')?.textContent || '',
+      imports: /site:import/.test(steps[0]?.textContent || ''),
+      sitesHidden: document.querySelector('[data-region="sites"]').hidden,
+      pill: document.querySelector('[data-run-text]').textContent,
+      csp: window.__csp,
+    };
+  });
+  if (empty.title !== 'Nothing to watch yet' || empty.steps !== 3) fails.push(`the first visit shows the three first steps (got "${empty.title}", ${empty.steps} steps)`);
+  if (empty.done !== 0) fails.push('nothing is ticked off before cron runs and alerts are set');
+  if (!/^\* \* \* \* \* php \/.+\/vaka run$/.test(empty.cron) || /path\/to/.test(empty.cron)) fails.push(`the cron step shows this server's real line (got "${empty.cron}")`);
+  if (!empty.imports) fails.push('the first step shows how to import a list');
+  if (!empty.sitesHidden) fails.push('the empty site list and its filter are hidden');
+  if (empty.pill !== 'No sites yet') fails.push(`the top bar says there are no sites yet (got "${empty.pill}")`);
+  if (empty.csp.length) fails.push(`no CSP violations on the first visit: ${empty.csp.join(', ')}`);
+  await screenshot('first-run');
 
   ws.close();
   const problems = [...fails, ...errors];
