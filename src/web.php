@@ -299,7 +299,11 @@ function handle_api(array $config, array $user, string $endpoint, string $method
         }
         if ($endpoint === 'group-remove') {
             if (!$group) respond_json(404, ['error' => 'No such group']);
-            $removed = remove_group_form($db, $id, $user['name'], client_ip($_SERVER, $config['trusted_proxies']), $now);
+            try {
+                $removed = remove_group_form($db, $config, $id, $user['name'], client_ip($_SERVER, $config['trusted_proxies']), $now);
+            } catch (InvalidArgumentException $e) {
+                respond_json(409, ['error' => $e->getMessage() . '.']);
+            }
             respond_json(200, ['removed' => $removed['name'], 'sites' => $removed['sites']]);
         }
         $saved = save_group_form($db, $config, $input, $id, $user['name'], $now);

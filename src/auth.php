@@ -85,6 +85,26 @@ function rename_group_in_users(string $file, string $old, string $new): void
     if ($changed) save_users($file, $users);
 }
 
+/** The users limited to a group (by name, any case). */
+function users_limited_to(string $file, string $group): array
+{
+    return array_keys(array_filter(load_users($file), fn (array $user) => (bool) array_filter($user['groups'] ?? [], fn ($name) => strcasecmp((string) $name, $group) === 0)));
+}
+
+/**
+ * Refuse to remove a group while users are limited to it, as a database
+ * refuses to delete a row that others point at: their access would point
+ * at a name a later group could take, and taking the name away could leave
+ * them with no groups, which means every site.
+ */
+function assert_group_unused(string $file, string $group): void
+{
+    $users = users_limited_to($file, $group);
+    if (!$users) return;
+    throw new InvalidArgumentException("{$group} cannot be removed while users are limited to it: " . list_words($users)
+        . '. Give them other groups first with `php vaka user:edit <name> --groups=<groups>` (an empty list would show them every site), or remove those users, then remove the group');
+}
+
 // =====================================================================
 // Client IP (same rules as Puls)
 // =====================================================================

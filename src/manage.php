@@ -197,13 +197,15 @@ function save_group_form(PDO $db, array $config, array $form, ?int $id, string $
 
 /**
  * Remove a group: its sites stay, without a group, and say so in their
- * history. Kept in the audit log too.
+ * history. Kept in the audit log too. Throws while users are limited to
+ * the group (see assert_group_unused()).
  *
  * @return array{name: string, sites: int}
  */
-function remove_group_form(PDO $db, int $id, string $user, string $ip, int $now): array
+function remove_group_form(PDO $db, array $config, int $id, string $user, string $ip, int $now): array
 {
     $group = get_group($db, $id);
+    assert_group_unused($config['users_file'], $group['name']);
     $sites = (int) $db->query('SELECT COUNT(*) FROM sites WHERE group_id = ' . $id)->fetchColumn();
     group_history($db, $id, "Group {$group['name']} removed by {$user}: no group now, so its alerts go to the defaults in .env", $now);
     remove_group($db, $id);

@@ -100,7 +100,13 @@ test('save_group_form tells every site in the group what changed, never the webh
             ->toBe('Group Clients changed by admin: renamed to Clients, alerts go out after 10 min down, Slack webhook added, email to ops@example.com')
         ->and(implode(' ', $this->db->query('SELECT message FROM events')->fetchAll(PDO::FETCH_COLUMN)))->not->toContain('secret1234');
 
-    $removed = remove_group_form($this->db, $id, 'admin', '192.0.2.1', $this->now);
+    $users = temp_dir() . '/users.json';
+    save_users($users, ['anna' => ['password' => 'x', 'groups' => ['Clients']]]);
+    expect(fn () => remove_group_form($this->db, ['users_file' => $users] + $config, $id, 'admin', '192.0.2.1', $this->now))
+        ->toThrow(InvalidArgumentException::class, 'Clients cannot be removed while users are limited to it: anna.');
+    save_users($users, ['anna' => ['password' => 'x', 'groups' => ['Own']]]);
+
+    $removed = remove_group_form($this->db, ['users_file' => $users] + $config, $id, 'admin', '192.0.2.1', $this->now);
     expect($removed)->toBe(['name' => 'Clients', 'sites' => 1])
         ->and(find_site($this->db, 'shop.example')['group_id'])->toBeNull()
         ->and($this->db->query("SELECT message FROM events WHERE site_id = {$shop} ORDER BY id DESC")->fetchColumn())->toBe('Group Clients removed by admin: no group now, so its alerts go to the defaults in .env');

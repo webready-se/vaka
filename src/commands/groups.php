@@ -107,6 +107,11 @@ function cmd_group_remove(array $config, array $args, array $opts): void
     $db = get_db($config['db_path']);
     $group = pick_group($db, $args[1] ?? null);
     $count = count(list_sites($db, $group['id']));
+    try {
+        assert_group_unused($config['users_file'], $group['name']);
+    } catch (InvalidArgumentException $e) {
+        fail($e->getMessage() . '.');
+    }
 
     if (empty($opts['force'])) {
         $stay = $count ? ' Its ' . plural($count, 'site stays', 'sites stay') . ', without a group.' : '';

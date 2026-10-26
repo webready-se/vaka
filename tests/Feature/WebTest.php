@@ -381,6 +381,15 @@ test('groups are added, changed and removed in the dashboard, with webhooks mask
     expect($r['status'])->toBe(200)
         ->and($r['json']['sent'])->toBe([['to' => 'Slack 127.0.0.1/...1234', 'ok' => false]]);
 
+    // anna is limited to Customers, so the group stays until that changes
+    $r = $post('group-remove', ['id' => $id]);
+    expect($r['status'])->toBe(409)
+        ->and($r['json']['error'])->toStartWith('Customers cannot be removed while users are limited to it: anna.')
+        ->and(find_group($this->db, 'Customers'))->not->toBeNull();
+    $users = load_users($GLOBALS['web_dir'] . '/users.json');
+    $users['anna']['groups'] = ['Own'];
+    save_users($GLOBALS['web_dir'] . '/users.json', $users);
+
     $r = $post('group-remove', ['id' => $id]);
     expect($r['status'])->toBe(200)
         ->and($r['json'])->toBe(['removed' => 'Customers', 'sites' => 0])

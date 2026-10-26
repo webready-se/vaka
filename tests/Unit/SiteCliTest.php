@@ -93,6 +93,18 @@ test('site:remove asks first and --force skips the question', function () {
         ->and(vaka(['site:list'], $this->env)['out'])->not->toContain('https://shop.example');
 });
 
+test('group:remove refuses a group that users are limited to, and says what to do first', function () {
+    vaka(['group:add', 'Customers'], $this->env);
+    vaka(['group:add', 'Own'], $this->env);
+    save_users($this->env['USERS_FILE'], ['anna' => ['password' => 'x', 'groups' => ['Customers']], 'bo' => ['password' => 'x', 'groups' => ['customers', 'Own']], 'admin' => ['password' => 'x', 'groups' => []]]);
+
+    $r = vaka(['group:remove', 'Customers', '--force'], $this->env);
+    expect($r['exit'])->toBe(1)
+        ->and($r['err'])->toContain('Customers cannot be removed while users are limited to it: anna and bo.')
+        ->and($r['err'])->toContain('php vaka user:edit <name> --groups=<groups>')
+        ->and(vaka(['group:list'], $this->env)['out'])->toContain('Customers');
+});
+
 test('group:remove leaves the sites in place without a group', function () {
     vaka(['group:add', 'Customers'], $this->env);
     vaka(['site:add', 'https://shop.example', '--group=Customers'], $this->env);

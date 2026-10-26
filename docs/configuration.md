@@ -68,7 +68,7 @@ Users who see every site can also add, change and remove sites and groups in the
 |---------|--------------|
 | `php vaka group:add <name>` | Add a group. `--policy=immediate\|delayed\|digest\|silent`, `--delay=<minutes>` (for delayed), `--slack=<webhook>`, `--webhook=<url>`, `--email=<a,b>` |
 | `php vaka group:edit <name>` | Change a group (the same options, plus `--name=`) |
-| `php vaka group:remove <name>` | Remove a group; its sites stay, without a group |
+| `php vaka group:remove <name>` | Remove a group; its sites stay, without a group. Refused while users are limited to it: give them other groups first |
 | `php vaka group:list` | Every group: when and where it is alerted |
 
 ### Quiet times

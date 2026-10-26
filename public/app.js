@@ -1119,7 +1119,11 @@
     var remove = null;
     if (form.id) {
       remove = form.confirmRemove
-        ? h('div', { class: 'confirm', role: 'alert' }, [
+        ? h('div', { class: 'confirm', role: 'alert' }, form.removeError ? [
+          // Users are limited to the group: it stays until that changes
+          h('p', {}, form.removeError),
+          h('div', { class: 'actions' }, h('button', { type: 'button', class: 'button', 'data-action': 'group-remove-cancel' }, 'OK'))
+        ] : [
           h('p', {}, ['Remove the group ', h('b', {}, form.label), '? ' + (form.sites ? capitalize(plural(form.sites, 'site stays', 'sites stay')) + ', without a group: their alerts go to the defaults in .env.' : 'It has no sites.')]),
           h('div', { class: 'actions' }, [
             h('button', { type: 'button', class: 'button is-danger', 'data-action': 'remove-group' }, 'Remove group'),
@@ -1223,8 +1227,13 @@
       closeDetail();
       return load();
     }).catch(function (error) {
-      if (error.message !== 'Logged out') toast(error.message);
-      button.disabled = false;
+      if (error.message === 'Logged out') return;
+      if (!error.body) return toast(error.message);
+      state.form.values = groupValues(regions.detail.querySelector('[data-form="group"]'));
+      state.form.removeError = error.message;
+      renderGroupForm();
+      var ok = regions.detail.querySelector('[data-action="group-remove-cancel"]');
+      if (ok) ok.focus();
     });
   }
 
@@ -1426,6 +1435,7 @@
     if (action === 'group-remove-ask' || action === 'group-remove-cancel') {
       state.form.values = groupValues(regions.detail.querySelector('[data-form="group"]'));
       state.form.confirmRemove = action === 'group-remove-ask';
+      state.form.removeError = null;
       renderGroupForm();
       var again = regions.detail.querySelector(action === 'group-remove-ask' ? '[data-action="remove-group"]' : '[data-action="group-remove-ask"]');
       if (again) again.focus();
