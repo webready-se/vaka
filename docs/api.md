@@ -65,7 +65,7 @@ Each site:
 | `unstable` | `true` while it keeps going down and up (flapping) |
 | `uptime` | `{"24h", "7d", "30d"}`: percentages, rounded down to two decimals and counted from the first check, or `null` before it |
 | `ssl` | `{status, summary, days_left, valid_to, advice}` for https sites, else `null`. `status` is `ok`, `warn` (expires within 14 days) or `fail` (expired or invalid) |
-| `domain` | `{status, summary, domain, days_left, expires, registrar, advice}`, or `null`. `status` is `ok`, `warn`, `fail` (expired) or `unknown` (the registry gave no date). `registrar` is **from the registry** |
+| `domain` | `{status, summary, domain, label, days_left, expires, registrar, advice}`, or `null`. `domain` is the registered domain as DNS has it (`xn--` for an international name), `label` as people write it. `status` is `ok`, `warn`, `fail` (expired) or `unknown` (the registry gave no date). `registrar` is **from the registry** |
 | `exposed` | Files that should never be public: `{status, summary, found, since, advice}`, or `null`. `found` is `[{label, what, severity, url}]`; `status` is `ok`, `warn` (a file that tells versions and paths) or `fail` (secrets, code or data) |
 | `headers` | Security headers: `{status, grade, summary}`, or `null`. `grade` is `A` to `F` |
 | `dns` | Mail DNS: `{status, summary, domain, advice}`, or `null`. `status` is `ok` (SPF and DMARC in place), `warn` (one is missing, or SPF is there twice) or `unknown`; `domain` is the domain whose records were read |

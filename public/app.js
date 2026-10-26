@@ -605,9 +605,10 @@
   function domainIncident(item) {
     var domain = item.domain;
     var sites = item.sites;
-    var others = sites.map(function (site) { return site.label; }).filter(function (label) { return label !== domain.domain; });
+    var shown = domain.label || domain.domain;
+    var others = sites.map(function (site) { return site.label; }).filter(function (label) { return label !== shown; });
     var when = domain.expires ? (domain.status === 'fail' ? 'Ran out ' : 'Runs out ') + date(domain.expires) + (domain.registrar ? ', with ' + domain.registrar : '') : domain.summary;
-    return incident('domain:' + domain.domain, domain.status === 'fail' ? 'down' : 'warn', 'globe', domain.domain, domainWords(domain), when,
+    return incident('domain:' + domain.domain, domain.status === 'fail' ? 'down' : 'warn', 'globe', shown, domainWords(domain), when,
       domain.status === 'fail' ? timeBox('Expired', 'Domain') : timeBox(plural(domain.days_left, 'day', 'days'), 'Expires in'), [
         h('p', { class: 'incident-meta' }, [sites[0].group || 'No group', others.length ? ' · used by ' + others.join(', ') : null]),
         advice(domain.advice),
