@@ -201,12 +201,31 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and(array_column($anna['groups'], 'name'))->toBe(['Customers']);
 });
 
+test('uptime counts from the first check: a site not checked yet has no figures', function () {
+    $now = time();
+    $new = add_site($this->db, ['url' => 'https://new.example']);
+    $fresh = add_site($this->db, ['url' => 'https://fresh.example']);
+    $this->db->exec("UPDATE sites SET created_at = '" . utc_now($now - 3 * 86400) . "'");
+    // Checked for the first time an hour ago, then down for 6 minutes
+    add_event($this->db, $fresh, 'uptime', ['status' => 'ok', 'previous' => 'pending', 'message' => 'First check: answered 200 OK in 90 ms'], utc_now($now - 3600));
+    add_event($this->db, $fresh, 'uptime', ['status' => 'fail', 'previous' => 'ok', 'message' => 'Down: no answer within 10 s'], utc_now($now - 1800));
+    add_event($this->db, $fresh, 'uptime', ['status' => 'ok', 'previous' => 'fail', 'message' => 'Up again after 6 min'], utc_now($now - 1440));
+    save_check_state($this->db, $fresh, 'uptime', ['status' => 'ok', 'summary' => 'Answered 200 OK in 90 ms', 'details' => ['ms' => 90], 'fail_count' => 0, 'changed_at' => utc_now($now - 1440)], utc_now($now - 60), utc_now($now + 240));
+
+    $sites = array_column(http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('admin', 'admin password')['jar']])['json']['groups'][0]['sites'], null, 'label');
+    expect($sites['new.example'])->toMatchArray(['uptime_24h' => null, 'uptime_30d' => null])
+        ->and(array_filter(array_column($sites['new.example']['days'], 'up'), fn ($up) => $up !== null))->toBe([])
+        // 6 minutes down out of the hour since the first check, not out of three days
+        ->and($sites['fresh.example']['uptime_30d'])->toEqual(90.0);
+});
+
 test('site details have the history and response times, and are hidden from users without access', function () {
     add_group($this->db, ['name' => 'Own']);
     $blog = add_site($this->db, ['url' => 'https://blog.example', 'group' => 'Own']);
     $now = time();
     // Watched for two days, so the last 24 hours count in full
     $this->db->exec("UPDATE sites SET created_at = '" . utc_now($now - 2 * 86400) . "' WHERE id = {$blog}");
+    add_event($this->db, $blog, 'uptime', ['status' => 'ok', 'previous' => 'pending', 'message' => 'First check: answered 200 OK in 210 ms'], utc_now($now - 2 * 86400));
     add_event($this->db, $blog, 'uptime', ['status' => 'fail', 'previous' => 'ok', 'message' => 'Down: no answer within 10 s'], utc_now($now - 3600));
     add_event($this->db, $blog, 'uptime', ['status' => 'ok', 'previous' => 'fail', 'message' => 'Up again after 12 min: answered 200 OK in 230 ms'], utc_now($now - 2880));
     $this->db->exec("INSERT INTO samples (site_id, checked_at, status_code, ms, ok) VALUES ({$blog}, '" . utc_now($now - 600) . "', 200, 230, 1)");
@@ -214,7 +233,7 @@ test('site details have the history and response times, and are hidden from user
 
     $admin = http_request('GET', WEB . "/?api=site&id={$blog}", ['jar' => ($this->login)('admin', 'admin password')['jar']]);
     expect($admin['status'])->toBe(200)
-        ->and(array_column($admin['json']['events'], 'message'))->toBe(['Up again after 12 min: answered 200 OK in 230 ms', 'Down: no answer within 10 s'])
+        ->and(array_column($admin['json']['events'], 'message'))->toBe(['Up again after 12 min: answered 200 OK in 230 ms', 'Down: no answer within 10 s', 'First check: answered 200 OK in 210 ms'])
         ->and($admin['json']['samples'][0]['ms'])->toBe(230)
         ->and($admin['json']['uptime']['24h'])->toBeGreaterThan(99.0)->toBeLessThan(99.2)
         ->and($admin['json']['days'])->toHaveCount(30)

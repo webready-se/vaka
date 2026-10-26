@@ -119,12 +119,13 @@ test('uptime_percent rounds to what is worth showing and is null without data', 
         ->and(uptime_percent(0, 0))->toBeNull();
 });
 
-test('daily_uptime gives each of the last days its uptime, in local days, from when the site was added', function () {
+test('daily_uptime gives each of the last days its uptime, in local days, from the first check', function () {
     $db = get_db(temp_dir() . '/vaka.sqlite');
     $id = add_site($db, ['url' => 'https://shop.example']);
     // 12:00 in Stockholm on 25 October 2026 (winter time from 03:00 that night)
     $now = strtotime('2026-10-25T11:00:00Z');
-    $db->exec("UPDATE sites SET created_at = '2026-10-22T10:00:00Z' WHERE id = {$id}");
+    $db->exec("UPDATE sites SET created_at = '2026-10-22T09:50:00Z' WHERE id = {$id}");
+    add_event($db, $id, 'uptime', ['status' => 'ok', 'previous' => 'pending', 'message' => 'First check'], '2026-10-22T10:00:00Z');
     add_event($db, $id, 'uptime', ['status' => 'fail', 'previous' => 'ok', 'message' => 'Down'], '2026-10-24T08:00:00Z');
     add_event($db, $id, 'uptime', ['status' => 'ok', 'previous' => 'fail', 'message' => 'Up'], '2026-10-24T09:12:00Z');
     $site = $db->query("SELECT * FROM sites WHERE id = {$id}")->fetch();

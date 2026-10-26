@@ -375,6 +375,23 @@ async function main() {
   if (empty.csp.length) fails.push(`no CSP violations on the first visit: ${empty.csp.join(', ')}`);
   await screenshot('first-run');
 
+  // Sites added, cron not started yet: the banner gives the real line, and nothing claims 100% up
+  execFileSync('php', [join(root, 'vaka'), 'site:add', 'https://shop.example'], { env: emptyEnv, stdio: 'ignore' });
+  wait = loaded();
+  await send('Page.navigate', { url: `${emptyBase}/` });
+  await wait;
+  const waiting = await evaluate(async () => {
+    for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
+    return {
+      banner: document.querySelector('.banner code')?.textContent || '',
+      figures: [...document.querySelectorAll('.site-row .site-figure')].map((n) => n.firstChild?.textContent || ''),
+      watch: document.querySelector('.watch-stats')?.textContent || '',
+    };
+  });
+  if (!/^\* \* \* \* \* php[\d.]* \/.+\/vaka run$/.test(waiting.banner)) fails.push(`before the first run, the banner gives this server's cron line (got "${waiting.banner}")`);
+  if (waiting.figures[1] !== '–') fails.push(`a site not checked yet shows no uptime (got "${waiting.figures[1]}")`);
+  if (/Up, 30 days/.test(waiting.watch)) fails.push('the watch shows no 30-day uptime before the first check');
+
   ws.close();
   const problems = [...fails, ...errors];
   if (problems.length) {

@@ -30,13 +30,25 @@ function uptime_percent(int $downSeconds, int $periodSeconds): ?float
     return floor((1 - $downSeconds / $periodSeconds) * 10000) / 100;
 }
 
+/** When a site's uptime was first checked (its first uptime event), or null before that. */
+function watched_since(PDO $db, array $site): ?int
+{
+    $stmt = $db->prepare("SELECT MIN(created_at) FROM events WHERE site_id = ? AND check_name = 'uptime'");
+    $stmt->execute([$site['id']]);
+    $first = $stmt->fetchColumn();
+    return $first ? strtotime($first) : null;
+}
+
 /**
  * A site's uptime over the last $seconds, from its events. The period starts
- * no earlier than when the site was added.
+ * no earlier than the first check: before it nothing is known, so a site not
+ * checked yet has no uptime (null), not 100%.
  */
 function site_uptime(PDO $db, array $site, int $seconds, int $now): ?float
 {
-    $from = max($now - $seconds, strtotime($site['created_at']));
+    $since = watched_since($db, $site);
+    if ($since === null) return null;
+    $from = max($now - $seconds, $since);
     if ($from >= $now) return null;
 
     $before = $db->prepare("SELECT status FROM events WHERE site_id = ? AND check_name = 'uptime' AND status IN ('ok', 'fail') AND created_at < ? ORDER BY created_at DESC, id DESC LIMIT 1");
@@ -49,8 +61,8 @@ function site_uptime(PDO $db, array $site, int $seconds, int $now): ?float
 
 /**
  * Uptime for each of the last $days local days (oldest first), from the
- * site's events: {date: 'Y-m-d', up: percent or null}. A day before the site
- * was added is null; today counts up to now.
+ * site's events: {date: 'Y-m-d', up: percent or null}. A day before the
+ * first check is null; today counts up to now.
  *
  * @return list<array{date: string, up: ?float}>
  */
@@ -59,7 +71,8 @@ function daily_uptime(PDO $db, array $site, int $now, int $days, string $timezon
     $tz = new DateTimeZone($timezone);
     $today = (new DateTimeImmutable('@' . $now))->setTimezone($tz)->setTime(0, 0);
     $first = $today->modify('-' . ($days - 1) . ' days');
-    $added = strtotime($site['created_at']);
+    // Days before the first check are unknown, not up
+    $added = watched_since($db, $site) ?? $now;
 
     $before = $db->prepare("SELECT status FROM events WHERE site_id = ? AND check_name = 'uptime' AND status IN ('ok', 'fail') AND created_at < ? ORDER BY created_at DESC, id DESC LIMIT 1");
     $before->execute([$site['id'], utc_now($first->getTimestamp())]);
