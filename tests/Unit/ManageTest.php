@@ -78,6 +78,16 @@ test('group_form_input: errors per field, and webhooks stay as they are unless a
     expect(group_form_input($this->db, ['name' => 'own', 'policy' => 'immediate'], $group)['errors']['name'])->toBe('A group called "Own" already exists.');
 });
 
+test('renaming a group in the dashboard renames it for the users limited to it, as the CLI does', function () {
+    $users = temp_dir() . '/users.json';
+    save_users($users, ['anna' => ['password' => 'x', 'groups' => ['Customers', 'Own']], 'admin' => ['password' => 'x', 'groups' => []]]);
+    $id = find_group($this->db, 'Customers')['id'];
+
+    save_group_form($this->db, test_config(['users_file' => $users]), ['name' => 'Clients', 'policy' => 'immediate'], $id, 'admin', $this->now);
+    expect(load_users($users)['anna']['groups'])->toBe(['Clients', 'Own'])
+        ->and(load_users($users)['admin']['groups'])->toBe([]);
+});
+
 test('save_group_form tells every site in the group what changed, never the webhook itself', function () {
     $id = find_group($this->db, 'Customers')['id'];
     $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);

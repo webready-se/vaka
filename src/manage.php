@@ -188,6 +188,8 @@ function save_group_form(PDO $db, array $config, array $form, ?int $id, string $
     if ($id === null) return ['id' => add_group($db, $checked['input']), 'changes' => [], 'errors' => []];
     update_group($db, $id, $checked['input']);
     $new = get_group($db, $id);
+    // Users limited to the group keep it under its new name (as group:edit does), and never get another group that takes the old name
+    if ($new['name'] !== $old['name']) rename_group_in_users($config['users_file'], $old['name'], $new['name']);
     $changes = describe_group_changes($old, $new, $config['digest_time']);
     if ($changes) group_history($db, $id, "Group {$new['name']} changed by {$user}: " . implode(', ', $changes), $now);
     return ['id' => $id, 'changes' => $changes, 'errors' => []];
