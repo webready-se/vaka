@@ -399,6 +399,42 @@ test('groups are added, changed and removed in the dashboard, with webhooks mask
     expect(http_request('GET', WEB . "/?api=group&id={$id}", ['jar' => $anna])['status'])->toBe(403);
 });
 
+test('maintenance windows and server names are set in the dashboard too', function () {
+    add_group($this->db, ['name' => 'Customers']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $this->db->exec("UPDATE sites SET ip = '203.0.113.10'");
+    $jar = ($this->login)('admin', 'admin password')['jar'];
+    $csrf = ($this->csrf)($jar);
+    $post = fn (string $endpoint, array $body) => http_request('POST', WEB . "/?api={$endpoint}", ['jar' => $jar, 'json' => $body, 'headers' => ['X-CSRF-Token: ' . $csrf]]);
+
+    $r = $post('maintenance-add', ['site_id' => $shop, 'kind' => 'days', 'start' => '22:00', 'end' => '02:00', 'days' => []]);
+    expect($r['status'])->toBe(422)->and($r['json']['errors'])->toBe(['when' => 'Tick the days it is for.']);
+
+    $r = $post('maintenance-add', ['site_id' => $shop, 'kind' => 'days', 'start' => '22:00', 'end' => '02:00', 'days' => ['sat', 'sun'], 'label' => 'Backups']);
+    expect($r['status'])->toBe(200)->and($r['json']['when'])->toBe('weekends 22:00-02:00');
+    $detail = http_request('GET', WEB . "/?api=site&id={$shop}", ['jar' => $jar])['json'];
+    expect($detail['maintenance'][0])->toMatchArray(['when' => 'weekends 22:00-02:00', 'label' => 'Backups', 'for' => 'site'])
+        ->and($detail['site']['server_ip'])->toBe('203.0.113.10')
+        ->and($detail['site']['group_id'])->toBe(find_group($this->db, 'Customers')['id']);
+
+    $group = find_group($this->db, 'Customers')['id'];
+    expect($post('maintenance-add', ['group_id' => $group, 'kind' => 'daily', 'start' => '00:00', 'end' => '07:00'])['status'])->toBe(200)
+        ->and(http_request('GET', WEB . "/?api=group&id={$group}", ['jar' => $jar])['json']['group']['maintenance'][0])->toMatchArray(['when' => 'every day 00:00-07:00']);
+
+    $r = $post('maintenance-remove', ['id' => $detail['maintenance'][0]['id']]);
+    expect($r['json'])->toBe(['removed' => 'weekends 22:00-02:00']);
+
+    $server = http_request('GET', WEB . "/?api=server&site={$shop}", ['jar' => $jar]);
+    expect($server['json']['server'])->toMatchArray(['ip' => '203.0.113.10', 'label' => '', 'sites' => ['shop.example']]);
+    $r = $post('server-save', ['ip' => '203.0.113.10', 'label' => 'web-1']);
+    expect($r['status'])->toBe(200)
+        ->and(http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['json']['groups'][0]['sites'][0]['server'])->toBe('web-1 (203.0.113.10)');
+
+    $anna = ($this->login)('anna', 'anna password')['jar'];
+    expect(http_request('POST', WEB . '/?api=server-save', ['jar' => $anna, 'json' => ['ip' => '203.0.113.10', 'label' => 'x'], 'headers' => ['X-CSRF-Token: ' . ($this->csrf)($anna)]])['status'])->toBe(403)
+        ->and(http_request('POST', WEB . '/?api=maintenance-add', ['jar' => $anna, 'json' => ['site_id' => $shop, 'kind' => 'daily', 'start' => '00:00', 'end' => '01:00'], 'headers' => ['X-CSRF-Token: ' . ($this->csrf)($anna)]])['status'])->toBe(403);
+});
+
 // =====================================================================
 // The read API (docs/api.md)
 // =====================================================================

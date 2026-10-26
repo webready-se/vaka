@@ -823,8 +823,10 @@
       ['Exposed files', site.exposed ? site.exposed.summary : 'Not checked yet']
     ];
     if (site.keyword) settings.splice(2, 0, ['Looks for the text', '"' + site.keyword + '"']);
+    var editable = Boolean(state.data.setup);
     d.maintenance.forEach(function (w) {
-      settings.push(['Maintenance', w.when + (w.label ? ' (' + w.label + ')' : '') + (w.active ? ', now' : '')]);
+      var text = w.when + (w.label ? ' (' + w.label + ')' : '') + (w.for === 'group' ? ', for the group' : '') + (w.active ? ', now' : '');
+      settings.push(['Maintenance', editable ? [text, ' ', h('button', { type: 'button', class: 'link-button', 'data-action': 'window-remove', 'data-id': w.id, 'aria-label': 'Remove the maintenance window ' + w.when }, 'Remove')] : text]);
     });
 
     append(node, h('div', { class: 'drawer-inner is-' + kind }, [
@@ -863,8 +865,10 @@
       h('dl', { class: 'settings' }, settings.reduce(function (list, row) {
         return list.concat([h('dt', {}, row[0]), h('dd', {}, row[1])]);
       }, [])),
-      state.data.setup ? h('div', { class: 'actions' }, [
-        h('button', { type: 'button', class: 'button', 'data-action': 'edit-site' }, 'Change settings')
+      editable ? h('div', { class: 'actions' }, [
+        h('button', { type: 'button', class: 'button', 'data-action': 'edit-site' }, 'Change settings'),
+        h('button', { type: 'button', class: 'button', 'data-action': 'add-window' }, [icon('quiet'), 'Add a maintenance window']),
+        site.server_ip ? h('button', { type: 'button', class: 'button', 'data-action': 'edit-server' }, [icon('server'), 'Server settings']) : null
       ]) : null
     ]));
   }
@@ -1041,7 +1045,7 @@
     if (opener) state.opener = opener;
     var show = function (group) {
       state.form = {
-        kind: 'group', id: group ? group.id : null, label: group ? group.name : null, sites: group ? group.sites : 0,
+        kind: 'group', id: group ? group.id : null, label: group ? group.name : null, sites: group ? group.sites : 0, windows: group ? group.maintenance : [],
         current: group ? { slack: group.slack, webhook: group.webhook } : { slack: '', webhook: '' },
         errors: {}, confirmRemove: false,
         values: group
@@ -1156,6 +1160,13 @@
           h('button', { type: 'button', class: 'button', 'data-action': 'group-test' }, [icon('bell'), 'Send a test alert']),
           h('small', { class: 'field-hint' }, 'With the saved settings.')
         ]) : null,
+        form.id ? h('fieldset', { class: 'field' }, [
+          h('legend', {}, 'Maintenance windows'),
+          form.windows.length ? h('ul', { class: 'window-list' }, form.windows.map(function (w) {
+            return h('li', {}, [w.when + (w.label ? ' (' + w.label + ')' : ''), ' ', h('button', { type: 'button', class: 'link-button', 'data-action': 'window-remove', 'data-id': w.id, 'aria-label': 'Remove the maintenance window ' + w.when }, 'Remove')]);
+          })) : h('p', { class: 'field-hint' }, 'None. Outages inside a window are not alerted.'),
+          h('div', {}, h('button', { type: 'button', class: 'button', 'data-action': 'add-window-group' }, [icon('quiet'), 'Add a maintenance window']))
+        ]) : null,
         h('div', { class: 'actions' }, [
           h('button', { type: 'submit', class: 'button is-primary' }, form.id ? 'Save changes' : 'Add group'),
           h('button', { type: 'button', class: 'button', 'data-action': 'form-cancel' }, 'Cancel')
@@ -1234,6 +1245,247 @@
       renderGroupForm();
       var ok = regions.detail.querySelector('[data-action="group-remove-cancel"]');
       if (ok) ok.focus();
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // Maintenance windows: for a site or a whole group, every day, some
+  // days or once, in Vaka's time zone. The form returns to where it came from.
+  // -----------------------------------------------------------------
+
+  var DAYS = [['mon', 'Mon'], ['tue', 'Tue'], ['wed', 'Wed'], ['thu', 'Thu'], ['fri', 'Fri'], ['sat', 'Sat'], ['sun', 'Sun']];
+
+  function openWindowForm(from) {
+    state.form = Object.assign({
+      kind: 'window', errors: {},
+      values: { target: from.groupId && !from.siteId ? 'group' : 'site', kind: 'daily', start: '00:00', end: '07:00', days: ['mon', 'tue', 'wed', 'thu', 'fri'], from: '', to: '', label: '' }
+    }, from);
+    renderWindowForm();
+    var first = regions.detail.querySelector('[name="kind"]:checked');
+    if (first) first.focus();
+  }
+
+  function renderWindowForm() {
+    var form = state.form;
+    var v = form.values;
+    var node = regions.detail;
+    clear(node);
+    var radio = function (name, value, label, small) {
+      var input = h('input', { type: 'radio', name: name, value: value });
+      input.checked = v[name] === value;
+      return h('li', {}, h('label', {}, [input, h('b', {}, label), small ? h('small', {}, small) : null]));
+    };
+    var time = function (name, label) {
+      var input = h('input', { type: 'time', name: name, id: 'w-' + name });
+      input.value = v[name];
+      return h('label', { class: 'time-field', for: 'w-' + name }, [label, input]);
+    };
+    var moment = function (name, label) {
+      var input = h('input', { type: 'datetime-local', name: name, id: 'w-' + name });
+      input.value = v[name];
+      return h('label', { class: 'time-field', for: 'w-' + name }, [label, input]);
+    };
+
+    var target = form.siteId && form.groupName
+      ? h('fieldset', { class: 'field' }, [
+        h('legend', {}, 'For'),
+        h('ul', { class: 'choice-list' }, [
+          radio('target', 'site', 'Only ' + form.siteLabel, null),
+          radio('target', 'group', 'Every site in ' + form.groupName, 'Sites added to the group later too.')
+        ])
+      ])
+      : null;
+    var when = h('fieldset', { class: 'field' + (form.errors.when ? ' is-invalid' : '') }, [
+      h('legend', {}, 'When'),
+      h('ul', { class: 'choice-list' }, [
+        radio('kind', 'daily', 'Every day', null),
+        radio('kind', 'days', 'Some days of the week', null),
+        radio('kind', 'once', 'Once', null)
+      ]),
+      v.kind === 'once'
+        ? h('div', { class: 'time-row' }, [moment('from', 'From'), moment('to', 'To')])
+        : h('div', { class: 'time-row' }, [time('start', 'From'), time('end', 'To')]),
+      v.kind === 'days' ? h('ul', { class: 'day-list' }, DAYS.map(function (d) {
+        var box = h('input', { type: 'checkbox', name: 'days', value: d[0] });
+        box.checked = v.days.indexOf(d[0]) !== -1;
+        return h('li', {}, h('label', {}, [box, d[1]]));
+      })) : null,
+      form.errors.when ? h('p', { class: 'field-error', id: 'w-when-error', role: 'alert' }, form.errors.when) : null,
+      h('p', { class: 'field-hint' }, 'In ' + state.data.timezone + '. An end before the start runs past midnight.')
+    ]);
+    var label = textInput('label', v.label, { spellcheck: 'true', placeholder: 'Nightly imports' });
+    label.id = 'w-label';
+    if (form.errors.label) label.setAttribute('aria-invalid', 'true');
+
+    append(node, h('div', { class: 'drawer-inner is-form' }, [
+      h('div', { class: 'drawer-head' }, [
+        h('div', { class: 'medallion' }, icon('quiet')),
+        h('div', {}, [
+          h('h2', { id: 'detail-title' }, 'Add a maintenance window'),
+          h('p', {}, form.siteId ? form.siteLabel : 'Group ' + form.groupName)
+        ]),
+        h('button', { type: 'button', class: 'close-button', 'data-action': 'close', 'aria-label': 'Close' }, icon('close'))
+      ]),
+      h('p', { class: 'form-intro' }, 'Checks keep running. Outages that start and end inside the window are not alerted; a site still down when it ends is.'),
+      h('form', { class: 'site-form', 'data-form': 'window', novalidate: true }, [
+        target,
+        when,
+        h('div', { class: 'field' + (form.errors.label ? ' is-invalid' : '') }, [
+          h('label', { for: 'w-label' }, 'Label'),
+          label,
+          form.errors.label ? h('p', { class: 'field-error' }, form.errors.label) : null,
+          h('p', { class: 'field-hint' }, 'Optional: what happens then.')
+        ]),
+        h('div', { class: 'actions' }, [
+          h('button', { type: 'submit', class: 'button is-primary' }, 'Add window'),
+          h('button', { type: 'button', class: 'button', 'data-action': 'form-cancel' }, 'Cancel')
+        ])
+      ])
+    ]));
+  }
+
+  /** The form's values. A field the chosen kind does not show keeps what it had, so switching back loses nothing. */
+  function windowValues(formNode) {
+    var data = new FormData(formNode);
+    var was = state.form.values;
+    var shown = function (name) { return Boolean(formNode.querySelector('[name="' + name + '"]')); };
+    return {
+      target: data.get('target') || was.target, kind: data.get('kind') || 'daily',
+      start: shown('start') ? data.get('start') || '' : was.start, end: shown('end') ? data.get('end') || '' : was.end,
+      days: shown('days') ? data.getAll('days') : was.days,
+      from: shown('from') ? data.get('from') || '' : was.from, to: shown('to') ? data.get('to') || '' : was.to,
+      label: data.get('label') || ''
+    };
+  }
+
+  /** Back to where a form for a window or a server was opened: the site's detail or the group's form. */
+  function backFromForm(form) {
+    if (form.back === 'group') return openGroupForm(form.groupId);
+    state.form = null;
+    return openDetail(form.siteId);
+  }
+
+  function saveWindow(formNode) {
+    var form = state.form;
+    var v = windowValues(formNode);
+    form.values = v;
+    var body = Object.assign({}, v, v.target === 'group' ? { group_id: form.groupId } : { site_id: form.siteId });
+    var submit = formNode.querySelector('[type="submit"]');
+    submit.disabled = true;
+    return post('/?api=maintenance-add', body).then(function (result) {
+      toast('Maintenance window added: ' + result.when);
+      return load().then(function () { return backFromForm(form); });
+    }).catch(function (error) {
+      if (error.message === 'Logged out') return;
+      submit.disabled = false;
+      if (!error.body || !error.body.errors) return toast(error.message);
+      form.errors = error.body.errors;
+      renderWindowForm();
+      var focus = regions.detail.querySelector(form.errors.label ? '#w-label' : '[name="kind"]:checked');
+      if (focus) focus.focus();
+    });
+  }
+
+  function removeWindow(button) {
+    button.disabled = true;
+    return post('/?api=maintenance-remove', { id: Number(button.getAttribute('data-id')) }).then(function (result) {
+      toast('Maintenance window removed: ' + result.removed);
+      return load().then(function () {
+        if (state.form && state.form.kind === 'group') return openGroupForm(state.form.id);
+        if (state.detailId) return openDetail(state.detailId);
+      });
+    }).catch(function (error) {
+      if (error.message !== 'Logged out') toast(error.message);
+      button.disabled = false;
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // A server: its name in alerts and the dashboard, and every site on it
+  // moved to a group at once
+  // -----------------------------------------------------------------
+
+  function openServerForm(siteId, siteLabel) {
+    return api('/?api=server&site=' + encodeURIComponent(siteId)).then(function (result) {
+      var server = result.server;
+      state.form = { kind: 'server', back: 'site', siteId: siteId, siteLabel: siteLabel, ip: server.ip, label: server.label, sites: server.sites, errors: {}, values: { label: server.label, group: '__keep' } };
+      renderServerForm();
+      var first = regions.detail.querySelector('#s-label');
+      if (first) first.focus();
+    }).catch(function (error) {
+      if (error.message !== 'Logged out') toast(error.message);
+    });
+  }
+
+  function renderServerForm() {
+    var form = state.form;
+    var v = form.values;
+    var node = regions.detail;
+    clear(node);
+    var name = textInput('label', v.label, { placeholder: 'web-1' });
+    name.id = 's-label';
+    if (form.errors.label) name.setAttribute('aria-invalid', 'true');
+    var group = h('select', { name: 'group', id: 's-group' }, [h('option', { value: '__keep' }, 'Keep their groups'), h('option', { value: '' }, 'No group')].concat(state.data.setup.groups.map(function (g) {
+      return h('option', { value: g }, 'Move them to ' + g);
+    })));
+    group.value = v.group;
+
+    append(node, h('div', { class: 'drawer-inner is-form' }, [
+      h('div', { class: 'drawer-head' }, [
+        h('div', { class: 'medallion' }, icon('server')),
+        h('div', {}, [
+          h('h2', { id: 'detail-title' }, 'Server ' + (form.label ? form.label + ' (' + form.ip + ')' : form.ip)),
+          h('p', {}, plural(form.sites.length, 'site answers', 'sites answer') + ' on ' + form.ip + '.')
+        ]),
+        h('button', { type: 'button', class: 'close-button', 'data-action': 'close', 'aria-label': 'Close' }, icon('close'))
+      ]),
+      h('form', { class: 'site-form', 'data-form': 'server', novalidate: true }, [
+        h('div', { class: 'field' + (form.errors.label ? ' is-invalid' : '') }, [
+          h('label', { for: 's-label' }, 'Name'),
+          name,
+          form.errors.label ? h('p', { class: 'field-error' }, form.errors.label) : null,
+          h('p', { class: 'field-hint' }, 'Alerts then say "' + (v.label || 'web-1') + ' (' + form.ip + ')". Empty removes the name.')
+        ]),
+        h('div', { class: 'field' + (form.errors.group ? ' is-invalid' : '') }, [
+          h('label', { for: 's-group' }, 'Every site on it'),
+          group,
+          form.errors.group ? h('p', { class: 'field-error' }, form.errors.group) : null,
+          h('p', { class: 'field-hint' }, form.sites.join(', '))
+        ]),
+        h('div', { class: 'actions' }, [
+          h('button', { type: 'submit', class: 'button is-primary' }, 'Save'),
+          h('button', { type: 'button', class: 'button', 'data-action': 'form-cancel' }, 'Cancel')
+        ])
+      ])
+    ]));
+  }
+
+  function saveServer(formNode) {
+    var form = state.form;
+    var data = new FormData(formNode);
+    form.values = { label: data.get('label') || '', group: data.get('group') || '' };
+    var body = { ip: form.ip, label: form.values.label };
+    if (form.values.group !== '__keep') body.group = form.values.group;
+    var submit = formNode.querySelector('[type="submit"]');
+    submit.disabled = true;
+    return post('/?api=server-save', body).then(function (result) {
+      toast('Saved the server' + (result.moved ? ', and moved ' + plural(result.moved, 'site', 'sites') : ''));
+      return load().then(function () { return backFromForm(form); });
+    }).catch(function (error) {
+      if (error.message === 'Logged out') return;
+      submit.disabled = false;
+      if (!error.body || !error.body.errors) return toast(error.message);
+      form.errors = error.body.errors;
+      renderServerForm();
+    });
+  }
+
+  /** A JSON POST with the CSRF token. */
+  function post(path, body) {
+    return api(path, {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify(body)
     });
   }
 
@@ -1441,8 +1693,17 @@
       if (again) again.focus();
     }
     if (action === 'remove-group') removeGroup(target);
+    if (action === 'add-window' && state.detail) {
+      var site = state.detail.site;
+      openWindowForm({ back: 'site', siteId: site.id, siteLabel: site.label, groupName: site.group, groupId: site.group_id });
+    }
+    if (action === 'add-window-group' && state.form) openWindowForm({ back: 'group', groupId: state.form.id, groupName: state.form.label });
+    if (action === 'window-remove') removeWindow(target);
+    if (action === 'edit-server' && state.detail) openServerForm(state.detail.site.id, state.detail.site.label);
     if (action === 'edit-site' && state.detail) openSiteForm(state.detail);
-    if (action === 'form-cancel') {
+    if (action === 'form-cancel' && state.form && (state.form.kind === 'window' || state.form.kind === 'server')) {
+      backFromForm(state.form);
+    } else if (action === 'form-cancel') {
       if (state.form && state.form.kind !== 'group' && state.form.id && state.detail) {
         state.form = null;
         renderDetail();
@@ -1477,6 +1738,18 @@
     event.preventDefault();
     if (formNode.getAttribute('data-form') === 'site') saveSite(formNode);
     if (formNode.getAttribute('data-form') === 'group') saveGroup(formNode);
+    if (formNode.getAttribute('data-form') === 'window') saveWindow(formNode);
+    if (formNode.getAttribute('data-form') === 'server') saveServer(formNode);
+  });
+
+  // The window form shows the fields for the kind of window chosen
+  document.addEventListener('change', function (event) {
+    var formNode = event.target.closest && event.target.closest('[data-form="window"]');
+    if (!formNode || event.target.name !== 'kind') return;
+    state.form.values = windowValues(formNode);
+    renderWindowForm();
+    var chosen = regions.detail.querySelector('[name="kind"]:checked');
+    if (chosen) chosen.focus();
   });
 
   // "/" jumps to the filter, as in most tools

@@ -82,6 +82,16 @@ function site_host(string $url): string
 const ON_SERVER_SQL = "((s.ip = ? AND s.cdn = '' AND s.server = '') OR lower(s.server) = lower(?)
     OR (s.cdn = '' AND s.server = '' AND s.ip IN (SELECT ip FROM servers WHERE lower(label) = lower(?))))";
 
+/** Name a server's IP for alerts and the dashboard; an empty name removes it. */
+function set_server_label(PDO $db, string $ip, string $label): void
+{
+    if ($label === '') {
+        $db->prepare('DELETE FROM servers WHERE ip = ?')->execute([$ip]);
+        return;
+    }
+    $db->prepare('INSERT INTO servers (ip, label) VALUES (?, ?) ON CONFLICT (ip) DO UPDATE SET label = excluded.label')->execute([$ip, $label]);
+}
+
 /** Every site on a server (see ON_SERVER_SQL), paused ones too, in the order they are shown. */
 function sites_on_server(PDO $db, string $server): array
 {

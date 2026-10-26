@@ -89,11 +89,6 @@ function cmd_server_label(array $config, array $args, array $opts): void
         fail($e->getMessage() . '.');
     }
 
-    if ($label === '') {
-        $db->prepare('DELETE FROM servers WHERE ip = ?')->execute([$ip]);
-        echo "Server {$ip} has no name now.\n";
-        return;
-    }
-    $db->prepare('INSERT INTO servers (ip, label) VALUES (?, ?) ON CONFLICT (ip) DO UPDATE SET label = excluded.label')->execute([$ip, $label]);
-    echo "Server {$ip} is called {$label} now.\n";
+    set_server_label($db, $ip, $label);
+    echo $label === '' ? "Server {$ip} has no name now.\n" : "Server {$ip} is called {$label} now.\n";
 }
