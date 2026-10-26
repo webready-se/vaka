@@ -70,7 +70,7 @@ Read its README.md first, then the doc for what you are changing. Copy values an
 files from it; never link to it at runtime or install it. When the kit and this
 tool disagree, the kit wins, unless this tool's docs say why it differs.
 
-Vaka copied kit 0.2.1 (the version line is in the tokens at the top of `public/app.css`). The mark, the alarm mark and the four family marks are copied into `public/favicon*.svg` and `public/marks/`; the night panel's owl is generated into `OWL` in `public/app.js` from the kit's `characters/vaka.svg` and `vaka-awake.svg`. When the kit changes, copy again and update the version line.
+Vaka copied kit 0.2.1 (the version line is in the tokens at the top of `public/app.css`). The mark, the alarm mark and the marks of the released family tools (today Puls; the footer shows no others, per the kit's docs/layout.md) are copied into `public/favicon*.svg` and `public/marks/`; the night panel's owl is generated into `OWL` in `public/app.js` from the kit's `characters/vaka.svg` and `vaka-awake.svg`. When the kit changes, copy again and update the version line.
 
 ## Architecture
 
@@ -113,7 +113,7 @@ public/app.js            Dashboard JS: hero, "Needs your attention" (outages fir
 public/app.css           Styles for the login and the dashboard (light + dark)
 public/theme.js          Applies a saved light/dark choice before paint (loaded in <head>, no inline script needed)
 public/favicon.svg       The kit's owl mark on deep teal (favicon-alert.svg: on red, eyes wide, shown while a site is down)
-public/marks/            The four Webready tools' marks from the kit, inline in the top bar, the login and the footer credit
+public/marks/            Vaka's mark (top bar, login) and the released Webready tools' marks (footer credit) from the kit, inline
 public/fonts/            Figtree (SIL OFL, variable, Latin) and its licence: self-hosted, no CDN
 docs/brand.md            What is Vaka's own on top of the design kit: the owl's files and states, the night panel, motion
 users.json               User credentials (bcrypt, created by the CLI, gitignored)

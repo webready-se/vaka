@@ -5,12 +5,14 @@ test('a mark is inline SVG, named when it stands alone and hidden beside a visib
         ->and(mark_svg('puls', 'credit-mark', 'Puls'))->toStartWith('<svg class="credit-mark" role="img" aria-label="Puls" focusable="false" ');
 });
 
-test('the footer credit links Webready and the public siblings, and can be turned off', function () {
+test('the footer credit links Webready and the released tools only, each mark linked, and can be turned off', function () {
     $credit = footer_credit(['footer_credit' => true]);
     expect($credit)->toContain('Made by <a href="https://webready.se">Webready</a> in Sweden')
         ->and($credit)->toContain('<a href="https://github.com/webready-se/puls"><svg class="credit-mark" role="img" aria-label="Puls"')
-        ->and(substr_count($credit, 'class="credit-mark"'))->toBe(4)
-        ->and(substr_count($credit, '<a href='))->toBe(2)
+        ->and(substr_count($credit, 'class="credit-mark"'))->toBe(1)
+        ->and($credit)->not->toContain('aria-label="Vaka"')
+        ->and($credit)->not->toContain('aria-label="Snoka"')
+        ->and($credit)->not->toContain('aria-label="Hamstra"')
         ->and(footer_credit(['footer_credit' => false]))->toBe('');
 });
 

@@ -208,16 +208,16 @@ function mark_svg(string $tool, string $class, string $label = ''): string
 
 /**
  * The family credit (design kit docs/layout.md): "Made by Webready in Sweden"
- * and the four tools' marks, each linked only once its page is public.
- * FOOTER_CREDIT=false turns it off.
+ * and the marks of the tools that are released and public, each a link to
+ * its page (never a mark that leads nowhere). A tool joins when it is
+ * released, Vaka too. FOOTER_CREDIT=false turns it off.
  */
 function footer_credit(array $config): string
 {
     if (!$config['footer_credit']) return '';
     $marks = '';
-    foreach (['puls' => 'https://github.com/webready-se/puls', 'vaka' => '', 'snoka' => '', 'hamstra' => ''] as $tool => $page) {
-        $mark = mark_svg($tool, 'credit-mark', ucfirst($tool));
-        $marks .= $page === '' ? $mark : '<a href="' . $page . '">' . $mark . '</a>';
+    foreach (['puls' => 'https://github.com/webready-se/puls'] as $tool => $page) {
+        $marks .= '<a href="' . $page . '">' . mark_svg($tool, 'credit-mark', ucfirst($tool)) . '</a>';
     }
     return '<span class="credit">Made by <a href="https://webready.se">Webready</a> in Sweden <span class="credit-marks">' . $marks . '</span></span>';
 }
