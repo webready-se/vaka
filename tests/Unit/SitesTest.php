@@ -135,6 +135,16 @@ test('remove_site deletes the site', function () {
     expect(find_site($this->db, (string) $id))->toBeNull();
 });
 
+test('sites sort by their address as it is shown, so an international domain sorts by its letters', function () {
+    add_group($this->db, ['name' => 'A']);
+    foreach (['https://zebra.example', 'https://xn--rksmrgs-5wao1o.example', 'https://shop.example'] as $url) add_site($this->db, ['url' => $url, 'group' => 'A']);
+    $db = $this->db;
+    $db->exec("UPDATE sites SET ip = '203.0.113.10'");
+
+    expect(array_map(fn ($site) => display_url($site['url']), list_sites($db)))->toBe(['räksmörgås.example', 'shop.example', 'zebra.example'])
+        ->and(array_map(fn ($site) => display_url($site['url']), sites_on_server($db, '203.0.113.10')))->toBe(['räksmörgås.example', 'shop.example', 'zebra.example']);
+})->skip(!function_exists('idn_to_utf8'), 'needs the intl extension');
+
 test('list_sites sorts by group then URL, ungrouped last, and can filter by group', function () {
     add_group($this->db, ['name' => 'B']);
     add_group($this->db, ['name' => 'A']);
