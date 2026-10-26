@@ -143,7 +143,7 @@ test('before the first user exists, the login page says how to create one', func
 
 test('the first steps come with the real cron line and whether alerts are set up, for users who see everything', function () {
     $admin = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
-    expect($admin['setup'])->toBe([
+    expect($admin['setup'])->toMatchArray([
         'php' => php_cli(),
         'dir' => run_dir(dirname(__DIR__, 2)),
         'cron' => cron_line(dirname(__DIR__, 2), php_cli()),
@@ -290,6 +290,68 @@ test('snoozing from the dashboard needs the CSRF token and access to the site', 
     $annaJar = ($this->login)('anna', 'anna password')['jar'];
     $r = http_request('POST', WEB . '/?api=snooze', ['jar' => $annaJar, 'json' => ['site_id' => $blog, 'for' => '1h'], 'headers' => ['X-CSRF-Token: ' . ($this->csrf)($annaJar)]]);
     expect($r['status'])->toBe(404);
+});
+
+// =====================================================================
+// Managing sites from the dashboard
+// =====================================================================
+
+test('a user who sees every site can add, change and remove a site, and each change is in its history', function () {
+    add_group($this->db, ['name' => 'Customers']);
+    $jar = ($this->login)('admin', 'admin password')['jar'];
+    $csrf = ($this->csrf)($jar);
+    $post = fn (string $endpoint, array $body) => http_request('POST', WEB . "/?api={$endpoint}", ['jar' => $jar, 'json' => $body, 'headers' => ['X-CSRF-Token: ' . $csrf]]);
+    $count = fn () => (int) $this->db->query('SELECT COUNT(*) FROM sites')->fetchColumn();
+
+    // What the form needs: every group, the checks and the default interval
+    $setup = http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['json']['setup'];
+    expect($setup['groups'])->toBe(['Customers'])
+        ->and(array_column($setup['checks'], 'key'))->toBe(CHECKS)
+        ->and($setup['interval'])->toBe(5);
+
+    // Wrong input is refused field by field, and nothing is saved
+    $r = $post('site-save', ['url' => '', 'interval' => '0']);
+    expect($r['status'])->toBe(422)
+        ->and(array_keys($r['json']['errors']))->toBe(['url', 'interval'])
+        ->and($r['json']['error'])->toBe('Enter the address of the site, such as https://shop.example.')
+        ->and($count())->toBe(0);
+
+    $r = $post('site-save', ['url' => 'shop.example', 'group' => 'Customers', 'keyword' => 'Welcome', 'checks' => ['uptime', 'ssl', 'domain', 'exposed', 'headers']]);
+    expect($r['status'])->toBe(200)
+        ->and($r['json']['site'])->toMatchArray(['label' => 'shop.example', 'group' => 'Customers', 'status' => 'pending']);
+    $id = $r['json']['site']['id'];
+    expect($post('site-save', ['url' => 'https://shop.example/'])['json']['errors']['url'])->toBe('https://shop.example is already watched.');
+
+    $r = $post('site-save', ['id' => $id, 'url' => 'shop.example', 'group' => '', 'keyword' => '', 'interval' => '2', 'paused' => true, 'checks' => CHECKS]);
+    expect($r['status'])->toBe(200)
+        ->and($r['json']['changes'])->toBe(['no group', 'no longer looks for a text', 'checked every 2 min', 'paused', 'Mail DNS turned on'])
+        ->and($r['json']['site']['status'])->toBe('paused');
+
+    $detail = http_request('GET', WEB . "/?api=site&id={$id}", ['jar' => $jar])['json'];
+    expect(array_column($detail['events'], 'message'))->toBe(['Changed by admin: no group, no longer looks for a text, checked every 2 min, paused, Mail DNS turned on', 'Added by admin'])
+        ->and($detail['site'])->toMatchArray(['interval_custom' => 2, 'checks_off' => []]);
+
+    $r = $post('site-remove', ['id' => $id]);
+    expect($r['status'])->toBe(200)
+        ->and($r['json'])->toBe(['removed' => 'shop.example'])
+        ->and($count())->toBe(0)
+        ->and($this->db->query("SELECT action FROM audit_log WHERE username = 'admin' AND action LIKE 'site_removed%'")->fetchColumn())->toBe('site_removed https://shop.example');
+});
+
+test('only users who see every site may change sites, and only with the CSRF token', function () {
+    add_group($this->db, ['name' => 'Customers']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+
+    $anna = ($this->login)('anna', 'anna password')['jar'];
+    foreach (['site-save' => ['id' => $shop, 'url' => 'shop.example', 'paused' => true], 'site-remove' => ['id' => $shop]] as $endpoint => $body) {
+        $r = http_request('POST', WEB . "/?api={$endpoint}", ['jar' => $anna, 'json' => $body, 'headers' => ['X-CSRF-Token: ' . ($this->csrf)($anna)]]);
+        expect($r['status'])->toBe(403)
+            ->and($r['json']['error'])->toBe('Only users who see every site can change sites');
+    }
+    $admin = ($this->login)('admin', 'admin password')['jar'];
+    expect(http_request('POST', WEB . '/?api=site-remove', ['jar' => $admin, 'json' => ['id' => $shop]])['status'])->toBe(403)
+        ->and(http_request('POST', WEB . '/?api=site-remove', ['jar' => $admin, 'json' => ['id' => 999], 'headers' => ['X-CSRF-Token: ' . ($this->csrf)($admin)]])['status'])->toBe(404)
+        ->and((int) $this->db->query('SELECT paused FROM sites')->fetchColumn())->toBe(0);
 });
 
 // =====================================================================

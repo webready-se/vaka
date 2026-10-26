@@ -113,7 +113,8 @@ async function main() {
     if (data.method === 'Log.entryAdded') {
       const entry = data.params.entry;
       if (/Content Security Policy|Refused to/i.test(entry.text)) errors.push(`CSP: ${entry.text}`);
-      else if (entry.level === 'error' && !/favicon/.test(entry.url || '')) errors.push(`Log error: ${entry.text} ${entry.url || ''}`);
+      // A refused form answers 422 on purpose: the page shows why
+      else if (entry.level === 'error' && !/favicon/.test(entry.url || '') && !(/status of 422/.test(entry.text) && /api=site-save/.test(entry.url || ''))) errors.push(`Log error: ${entry.text} ${entry.url || ''}`);
     }
     listeners.forEach((l) => l(data));
   };
@@ -256,6 +257,35 @@ async function main() {
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
       expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');
+    }
+
+    // Adding, changing and removing a site in the dashboard
+    q('[data-add-site]').click();
+    if (await waitFor(() => q('dialog.drawer[open] [data-form="site"]'), 'the add-site form to open')) {
+      expect(document.activeElement === q('#f-url'), 'the form starts in the address field');
+      expect(all('[data-form="site"] [name="checks"]').every((box) => box.checked), 'every check is on to start with');
+      q('[data-form="site"]').requestSubmit();
+      if (await waitFor(() => q('#f-url-error'), 'the form to say what is missing')) {
+        expect(/Enter the address/.test(q('#f-url-error').textContent) && q('#f-url').getAttribute('aria-invalid') === 'true', 'an empty address is explained under its field');
+        expect(document.activeElement === q('#f-url'), 'the field with the error gets the focus');
+      }
+      q('#f-url').value = 'new.example';
+      q('#f-keyword').value = '<b>Welcome</b>';
+      q('[data-form="site"]').requestSubmit();
+      if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'new.example', 'the new site to open after saving')) {
+        expect(all('.site-row').some((r) => /new\.example/.test(r.textContent)), 'the new site is in the list');
+        expect(all('dialog.drawer .timeline li').some((li) => /Added by smoke/.test(li.textContent)), 'the history says who added it');
+        q('[data-action="edit-site"]').click();
+        if (await waitFor(() => q('#f-keyword'), 'the edit form')) {
+          expect(q('#f-keyword').value === '<b>Welcome</b>' && !q('[data-form="site"] b'), 'the edit form shows the keyword as text');
+          q('[data-action="remove-ask"]').click();
+          if (await waitFor(() => q('[data-action="remove-site"]'), 'the remove confirmation')) {
+            expect(/cannot be undone/.test(q('.confirm').textContent), 'removing asks first, in the page');
+            q('[data-action="remove-site"]').click();
+            await waitFor(() => !q('dialog.drawer[open]') && !all('.site-row').some((r) => /new\.example/.test(r.textContent)), 'the removed site to leave the list');
+          }
+        }
+      }
     }
 
     // "/" jumps to the filter
