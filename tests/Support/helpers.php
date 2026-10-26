@@ -109,7 +109,7 @@ function cli_env(): array
  *
  * @return array{exit: int, out: string, err: string}
  */
-function vaka(array $args, array $env = [], ?string $stdin = null, array $ini = []): array
+function vaka(array $args, array $env = [], ?string $stdin = null, array $ini = [], ?string $cwd = null): array
 {
     static $dir;
     $dir ??= temp_dir();
@@ -122,7 +122,7 @@ function vaka(array $args, array $env = [], ?string $stdin = null, array $ini = 
     $flags = [];
     foreach ($ini as $name => $value) array_push($flags, '-d', "{$name}={$value}");
     $cmd = array_merge([PHP_BINARY], $flags, [__DIR__ . '/../../vaka'], $args);
-    $proc = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, $env);
+    $proc = proc_open($cmd, [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, $cwd, $env);
     if ($stdin !== null) fwrite($pipes[0], $stdin);
     fclose($pipes[0]);
     $out = stream_get_contents($pipes[1]);

@@ -145,6 +145,20 @@ test('site:import explains a file it cannot read', function () {
         ->and($r['err'])->toContain('Cannot read /nonexistent/sites.csv');
 });
 
+test('site:import says where it looked, and why ".." misleads from a linked directory like current/', function () {
+    // A Forge zero-downtime layout: current/ links to releases/1, the list sits in the site root
+    $site = realpath(temp_dir());
+    mkdir("{$site}/releases/1", 0755, true);
+    symlink("{$site}/releases/1", "{$site}/current");
+    file_put_contents("{$site}/sites.csv", "url\nhttps://shop.example\n");
+
+    $r = vaka(['site:import', '../sites.csv', '--dry-run'], $this->env + ['PWD' => "{$site}/current"], null, [], "{$site}/current");
+    expect($r['exit'])->toBe(1)
+        ->and($r['err'])->toContain("Cannot read ../sites.csv: there is no {$site}/releases/sites.csv.")
+        ->and($r['err'])->toContain("{$site}/current is a link to {$site}/releases/1")
+        ->and($r['err'])->toMatch('#php[\d.]* vaka site:import ' . preg_quote("{$site}/sites.csv", '#') . '#');
+});
+
 test('site:add without arguments asks for what it needs', function () {
     // URL, then Enter for name, keyword and interval (no groups exist, so no group question)
     $r = vaka(['site:add'], $this->env, "shop.example\n\n\n\n");

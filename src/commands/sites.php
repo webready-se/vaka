@@ -171,7 +171,7 @@ function cmd_site_import(array $config, array $args, array $opts): void
     allow_options($opts, ['dry-run']);
     $path = $args[1] ?? ask('CSV file to import');
     if ($path === '') fail('A file is needed: php vaka site:import <file.csv>');
-    if (!is_file($path) || !is_readable($path)) fail("Cannot read {$path}.");
+    if (!is_file($path) || !is_readable($path)) fail(unreadable_file($path, 'site:import'));
 
     $parsed = parse_import_csv(file_get_contents($path));
     if ($parsed['errors']) {

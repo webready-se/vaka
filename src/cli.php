@@ -55,6 +55,32 @@ function prompt(string $label = ''): string
     return trim((string) $line);
 }
 
+/**
+ * Why a file given on the command line cannot be read, and where it was
+ * looked for. From a directory that is a link (Forge's current/), ".." leads
+ * out of the real directory, not the one the shell shows: then the message
+ * says so and gives the full path to use, for $command.
+ */
+function unreadable_file(string $path, string $command): string
+{
+    if ($path === '' || $path[0] === '/') return "Cannot read {$path}.";
+    $real = getcwd();
+    $dir = realpath(dirname("{$real}/{$path}"));
+    $message = "Cannot read {$path}: there is no " . ($dir === false ? "{$real}/{$path}" : $dir . '/' . basename($path)) . '.';
+
+    $shown = (string) getenv('PWD');
+    if ($shown === '' || $shown === $real || realpath($shown) !== $real) return $message;
+    // Resolve the path the way the shell shows it, ".." and all
+    $parts = [];
+    foreach (explode('/', "{$shown}/{$path}") as $part) {
+        if ($part === '..') array_pop($parts);
+        elseif ($part !== '' && $part !== '.') $parts[] = $part;
+    }
+    $meant = '/' . implode('/', $parts);
+    $message .= "\n{$shown} is a link to {$real}, so \"..\" leads out of the real directory, not the one your shell shows.";
+    return $message . (is_file($meant) ? " Give the full path:\n  " . basename(PHP_BINARY) . " vaka {$command} {$meant}" : ' Give the full path instead.');
+}
+
 /** Ask with a default that Enter accepts. */
 function ask(string $label, string $default = ''): string
 {
