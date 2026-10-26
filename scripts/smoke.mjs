@@ -182,7 +182,8 @@ async function main() {
     expect(q('.brand-name')?.textContent === 'Vaka' && q('.brand .mark'), 'the mark and the name, Capitalised, in the top bar');
     expect(q('.watch-owl.is-awake'), 'the owl in the night panel is wide awake while a site is down');
     expect(/Made by\s*Webready\s*in Sweden/.test(q('.foot .credit')?.textContent || '') && q('.foot .credit a[href="https://webready.se"]'), 'the footer credits Webready, linked');
-    expect(q('.foot .credit a[href="https://github.com/webready-se/puls"] svg[aria-label="Puls"]') && q('.foot .credit svg[aria-label="Hamstra"]'), 'the footer shows the family, Puls linked');
+    expect(q('.foot .credit a[href="https://github.com/webready-se/puls"] svg[aria-label="Puls"]'), 'the footer shows Puls, the released sibling, linked');
+    expect(all('.foot .credit-mark').every((mark) => mark.closest('a')), 'every mark in the footer is a link');
     expect(/^Vaka .+ · checks run every minute, the last at \d\d:\d\d$/.test(q('[data-foot]')?.textContent || ''), 'the footer says the version and how fresh the results are');
     expect(/Watching 14 sites · checked/.test(q('[data-region="run-state"]').textContent), 'top bar says how many sites Vaka watches and when it checked');
     // Needs your attention: one compact row each, outages first, the quiet ones folded away last

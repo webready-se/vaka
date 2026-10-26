@@ -17,7 +17,7 @@ Vaka keeps watch over websites the way an owl keeps watch at night: calmly, and 
 | Favicon and top bar | `public/favicon.svg`, `public/marks/vaka.svg` | `marks/vaka.svg`: the whole owl on deep teal `#0E7490` |
 | The tab while a site is down | `public/favicon-alert.svg` | `marks/vaka-alarm.svg`: the same owl on red, eyes wide |
 | The night panel | inline in `public/app.js` (`OWL`) | `characters/vaka.svg` (watching) and `characters/vaka-awake.svg` (wide awake while a site is down) |
-| The footer credit | `public/marks/*.svg` | The four tools' marks |
+| The footer credit | `public/marks/puls.svg` | The marks of the tools that are released and public, each linked (today Puls); a tool's mark is copied in when it is released |
 
 Change the owl in the kit, then copy it here; never draw a Vaka-only variant.
 
