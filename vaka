@@ -74,6 +74,8 @@ function print_help(): void
                            --server=<label> (for sites behind a CDN)
       site:edit <server> --group=<name|none>
                            Move every site on a server (its IP or name) at once
+      site:edit --group=<name|none>
+                           Move several sites, picked from a numbered list
       site:remove <site>   Stop watching a site and delete its history  --force
       site:list            List every site  --group=<name>
       site:import <file>   Add sites from a CSV file: a url column, and optionally

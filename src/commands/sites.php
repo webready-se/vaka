@@ -121,6 +121,11 @@ function cmd_site_edit(array $config, array $args, array $opts): void
         move_server_sites($db, $onServer, $opts);
         return;
     }
+    // --group alone, without a site: move several sites at once, picked from a list
+    if ($target === null && array_keys($opts) === ['group'] && is_string($opts['group'])) {
+        move_picked_sites($db, $opts['group']);
+        return;
+    }
     $site = pick_site($db, $target);
 
     $fields = site_options($opts);
@@ -145,18 +150,52 @@ function move_server_sites(PDO $db, array $sites, array $opts): void
     if (array_keys($opts) !== ['group'] || !is_string($opts['group'])) {
         fail('For a whole server, only --group can change: php vaka site:edit <server> --group=<name|none>. Change other settings one site at a time.');
     }
+    move_sites($db, $sites, $opts['group'], ' on server ' . server_display($sites[0], server_labels($db)));
+}
+
+/**
+ * site:edit --group=<name|none> without a site: move the sites picked from a
+ * numbered list (ranges and all). A group that does not exist yet can be
+ * added on the way.
+ */
+function move_picked_sites(PDO $db, string $group): void
+{
+    if (strtolower(trim($group)) !== 'none' && !find_group($db, $group)) {
+        if (!confirm("There is no group called {$group}. Add it?", true)) fail("No group called \"{$group}\". See `php vaka group:list`.");
+        try {
+            add_group($db, ['name' => $group]);
+        } catch (InvalidArgumentException $e) {
+            fail($e->getMessage() . '.');
+        }
+        echo "Added group {$group}. Change when and where it is alerted with `php vaka group:edit {$group}`.\n";
+    }
+    $sites = list_sites($db);
+    if (!$sites) fail('No sites yet. Add one with `php vaka site:add <url>`.');
+    $options = [];
+    foreach ($sites as $site) $options[$site['id']] = display_url($site['url']) . ' (' . ($site['group_name'] ?? 'no group') . ')';
+    $picked = choose_many('Which sites?', $options, '0 for all, Enter for none');
+    if (!$picked) {
+        echo "Nothing moved.\n";
+        return;
+    }
+    move_sites($db, $picked === true ? $sites : array_values(array_filter($sites, fn ($site) => in_array($site['id'], $picked, true))), $group);
+}
+
+/** Move $sites into $group (or out of their group with "none"), and say which. */
+function move_sites(PDO $db, array $sites, string $group, string $where = ''): void
+{
     try {
-        foreach ($sites as $site) update_site($db, $site['id'], ['group' => $opts['group']]);
+        foreach ($sites as $site) update_site($db, $site['id'], ['group' => $group]);
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage() . '.');
     }
     $names = array_map(fn (array $site) => display_url($site['url']), $sites);
     $more = count($names) - 15;
     $list = $more > 0 ? implode(', ', array_slice($names, 0, 15)) . " and {$more} more" : list_words($names);
-    $to = strtolower(trim($opts['group'])) === 'none'
+    $to = strtolower(trim($group)) === 'none'
         ? 'out of ' . (count($sites) === 1 ? 'its' : 'their') . ' group'
-        : 'to ' . find_group($db, $opts['group'])['name'];
-    echo 'Moved ' . plural(count($sites), 'site', 'sites') . ' on server ' . server_display($sites[0], server_labels($db)) . " {$to}: {$list}.\n";
+        : 'to ' . find_group($db, $group)['name'];
+    echo 'Moved ' . plural(count($sites), 'site', 'sites') . "{$where} {$to}: {$list}.\n";
 }
 
 function cmd_site_remove(array $config, array $args, array $opts): void
