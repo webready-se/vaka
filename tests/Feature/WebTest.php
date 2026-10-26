@@ -354,6 +354,42 @@ test('only users who see every site may change sites, and only with the CSRF tok
         ->and((int) $this->db->query('SELECT paused FROM sites')->fetchColumn())->toBe(0);
 });
 
+test('groups are added, changed and removed in the dashboard, with webhooks masked and a test alert to check them', function () {
+    $jar = ($this->login)('admin', 'admin password')['jar'];
+    $csrf = ($this->csrf)($jar);
+    $post = fn (string $endpoint, array $body) => http_request('POST', WEB . "/?api={$endpoint}", ['jar' => $jar, 'json' => $body, 'headers' => ['X-CSRF-Token: ' . $csrf]]);
+
+    $r = $post('group-save', ['name' => '', 'policy' => 'immediate']);
+    expect($r['status'])->toBe(422)->and($r['json']['errors'])->toHaveKey('name');
+
+    // A local address that refuses, so the test alert below fails without going out
+    $r = $post('group-save', ['name' => 'Customers', 'policy' => 'delayed', 'delay' => '10', 'slack' => 'http://127.0.0.1:9/hook-secret1234']);
+    expect($r['status'])->toBe(200);
+    $id = $r['json']['group']['id'];
+
+    // An empty group shows in the overview, so sites can be added to it
+    $overview = http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['json'];
+    expect($overview['groups'][0])->toMatchArray(['id' => $id, 'name' => 'Customers', 'alerting' => 'after 10 min down', 'sites' => []]);
+
+    $group = http_request('GET', WEB . "/?api=group&id={$id}", ['jar' => $jar]);
+    expect($group['status'])->toBe(200)
+        ->and($group['json']['group'])->toMatchArray(['name' => 'Customers', 'policy' => 'delayed', 'delay_minutes' => 10, 'slack' => '127.0.0.1/...1234', 'webhook' => '', 'email' => ''])
+        ->and($group['body'])->not->toContain('secret1234');
+
+    // Sending a test says where it went, and whether that worked
+    $r = $post('alert-test', ['group' => $id]);
+    expect($r['status'])->toBe(200)
+        ->and($r['json']['sent'])->toBe([['to' => 'Slack 127.0.0.1/...1234', 'ok' => false]]);
+
+    $r = $post('group-remove', ['id' => $id]);
+    expect($r['status'])->toBe(200)
+        ->and($r['json'])->toBe(['removed' => 'Customers', 'sites' => 0])
+        ->and(find_group($this->db, 'Customers'))->toBeNull();
+
+    $anna = ($this->login)('anna', 'anna password')['jar'];
+    expect(http_request('GET', WEB . "/?api=group&id={$id}", ['jar' => $anna])['status'])->toBe(403);
+});
+
 // =====================================================================
 // The read API (docs/api.md)
 // =====================================================================

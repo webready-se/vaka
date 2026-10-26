@@ -87,7 +87,8 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 Everything the CLI does day to day should also be possible in the dashboard, for users who see every site (restricted users keep a read-only view). Decided 2026-10-26, after the first real setup.
 
 - [x] Add a site, edit it (group, name, keyword, interval, paused, checks), remove it
-- [ ] Groups: add, edit (policy, delay, Slack/webhook/email), remove; move a site, or every site on a server, to a group
+- [x] Groups: add, edit (policy, delay, Slack/webhook/email, a test alert), remove; move a site to a group
+- [ ] Move every site on a server to a group
 - [ ] Maintenance windows: add and remove
 - [ ] Server names (`server:label`)
 - [ ] Forms with CSRF, validation messages in plain words, and an entry in the history for each change

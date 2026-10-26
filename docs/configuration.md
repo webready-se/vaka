@@ -60,7 +60,7 @@ Every command asks for what it needs when you leave out its arguments. `php vaka
 
 `<site>` is a URL or a domain (`shop.example`), with the port if it has one. A domain with several sites means the one without a path.
 
-Users who see every site can also add, change and remove sites in the dashboard: **Add a site** above the list, and **Change settings** in a site's detail. The same rules apply, a wrong value is explained under its field, and every change goes in the site's history with who made it.
+Users who see every site can also add, change and remove sites and groups in the dashboard: **Add a site** and **Add a group** above the list, **Change** on a group, and **Change settings** in a site's detail. A group's webhooks show masked and stay as they are unless you type a new one or tick **Remove it**; **Send a test alert** checks where the saved settings send. The same rules apply, a wrong value is explained under its field, and every change goes in the site's history with who made it.
 
 ### Groups
 

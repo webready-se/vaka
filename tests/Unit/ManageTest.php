@@ -56,3 +56,42 @@ test('describe_site_changes says how the interval, the group, pausing and the ch
     $after = ['group_id' => null, 'interval_minutes' => null, 'paused' => 1, 'disabled_checks' => 'exposed'] + $site;
     expect(describe_site_changes($this->db, $site, $after, 5))->toBe(['no group', 'checked every 5 min (the default)', 'paused', 'Exposed files turned off', 'Mail DNS turned on']);
 });
+
+// =====================================================================
+// Groups
+// =====================================================================
+
+test('group_form_input: errors per field, and webhooks stay as they are unless a new one is typed or cleared', function () {
+    $group = get_group($this->db, find_group($this->db, 'Customers')['id']);
+    $this->db->exec("UPDATE groups SET slack_webhook = 'https://hooks.example/services/a/b/secret1234'");
+    $group = get_group($this->db, $group['id']);
+
+    $bad = group_form_input($this->db, ['name' => '', 'policy' => 'delayed', 'delay' => '', 'slack' => 'http://hooks.example/x', 'email' => 'nobody'], $group);
+    expect(array_keys($bad['errors']))->toBe(['name', 'delay', 'slack', 'email'])
+        ->and($bad['errors']['delay'])->toBe('Say after how many minutes down, from 1 to 1440.');
+
+    expect(group_form_input($this->db, ['name' => 'Customers', 'policy' => 'immediate', 'slack' => ''], $group)['input'])->not->toHaveKey('slack_webhook')
+        ->and(group_form_input($this->db, ['name' => 'Customers', 'policy' => 'immediate', 'slack_clear' => true], $group)['input']['slack_webhook'])->toBe('')
+        ->and(group_form_input($this->db, ['name' => 'Customers', 'policy' => 'immediate', 'slack' => 'https://hooks.example/new'], $group)['input']['slack_webhook'])->toBe('https://hooks.example/new');
+
+    add_group($this->db, ['name' => 'Own']);
+    expect(group_form_input($this->db, ['name' => 'own', 'policy' => 'immediate'], $group)['errors']['name'])->toBe('A group called "Own" already exists.');
+});
+
+test('save_group_form tells every site in the group what changed, never the webhook itself', function () {
+    $id = find_group($this->db, 'Customers')['id'];
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $config = test_config(['digest_time' => '08:00']);
+
+    $saved = save_group_form($this->db, $config, ['name' => 'Clients', 'policy' => 'delayed', 'delay' => '10', 'slack' => 'https://hooks.example/services/a/b/secret1234', 'email' => 'ops@example.com'], $id, 'admin', $this->now);
+    expect($saved['errors'])->toBe([])
+        ->and($saved['changes'])->toBe(['renamed to Clients', 'alerts go out after 10 min down', 'Slack webhook added', 'email to ops@example.com'])
+        ->and($this->db->query("SELECT message FROM events WHERE site_id = {$shop} AND check_name = 'settings'")->fetchColumn())
+            ->toBe('Group Clients changed by admin: renamed to Clients, alerts go out after 10 min down, Slack webhook added, email to ops@example.com')
+        ->and(implode(' ', $this->db->query('SELECT message FROM events')->fetchAll(PDO::FETCH_COLUMN)))->not->toContain('secret1234');
+
+    $removed = remove_group_form($this->db, $id, 'admin', '192.0.2.1', $this->now);
+    expect($removed)->toBe(['name' => 'Clients', 'sites' => 1])
+        ->and(find_site($this->db, 'shop.example')['group_id'])->toBeNull()
+        ->and($this->db->query("SELECT message FROM events WHERE site_id = {$shop} ORDER BY id DESC")->fetchColumn())->toBe('Group Clients removed by admin: no group now, so its alerts go to the defaults in .env');
+});

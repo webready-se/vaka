@@ -290,6 +290,7 @@
     regions.sites.hidden = state.data.totals.sites === 0;
     // Only users who see every site can change sites
     document.querySelector('[data-add-site]').hidden = !state.data.setup;
+    document.querySelector('[data-add-group]').hidden = !state.data.setup;
     renderTab();
     document.getElementById('app').setAttribute('aria-busy', 'false');
   }
@@ -693,19 +694,30 @@
     var filter = state.filter.trim().toLowerCase();
     var shown = 0;
 
+    var editable = Boolean(state.data.setup);
     state.data.groups.forEach(function (group) {
       var sites = group.sites.filter(function (site) { return matches(site, group, filter); });
-      if (!sites.length) return;
+      var empty = !group.sites.length && editable && !filter;
+      if (!sites.length && !empty) return;
       shown += sites.length;
       var title = group.name || 'No group';
+      var head = h('div', { class: 'group-head' }, [
+        h('h3', {}, title),
+        h('ul', { class: 'group-meta' }, [
+          h('li', {}, group.sites.length ? plural(group.sites.length, 'site', 'sites') : 'No sites yet'),
+          h('li', {}, [icon('bell'), 'Alerts ' + group.alerting]),
+          editable && group.id !== null ? h('li', {}, h('button', { type: 'button', class: 'button', 'data-action': 'edit-group', 'data-group': group.id, 'aria-label': 'Change the group ' + title }, 'Change')) : null
+        ])
+      ]);
+      if (empty) {
+        append(node, h('section', { class: 'group', 'aria-label': title }, [head, h('p', { class: 'group-empty' }, [
+          'No sites in this group yet.',
+          h('button', { type: 'button', class: 'button', 'data-action': 'add-site', 'data-group': title }, [icon('plus'), 'Add a site to it'])
+        ])]));
+        return;
+      }
       append(node, h('section', { class: 'group', 'aria-label': title }, [
-        h('div', { class: 'group-head' }, [
-          h('h3', {}, title),
-          h('ul', { class: 'group-meta' }, [
-            h('li', {}, plural(group.sites.length, 'site', 'sites')),
-            h('li', {}, [icon('bell'), 'Alerts ' + group.alerting])
-          ])
-        ]),
+        head,
         h('div', { class: 'columns', 'aria-hidden': 'true' }, [
           h('span', {}, 'Status'), h('span', {}, 'Site'), h('span', {}, 'Last 30 days'), h('span', { class: 'right' }, 'Response'), h('span', { class: 'right' }, 'Uptime'),
           h('span', { class: 'right' }, 'Headers')
@@ -861,8 +873,8 @@
   // Adding and changing a site, in the drawer (users who see every site)
   // =================================================================
 
-  /** Open the form: for a new site (detail null) or for the site in the drawer. */
-  function openSiteForm(detail, opener) {
+  /** Open the form: for a new site (detail null, optionally in $group) or for the site in the drawer. */
+  function openSiteForm(detail, opener, group) {
     var setup = state.data.setup;
     var site = detail ? detail.site : null;
     state.form = {
@@ -876,7 +888,7 @@
         checks: setup.checks.map(function (c) { return c.key; }).filter(function (key) { return site.checks_off.indexOf(key) === -1; })
       } : {
         // A good start: every check on, the only group if there is one
-        url: '', group: setup.groups.length === 1 ? setup.groups[0] : '', name: '', keyword: '', interval: '', paused: false,
+        url: '', group: group || (setup.groups.length === 1 ? setup.groups[0] : ''), name: '', keyword: '', interval: '', paused: false,
         checks: setup.checks.map(function (c) { return c.key; })
       }
     };
@@ -1016,6 +1028,203 @@
       renderSiteForm();
       var invalid = regions.detail.querySelector('[aria-invalid="true"]');
       if (invalid) invalid.focus();
+    });
+  }
+
+  // -----------------------------------------------------------------
+  // Groups: when alerts go out and where. The webhooks are secrets: the
+  // form shows them masked, keeps them unless a new one is typed, and
+  // removes one only when asked to.
+  // -----------------------------------------------------------------
+
+  function openGroupForm(id, opener) {
+    if (opener) state.opener = opener;
+    var show = function (group) {
+      state.form = {
+        kind: 'group', id: group ? group.id : null, label: group ? group.name : null, sites: group ? group.sites : 0,
+        current: group ? { slack: group.slack, webhook: group.webhook } : { slack: '', webhook: '' },
+        errors: {}, confirmRemove: false,
+        values: group
+          ? { name: group.name, policy: group.policy, delay: group.delay_minutes ? String(group.delay_minutes) : '10', slack: '', webhook: '', slack_clear: false, webhook_clear: false, email: group.email }
+          : { name: '', policy: 'immediate', delay: '10', slack: '', webhook: '', slack_clear: false, webhook_clear: false, email: '' }
+      };
+      renderGroupForm();
+      if (!regions.detail.open) regions.detail.showModal();
+      var first = regions.detail.querySelector('#g-name');
+      if (first) first.focus();
+    };
+    if (id === null) return show(null);
+    return api('/?api=group&id=' + encodeURIComponent(id)).then(function (result) { show(result.group); }).catch(function (error) {
+      if (error.message !== 'Logged out') toast(error.message);
+    });
+  }
+
+  function groupField(name, label, control, hint) {
+    var id = 'g-' + name;
+    var error = state.form.errors[name];
+    control.id = id;
+    var describedBy = [error ? id + '-error' : null, hint ? id + '-hint' : null].filter(Boolean).join(' ');
+    if (describedBy) control.setAttribute('aria-describedby', describedBy);
+    if (error) control.setAttribute('aria-invalid', 'true');
+    return h('div', { class: 'field' + (error ? ' is-invalid' : '') }, [
+      h('label', { for: id }, label),
+      control,
+      error ? h('p', { class: 'field-error', id: id + '-error' }, error) : null,
+      hint ? h('p', { class: 'field-hint', id: id + '-hint' }, hint) : null
+    ]);
+  }
+
+  /** A webhook field: empty keeps the one that is set, shown masked; a box removes it. */
+  function secretField(name, label, current, example) {
+    var v = state.form.values;
+    var input = textInput(name, v[name], { inputmode: 'url', placeholder: current ? 'Set: ' + current + ' (type a new one to replace it)' : example });
+    var node = groupField(name, label, input, null);
+    if (current) {
+      var box = h('input', { type: 'checkbox', name: name + '_clear' });
+      box.checked = v[name + '_clear'];
+      append(node, h('label', { class: 'check is-small' }, [box, 'Remove it']));
+    }
+    return node;
+  }
+
+  function renderGroupForm() {
+    var form = state.form;
+    var v = form.values;
+    var setup = state.data.setup;
+    var node = regions.detail;
+    clear(node);
+
+    var delay = textInput('delay', v.delay, { inputmode: 'numeric', 'aria-label': 'Minutes down before an alert' });
+    delay.id = 'g-delay';
+    if (form.errors.delay) delay.setAttribute('aria-invalid', 'true');
+    var policies = [
+      ['immediate', 'Right away', 'When a site goes down, and when it is back.'],
+      ['delayed', 'After a while down', null],
+      ['digest', 'Once a day', 'A summary at ' + setup.digest_time + ' of what happened and what is still down.'],
+      ['silent', 'Never', 'The dashboard only.']
+    ];
+    var policy = h('fieldset', { class: 'field' + (form.errors.delay || form.errors.policy ? ' is-invalid' : '') }, [
+      h('legend', {}, 'When alerts go out'),
+      h('ul', { class: 'choice-list' }, policies.map(function (p) {
+        var radio = h('input', { type: 'radio', name: 'policy', value: p[0] });
+        radio.checked = v.policy === p[0];
+        var small = p[0] === 'delayed'
+          ? h('small', { class: 'inline-minutes' }, ['Only when a site has been down for', delay, 'min; shorter outages send nothing.'])
+          : h('small', {}, p[2]);
+        return h('li', {}, h('label', {}, [radio, h('b', {}, p[1]), small]));
+      })),
+      form.errors.delay ? h('p', { class: 'field-error', id: 'g-delay-error' }, form.errors.delay) : null
+    ]);
+
+    var remove = null;
+    if (form.id) {
+      remove = form.confirmRemove
+        ? h('div', { class: 'confirm', role: 'alert' }, [
+          h('p', {}, ['Remove the group ', h('b', {}, form.label), '? ' + (form.sites ? capitalize(plural(form.sites, 'site stays', 'sites stay')) + ', without a group: their alerts go to the defaults in .env.' : 'It has no sites.')]),
+          h('div', { class: 'actions' }, [
+            h('button', { type: 'button', class: 'button is-danger', 'data-action': 'remove-group' }, 'Remove group'),
+            h('button', { type: 'button', class: 'button', 'data-action': 'group-remove-cancel' }, 'Keep it')
+          ])
+        ])
+        : h('div', { class: 'danger-zone' }, h('button', { type: 'button', class: 'button is-quiet-danger', 'data-action': 'group-remove-ask' }, 'Remove this group…'));
+    }
+
+    append(node, h('div', { class: 'drawer-inner is-form' }, [
+      h('div', { class: 'drawer-head' }, [
+        h('div', { class: 'medallion' }, icon('bell')),
+        h('div', {}, [
+          h('h2', { id: 'detail-title' }, form.id ? 'Change ' + form.label : 'Add a group'),
+          h('p', {}, form.id ? plural(form.sites, 'site', 'sites') + ' in it.' : 'Each group has its own rules for alerts.')
+        ]),
+        h('button', { type: 'button', class: 'close-button', 'data-action': 'close', 'aria-label': 'Close' }, icon('close'))
+      ]),
+      h('form', { class: 'site-form', 'data-form': 'group', novalidate: true }, [
+        groupField('name', 'Name', textInput('name', v.name, { spellcheck: 'true', placeholder: 'Customers' }), null),
+        policy,
+        h('fieldset', { class: 'field' }, [
+          h('legend', {}, 'Where alerts go'),
+          h('p', { class: 'field-hint' }, 'Leave all three empty and they go to the defaults in .env.')
+        ]),
+        secretField('slack', 'Slack incoming webhook', form.current.slack, 'https://hooks.slack.com/services/…'),
+        secretField('webhook', 'JSON webhook', form.current.webhook, 'https://example.com/vaka-alerts'),
+        groupField('email', 'Email', textInput('email', v.email, { inputmode: 'email', placeholder: 'ops@example.com' }), 'Several, separated by commas. Needs a mail server where Vaka runs.'),
+        form.id ? h('div', { class: 'actions' }, [
+          h('button', { type: 'button', class: 'button', 'data-action': 'group-test' }, [icon('bell'), 'Send a test alert']),
+          h('small', { class: 'field-hint' }, 'With the saved settings.')
+        ]) : null,
+        h('div', { class: 'actions' }, [
+          h('button', { type: 'submit', class: 'button is-primary' }, form.id ? 'Save changes' : 'Add group'),
+          h('button', { type: 'button', class: 'button', 'data-action': 'form-cancel' }, 'Cancel')
+        ]),
+        remove
+      ])
+    ]));
+  }
+
+  function groupValues(formNode) {
+    var data = new FormData(formNode);
+    return {
+      name: data.get('name') || '', policy: data.get('policy') || 'immediate', delay: data.get('delay') || '',
+      slack: data.get('slack') || '', webhook: data.get('webhook') || '', email: data.get('email') || '',
+      slack_clear: data.get('slack_clear') === 'on', webhook_clear: data.get('webhook_clear') === 'on'
+    };
+  }
+
+  function saveGroup(formNode) {
+    var form = state.form;
+    var body = groupValues(formNode);
+    form.values = body;
+    if (form.id) body = Object.assign({ id: form.id }, body);
+    var submit = formNode.querySelector('[type="submit"]');
+    submit.disabled = true;
+    return api('/?api=group-save', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify(body)
+    }).then(function (result) {
+      toast(form.id ? (result.changes.length ? 'Saved the group ' + result.group.name : 'Nothing changed') : 'Added the group ' + result.group.name);
+      closeDetail();
+      return load();
+    }).catch(function (error) {
+      if (error.message === 'Logged out') return;
+      submit.disabled = false;
+      if (!error.body || !error.body.errors) return toast(error.message);
+      form.errors = error.body.errors;
+      renderGroupForm();
+      var invalid = regions.detail.querySelector('[aria-invalid="true"]');
+      if (invalid) invalid.focus();
+    });
+  }
+
+  function testGroupAlert(button) {
+    button.disabled = true;
+    return api('/?api=alert-test', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ group: state.form.id })
+    }).then(function (result) {
+      var failed = result.sent.filter(function (s) { return !s.ok; });
+      toast(failed.length
+        ? 'Could not reach ' + failed.map(function (s) { return s.to; }).join(' and ')
+        : 'Sent a test alert to ' + result.sent.map(function (s) { return s.to; }).join(' and '));
+    }).catch(function (error) {
+      if (error.message !== 'Logged out') toast(error.message);
+    }).then(function () { button.disabled = false; });
+  }
+
+  function removeGroup(button) {
+    button.disabled = true;
+    return api('/?api=group-remove', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ id: state.form.id })
+    }).then(function (result) {
+      toast('Removed the group ' + result.removed + (result.sites ? ': its ' + plural(result.sites, 'site has', 'sites have') + ' no group now' : ''));
+      closeDetail();
+      return load();
+    }).catch(function (error) {
+      if (error.message !== 'Logged out') toast(error.message);
+      button.disabled = false;
     });
   }
 
@@ -1210,10 +1419,21 @@
 
     if (action === 'open') openDetail(target.getAttribute('data-site'), target);
     if (action === 'close') closeDetail();
-    if (action === 'add-site') openSiteForm(null, target);
+    if (action === 'add-site') openSiteForm(null, target, target.getAttribute('data-group'));
+    if (action === 'add-group') openGroupForm(null, target);
+    if (action === 'edit-group') openGroupForm(target.getAttribute('data-group'), target);
+    if (action === 'group-test') testGroupAlert(target);
+    if (action === 'group-remove-ask' || action === 'group-remove-cancel') {
+      state.form.values = groupValues(regions.detail.querySelector('[data-form="group"]'));
+      state.form.confirmRemove = action === 'group-remove-ask';
+      renderGroupForm();
+      var again = regions.detail.querySelector(action === 'group-remove-ask' ? '[data-action="remove-group"]' : '[data-action="group-remove-ask"]');
+      if (again) again.focus();
+    }
+    if (action === 'remove-group') removeGroup(target);
     if (action === 'edit-site' && state.detail) openSiteForm(state.detail);
     if (action === 'form-cancel') {
-      if (state.form && state.form.id && state.detail) {
+      if (state.form && state.form.kind !== 'group' && state.form.id && state.detail) {
         state.form = null;
         renderDetail();
       } else {
@@ -1240,12 +1460,13 @@
     }
   });
 
-  // The site form saves through the API, not as a page load
+  // The forms save through the API, not as a page load
   document.addEventListener('submit', function (event) {
-    var formNode = event.target.closest && event.target.closest('[data-form="site"]');
+    var formNode = event.target.closest && event.target.closest('[data-form]');
     if (!formNode) return;
     event.preventDefault();
-    saveSite(formNode);
+    if (formNode.getAttribute('data-form') === 'site') saveSite(formNode);
+    if (formNode.getAttribute('data-form') === 'group') saveGroup(formNode);
   });
 
   // "/" jumps to the filter, as in most tools

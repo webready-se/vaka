@@ -278,6 +278,34 @@ function handle_api(array $config, array $user, string $endpoint, string $method
         $row = overview_rows($db, 's.id = ' . $site['id'])[0];
         respond_json(200, ['site' => site_summary($db, $config, $row, server_labels($db), load_windows($db, $now), [], $now)]);
     }
+    if ($endpoint === 'group' && $method === 'GET') {
+        if ($allowed !== null) respond_json(403, ['error' => 'Only users who see every site can change groups']);
+        $group = get_group($db, (int) ($_GET['id'] ?? 0));
+        if (!$group) respond_json(404, ['error' => 'No such group']);
+        respond_json(200, ['group' => group_form_values($db, $group)]);
+    }
+    if (in_array($endpoint, ['group-save', 'group-remove', 'alert-test'], true) && $method === 'POST') {
+        if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
+        if ($allowed !== null) respond_json(403, ['error' => 'Only users who see every site can change groups']);
+        $input = json_decode((string) file_get_contents('php://input'), true) ?: [];
+        $id = isset($input['id']) ? (int) $input['id'] : (isset($input['group']) ? (int) $input['group'] : null);
+        $group = $id === null ? null : get_group($db, $id);
+        if ($id !== null && !$group) respond_json(404, ['error' => 'No such group']);
+
+        if ($endpoint === 'alert-test') {
+            $sent = send_test_alert($config, $group);
+            if (!$sent) respond_json(422, ['error' => 'There is nowhere to send alerts yet: give the group a Slack webhook, a JSON webhook or an email address, or set defaults in .env']);
+            respond_json(200, ['sent' => $sent]);
+        }
+        if ($endpoint === 'group-remove') {
+            if (!$group) respond_json(404, ['error' => 'No such group']);
+            $removed = remove_group_form($db, $id, $user['name'], client_ip($_SERVER, $config['trusted_proxies']), $now);
+            respond_json(200, ['removed' => $removed['name'], 'sites' => $removed['sites']]);
+        }
+        $saved = save_group_form($db, $config, $input, $id, $user['name'], $now);
+        if ($saved['errors']) respond_json(422, ['error' => reset($saved['errors']), 'errors' => $saved['errors']]);
+        respond_json(200, ['group' => group_form_values($db, get_group($db, (int) $saved['id'])), 'changes' => $saved['changes']]);
+    }
     if (($endpoint === 'site-save' || $endpoint === 'site-remove') && $method === 'POST') {
         if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
         if ($allowed !== null) respond_json(403, ['error' => 'Only users who see every site can change sites']);
@@ -446,6 +474,12 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
 
     $totals = ['sites' => 0, 'up' => 0, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0];
     $groups = [];
+    // Users who see everything also see empty groups, to fill them
+    if ($allowed === null) {
+        foreach (list_groups($db) as $group) {
+            $groups[$group['id']] = ['id' => $group['id'], 'name' => $group['name'], 'alerting' => describe_policy($group, $config['digest_time']), 'sites' => []];
+        }
+    }
     foreach ($rows as $row) {
         $site = site_summary($db, $config, $row, $labels, $windows, $samples[$row['id']] ?? [], $now);
         $totals['sites']++;
@@ -483,6 +517,7 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
             'groups' => array_column(list_groups($db), 'name'),
             'checks' => array_map(fn ($key, $label) => ['key' => $key, 'label' => $label], array_keys(CHECK_LABELS), CHECK_LABELS),
             'interval' => $config['uptime_interval'],
+            'digest_time' => $config['digest_time'],
         ] : null,
         'last_incident' => $lastIncident,
         'generated_at' => utc_now($now),
