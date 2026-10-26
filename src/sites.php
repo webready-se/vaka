@@ -105,6 +105,12 @@ function sort_sites(array $sites, bool $byGroup = true): array
     return $sites;
 }
 
+/** A site in a pick list: its address as shown, with its group and whether it is paused. */
+function site_choice(array $site): string
+{
+    return display_url($site['url']) . ' (' . ($site['group_name'] ?? 'no group') . ($site['paused'] ? ', paused' : '') . ')';
+}
+
 /** A URL with its scheme, and an international domain as it is written: https://räksmörgås.example/shop. */
 function readable_url(string $url): string
 {

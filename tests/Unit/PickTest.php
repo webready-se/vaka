@@ -24,7 +24,8 @@ test('a site, a group and a user are picked from lists that say something about 
     vaka(['user:add', 'anna', '--groups=Customers'], $this->env, "a long password\n");
     vaka(['user:add', 'erik'], $this->env, "a long password\n");
 
-    expect(vaka(['site:remove'], $this->env, "2\nn\n")['out'])->toContain("1) shop.example (Customers)\n  2) blog.example (no group)")
+    vaka(['site:edit', 'blog.example', '--pause'], $this->env);
+    expect(vaka(['site:remove'], $this->env, "2\nn\n")['out'])->toContain("1) shop.example (Customers)\n  2) blog.example (no group, paused)")
         ->and(vaka(['group:remove'], $this->env, "1\nn\n")['out'])->toContain("1) Customers (1 site)\n  2) Own (no sites)")
         ->and(vaka(['user:remove'], $this->env, "1\nn\n")['out'])->toContain("1) anna (sees the group Customers)\n  2) erik (sees every site)");
 });
