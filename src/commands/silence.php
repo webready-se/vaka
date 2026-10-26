@@ -96,8 +96,7 @@ function snooze_targets(PDO $db, string $target): array
         $stmt->execute([$site['id']]);
         return [$stmt->fetchAll(), display_url($site['url']), false];
     }
-    $stmt = $db->prepare($select . "((s.ip = ? AND s.cdn = '' AND s.server = '') OR lower(s.server) = lower(?)
-        OR (s.cdn = '' AND s.server = '' AND s.ip IN (SELECT ip FROM servers WHERE lower(label) = lower(?)))) ORDER BY s.url");
+    $stmt = $db->prepare($select . ON_SERVER_SQL . ' ORDER BY s.url');
     $stmt->execute([$target, $target, $target]);
     $sites = $stmt->fetchAll();
     if (!$sites) fail("No site or server matches \"{$target}\". See `php vaka site:list` and `php vaka server:list`.");

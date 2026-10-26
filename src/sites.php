@@ -74,6 +74,22 @@ function site_host(string $url): string
     return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
 }
 
+/**
+ * SQL condition for the sites on a server named by its IP, its label or a
+ * server name set by hand on sites; bind the name three times. A site behind
+ * a CDN answers on the CDN's addresses, so it is on no server by IP.
+ */
+const ON_SERVER_SQL = "((s.ip = ? AND s.cdn = '' AND s.server = '') OR lower(s.server) = lower(?)
+    OR (s.cdn = '' AND s.server = '' AND s.ip IN (SELECT ip FROM servers WHERE lower(label) = lower(?))))";
+
+/** Every site on a server (see ON_SERVER_SQL), paused ones too, by URL. */
+function sites_on_server(PDO $db, string $server): array
+{
+    $stmt = $db->prepare('SELECT s.* FROM sites s WHERE ' . ON_SERVER_SQL . ' ORDER BY s.url');
+    $stmt->execute([$server, $server, $server]);
+    return $stmt->fetchAll();
+}
+
 /** A URL without its scheme, as people say it: an international domain as it is written (with intl), not as xn--. */
 function display_url(string $url): string
 {

@@ -109,7 +109,13 @@ function cmd_site_edit(array $config, array $args, array $opts): void
 {
     allow_options($opts, ['url', 'group', 'name', 'keyword', 'interval', 'server', 'pause', 'resume', 'disable', 'enable']);
     $db = get_db($config['db_path']);
-    $site = pick_site($db, $args[1] ?? null);
+    // A server instead of a site: move all its sites at once
+    $target = $args[1] ?? null;
+    if ($target !== null && !find_site($db, $target) && ($onServer = sites_on_server($db, $target))) {
+        move_server_sites($db, $onServer, $opts);
+        return;
+    }
+    $site = pick_site($db, $target);
 
     $fields = site_options($opts);
     if (isset($opts['disable']) || isset($opts['enable'])) {
@@ -125,6 +131,26 @@ function cmd_site_edit(array $config, array $args, array $opts): void
     }
     $site = site_with_group($db, $site['id']);
     echo "Updated {$site['url']}: " . describe_site($site, $config) . ".\n";
+}
+
+/** site:edit <server> --group=<name|none>: every site on a server into a group, or out of one. Nothing else changes for a whole server. */
+function move_server_sites(PDO $db, array $sites, array $opts): void
+{
+    if (array_keys($opts) !== ['group'] || !is_string($opts['group'])) {
+        fail('For a whole server, only --group can change: php vaka site:edit <server> --group=<name|none>. Change other settings one site at a time.');
+    }
+    try {
+        foreach ($sites as $site) update_site($db, $site['id'], ['group' => $opts['group']]);
+    } catch (InvalidArgumentException $e) {
+        fail($e->getMessage() . '.');
+    }
+    $names = array_map(fn (array $site) => display_url($site['url']), $sites);
+    $more = count($names) - 15;
+    $list = $more > 0 ? implode(', ', array_slice($names, 0, 15)) . " and {$more} more" : list_words($names);
+    $to = strtolower(trim($opts['group'])) === 'none'
+        ? 'out of ' . (count($sites) === 1 ? 'its' : 'their') . ' group'
+        : 'to ' . find_group($db, $opts['group'])['name'];
+    echo 'Moved ' . plural(count($sites), 'site', 'sites') . ' on server ' . server_display($sites[0], server_labels($db)) . " {$to}: {$list}.\n";
 }
 
 function cmd_site_remove(array $config, array $args, array $opts): void

@@ -253,7 +253,7 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka check [<url>]` | Run every check once against a URL and print the result (no state, no alerts) |
 | `php vaka status` | Overview of every site in the terminal |
 | `php vaka site:add [<url>] [--group=] [--name=] [--keyword=] [--interval=]` | Add a site |
-| `php vaka site:edit [<url>]` | Change group, name, keyword, interval, paused, disabled checks, server (`--server=<label>`) |
+| `php vaka site:edit [<url>]` | Change group, name, keyword, interval, paused, disabled checks, server (`--server=<label>`); `site:edit <server> --group=` moves every site on a server (IP or name, the same rule as `snooze`) |
 | `php vaka site:remove [<url>]` / `site:list` | Remove a site and its history / list sites |
 | `php vaka site:import [<file.csv>]` | Import sites from CSV (`group,url,enabled`) |
 | `php vaka group:add [<name>]` / `group:edit` / `group:remove` / `group:list` | Groups: policy, delay, Slack webhook, JSON webhook, email |
