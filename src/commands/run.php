@@ -17,6 +17,9 @@ function local_time(string $utc, int $now): string
 function cmd_run(array $config, array $args, array $opts): void
 {
     allow_options($opts, []);
+    // Before the lock, so a run that ended late is out of the way by then
+    $wait = run_delay((int) date('s'), $config['run_at_second'], stream_isatty(STDOUT));
+    if ($wait > 0) sleep($wait);
     $db = get_db($config['db_path']);
     $summary = run_locked(dirname($config['db_path']) . '/vaka.lock', fn () => run($db, $config));
     if ($summary === null) {

@@ -17,6 +17,7 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | `UPTIME_INTERVAL` | `5` | Minutes between checks of a site (a site can have its own). A failing site is checked every minute regardless |
 | `UPTIME_TIMEOUT` | `10` | Seconds before a request counts as failed |
 | `DOWN_AFTER_FAILURES` | `2` | Failed checks in a row before a site counts as down |
+| `RUN_AT_SECOND` | `15` | The second of the minute a cron run starts checking (0-45). Servers start their own scheduled jobs at :00 and answer several times slower for a few seconds; checking then would not show what visitors get. A run started by hand does not wait |
 | `SSL_ALERT_DAYS` | `14,7,1` | Days before a certificate expires to alert, each once per certificate |
 | `DOMAIN_ALERT_DAYS` | `30,14,7,1` | The same for domain registrations, each once per registration period. If your registrar renews on the expiry day, every renewal passes these: use fewer days, such as `7,1` |
 | `RDAP_BOOTSTRAP_URL` | IANA's `dns.json` | Where Vaka learns which registry to ask about a domain (cached in `data/` for a week) |

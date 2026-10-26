@@ -4,6 +4,16 @@
 const RUN_BUDGET_SECONDS = 40;
 
 /**
+ * Seconds a run started at $second should wait before checking: until
+ * $runAt, past the burst of scheduled jobs that servers start at the top of
+ * every minute. Someone running it by hand ($interactive) does not wait.
+ */
+function run_delay(int $second, int $runAt, bool $interactive): int
+{
+    return $interactive ? 0 : max(0, $runAt - $second);
+}
+
+/**
  * Run $fn while holding an exclusive lock on $lockFile, so cron runs never
  * overlap. Returns $fn's result, or null when another run holds the lock.
  */

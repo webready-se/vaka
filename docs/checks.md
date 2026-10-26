@@ -11,6 +11,8 @@ Every 5 minutes (`UPTIME_INTERVAL`, or a site's own `--interval`), Vaka asks for
 - **Down** means `DOWN_AFTER_FAILURES` (2) failed checks in a row. After the first failure the site is checked again every minute, so an outage is confirmed in about two minutes and one hiccup alerts nobody.
 - When a site starts failing, the other sites on the same server are checked at once too, so a server that goes down shows up, and is alerted, as one.
 
+A run from cron starts checking 15 seconds into the minute (`RUN_AT_SECOND`). Most servers start their own scheduled jobs at the top of every minute, and for a few seconds they answer several times slower than at any other moment: measured then, response times would show that burst, not what visitors get.
+
 Every check stores the response time and the IP address the site answered on, kept for `SAMPLES_RETENTION_DAYS`. Uptime percentages are weighted by time: a site that was down for 14 minutes in a day was up 99.02% of it, however often it was checked meanwhile.
 
 What a failure means, and what the dashboard suggests:
