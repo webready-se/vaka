@@ -59,7 +59,9 @@ function pick_user(array $users, ?string $name): string
         return $name;
     }
     if (!$users) fail('No users yet. Add one with `php vaka user:add <name>`.');
-    $name = choose('Which user?', array_combine(array_keys($users), array_keys($users)));
+    $options = [];
+    foreach ($users as $user => $entry) $options[$user] = "{$user} (sees " . describe_access($entry['groups'] ?? []) . ')';
+    $name = choose('Which user?', $options);
     if ($name === null) fail('No user chosen.');
     return $name;
 }
@@ -78,15 +80,15 @@ function cmd_user_add(array $config, array $args, array $opts): void
 
     if (isset($opts['groups'])) {
         $groups = group_names($db, (string) $opts['groups']);
-    } elseif (!isset($args[1]) && list_groups($db)) {
-        $groups = group_names($db, ask('Groups this user may see, comma-separated (Enter for every site)'));
+    } elseif (!isset($args[1]) && ($all = list_groups($db))) {
+        $groups = choose_many('Which groups may ' . $name . ' see?', array_column($all, 'name', 'name'), 'every site');
     } else {
         $groups = [];
     }
 
     $users[$name] = ['password' => new_password("Password for {$name}: "), 'groups' => $groups];
     save_users($config['users_file'], $users);
-    echo "Added user {$name}, who sees " . describe_access($groups) . ".\n";
+    echo "Added user {$name}, who sees " . describe_access($groups) . '. ' . ($config['app_url'] !== '' ? "Sign in at {$config['app_url']}" : 'Sign in on the dashboard.') . "\n";
 }
 
 function cmd_user_edit(array $config, array $args, array $opts): void
