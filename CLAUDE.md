@@ -133,8 +133,10 @@ tests/fixtures/whois-server.php  Minimal WHOIS server for the domain check tests
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups, servers, history and samples (`--hostile` adds markup-laden names for the smoke test)
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail, phone, and the first visit (no users, no sites)
+scripts/readme-media.mjs README screenshots and the social preview in docs/screenshots/, from the seeded demo (no hostile names), each cut to a dashboard element
 scripts/hooks/pre-push   Git hook: runs Pest before push
 docs/                    install.md, configuration.md, checks.md, alerts.md (alerts.md: when, where, JSON fields)
+docs/screenshots/        README images, made by scripts/readme-media.mjs (run it again after a visual change)
 .claude/settings.json    Project hooks (PHP lint after edit) and read denies for .env / users.json
 .claude/hooks/php-lint.sh PostToolUse hook: php -l on edited PHP files and the vaka CLI
 .claude/handoffs/        Session handoffs (gitignored)

@@ -95,7 +95,7 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 ## Milestone 5: Open source
 
 - [ ] Release zip with runtime files only, first tagged release (0.1.0)
-- [ ] README screenshots generated from the seeded demo database
+- [x] README screenshots generated from the seeded demo database (`node scripts/readme-media.mjs`)
 - [ ] Make the repository public
 - [ ] Vaka's own mark in the footer credit, linked to the repository, once it is public (design kit docs/layout.md); Snoka and Hamstra join when they are released
 
