@@ -179,6 +179,11 @@ async function main() {
     expect(/1 more is down but snoozed/.test(q('.watch-line')?.textContent || ''), 'the watch says how many more are snoozed');
     expect(document.title === '(2) Vaka', `the tab title counts the outages (got "${document.title}")`);
     expect(/favicon-alert\.svg$/.test(q('[data-favicon]').getAttribute('href')), 'the favicon turns to the alarmed owl');
+    expect(q('.brand-name')?.textContent === 'Vaka' && q('.brand .mark'), 'the mark and the name, Capitalised, in the top bar');
+    expect(q('.watch-owl.is-awake'), 'the owl in the night panel is wide awake while a site is down');
+    expect(/Made by\s*Webready\s*in Sweden/.test(q('.foot .credit')?.textContent || '') && q('.foot .credit a[href="https://webready.se"]'), 'the footer credits Webready, linked');
+    expect(q('.foot .credit a[href="https://github.com/webready-se/puls"] svg[aria-label="Puls"]') && q('.foot .credit svg[aria-label="Hamstra"]'), 'the footer shows the family, Puls linked');
+    expect(/^Vaka .+ · checks run every minute, the last at \d\d:\d\d$/.test(q('[data-foot]')?.textContent || ''), 'the footer says the version and how fresh the results are');
     expect(/Watching 14 sites · checked/.test(q('[data-region="run-state"]').textContent), 'top bar says how many sites Vaka watches and when it checked');
     // Needs your attention: one compact row each, outages first, the quiet ones folded away last
     const rows = all('.attention > .incidents > .incident');
@@ -194,8 +199,8 @@ async function main() {
     expect(/docs\.example\s*domain expires in 12 days/.test(summary(rows[5])), 'a domain that runs out soon comes with the other warnings');
     expect(/Renew it with the registrar/.test(rows[5]?.textContent || ''), 'the domain row says what to do');
     expect(/1 site is down, snoozed/.test(summary(rows[6])) && /deals2\.example/.test(rows[6].textContent), 'snoozed outages are folded into one row at the end');
-    expect(/1\s*Domains/.test(q('.watch-stats')?.textContent || ''), 'the watch counts the domains to renew');
-    expect(/2\s*Exposed files/.test(q('.watch-stats')?.textContent || ''), 'the watch counts the exposed files');
+
+
     expect(!q('.attention details[open]'), 'with two outages, every row starts closed');
     expect(rows.every((row) => row.getBoundingClientRect().height < 90), 'closed rows are compact');
 

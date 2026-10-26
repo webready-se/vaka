@@ -74,7 +74,7 @@ function handle_request(array $config): never
         handle_api($config, $user, (string) $_GET['api'], $method, $now);
     }
     if (!$user) redirect('/?login');
-    show_dashboard($user);
+    show_dashboard($config, $user);
 }
 
 /** The logged-in user (name plus users.json entry), or null. A removed user is logged out. */
@@ -147,7 +147,8 @@ function show_login(array $config, ?string $error = null): never
     $version = e(VAKA_VERSION);
     $message = $error === null ? '' : '<p class="login-error" id="login-error" role="alert">' . e($error) . '</p>';
     $described = $error === null ? '' : ' aria-describedby="login-error"';
-    $owl = owl_tile();
+    $mark = mark_svg('vaka', 'mark');
+    $credit = footer_credit($config);
     $panel = load_users($config['users_file']) ? <<<HTML
       <form method="post" action="/?login">
         {$message}
@@ -182,34 +183,54 @@ function show_login(array $config, ?string $error = null): never
     </head>
     <body class="login">
     <main class="login-card">
-      {$owl}
-      <h1>vaka</h1>
+      {$mark}
+      <h1>Vaka</h1>
       <p class="login-tagline">Keeps watch while you sleep.</p>
     {$panel}
-      <p class="login-foot">Made by <a href="https://webready.se">Webready</a> in Sweden</p>
+      <p class="login-foot">{$credit}</p>
     </main>
     </body>
     </html>
     HTML, 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
 }
 
-/** The Vaka mark: a teal tile with the watching owl, inline (no style attributes). */
-function owl_tile(): string
+/**
+ * A tool's mark from public/marks/ (copied from the Webready design kit),
+ * inline, so the CSP needs nothing. With a $label it is an image with that
+ * name; without, decoration beside a visible name.
+ */
+function mark_svg(string $tool, string $class, string $label = ''): string
 {
-    return '<svg class="tile" viewBox="0 0 36 36" aria-hidden="true" focusable="false">'
-        . '<rect class="tile-bg" width="36" height="36" rx="8"/>'
-        . '<circle class="owl-line" cx="12.5" cy="19.5" r="5"/><circle class="owl-line" cx="23.5" cy="19.5" r="5"/>'
-        . '<path class="owl-line" d="M6 12.5c3.5-2.3 8.6-2 12 2.2 3.4-4.2 8.5-4.5 12-2.2"/><path class="owl-line" d="M16.4 26.6 18 28.6l1.6-2"/>'
-        . '<circle class="owl-pupil" cx="12.5" cy="19.5" r="1.9"/><circle class="owl-pupil" cx="23.5" cy="19.5" r="1.9"/></svg>';
+    $svg = trim((string) file_get_contents(__DIR__ . "/../public/marks/{$tool}.svg"));
+    $role = $label === '' ? 'aria-hidden="true"' : 'role="img" aria-label="' . e($label) . '"';
+    return preg_replace('/^<svg /', '<svg class="' . e($class) . '" ' . $role . ' focusable="false" ', $svg);
 }
 
-function show_dashboard(array $user): never
+/**
+ * The family credit (design kit docs/layout.md): "Made by Webready in Sweden"
+ * and the four tools' marks, each linked only once its page is public.
+ * FOOTER_CREDIT=false turns it off.
+ */
+function footer_credit(array $config): string
+{
+    if (!$config['footer_credit']) return '';
+    $marks = '';
+    foreach (['puls' => 'https://github.com/webready-se/puls', 'vaka' => '', 'snoka' => '', 'hamstra' => ''] as $tool => $page) {
+        $mark = mark_svg($tool, 'credit-mark', ucfirst($tool));
+        $marks .= $page === '' ? $mark : '<a href="' . $page . '">' . $mark . '</a>';
+    }
+    return '<span class="credit">Made by <a href="https://webready.se">Webready</a> in Sweden <span class="credit-marks">' . $marks . '</span></span>';
+}
+
+function show_dashboard(array $config, array $user): never
 {
     $html = (string) file_get_contents(__DIR__ . '/../public/dashboard.html');
     $html = strtr($html, [
         '{{csrf}}' => e(csrf_token()),
         '{{version}}' => e(VAKA_VERSION),
         '{{user}}' => e($user['name']),
+        '{{mark}}' => mark_svg('vaka', 'mark'),
+        '{{credit}}' => footer_credit($config),
     ]);
     respond(200, $html, 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
 }

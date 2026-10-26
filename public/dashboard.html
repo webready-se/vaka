@@ -18,13 +18,8 @@
 <a class="skip-link" href="#sites-title">Skip to all sites</a>
 <header class="topbar">
   <a class="brand" href="/" aria-label="Vaka, home">
-    <svg class="tile" viewBox="0 0 36 36" aria-hidden="true" focusable="false">
-      <rect class="tile-bg" width="36" height="36" rx="8"/>
-      <circle class="owl-line" cx="12.5" cy="19.5" r="5"/><circle class="owl-line" cx="23.5" cy="19.5" r="5"/>
-      <path class="owl-line" d="M6 12.5c3.5-2.3 8.6-2 12 2.2 3.4-4.2 8.5-4.5 12-2.2"/><path class="owl-line" d="M16.4 26.6 18 28.6l1.6-2"/>
-      <circle class="owl-pupil" cx="12.5" cy="19.5" r="1.9"/><circle class="owl-pupil" cx="23.5" cy="19.5" r="1.9"/>
-    </svg>
-    <span class="brand-name">vaka</span>
+    {{mark}}
+    <span class="brand-name">Vaka</span>
   </a>
   <p class="run-pill" data-region="run-state"><span class="run-dot"></span><span data-run-text>Starting…</span></p>
   <span class="topbar-spacer"></span>
@@ -60,6 +55,11 @@
     <div data-region="groups"></div>
   </section>
 </main>
+
+<footer class="foot">
+  <span data-foot data-version="{{version}}">Vaka {{version}}</span>
+  {{credit}}
+</footer>
 
 <dialog class="drawer" data-region="detail" aria-labelledby="detail-title"></dialog>
 <p class="toast" data-region="toast" role="status" aria-live="polite"></p>

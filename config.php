@@ -66,4 +66,7 @@ return [
     'alert_email' => array_values(array_filter(array_map('trim', explode(',', $env('ALERT_EMAIL'))))),
 
     'alert_from' => $env('ALERT_FROM'),
+
+    // "Made by Webready in Sweden" in the footer, with the family's marks; false turns it off
+    'footer_credit' => filter_var($env('FOOTER_CREDIT', 'true'), FILTER_VALIDATE_BOOLEAN, FILTER_NULL_ON_FAILURE) ?? true,
 ];

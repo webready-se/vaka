@@ -55,25 +55,25 @@
     while (node.firstChild) node.removeChild(node.firstChild);
   }
 
-  // Vaka's icons: a 24 px grid, stroke 2, round caps and joins (see docs/brand.md)
+  // Icons on a 24 px grid, stroke 2, round caps and joins: the design kit's set (icons/), plus Vaka's own in its grammar
   var ICONS = {
     up: ['M5 12.5l4.5 4.5L19 7.5'],
-    down: ['M7 7l10 10M17 7 7 17'],
-    failing: ['M12 7v6.5', 'M12 17.4v.1'],
-    paused: ['M9 7v10M15 7v10'],
-    pending: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 7.5V12l3 2'],
-    quiet: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'],
+    down: ['M18 6 6 18', 'm6 6 12 12'],
+    failing: ['M10.3 4.6 3 17.5a2 2 0 0 0 1.7 3h14.6a2 2 0 0 0 1.7-3L13.7 4.6a2 2 0 0 0-3.4 0Z', 'M12 9.5v4', 'M12 17h.01'],
+    paused: ['M9 6v12', 'M15 6v12'],
+    pending: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 7v5l3 2'],
+    quiet: ['M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z'],
     shield: ['M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z', 'M12 8v4.5', 'M12 15.8v.1'],
     globe: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M3 12h18', 'M12 3c2.4 2.6 3.7 5.6 3.7 9s-1.3 6.4-3.7 9c-2.4-2.6-3.7-5.6-3.7-9s1.3-6.4 3.7-9z'],
     file: ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5', 'M12 11.5v3.5', 'M12 18.3v.1'],
     bell: ['M18 16H6l1.5-2.2V10a4.5 4.5 0 0 1 9 0v3.8z', 'M10 19a2 2 0 0 0 4 0'],
     server: ['M4 4.5h16v6H4zM4 13.5h16v6H4z', 'M8 7.5h.01M8 16.5h.01'],
     bulb: ['M9 18h6M10 21h4', 'M12 3a6 6 0 0 0-3.6 10.8c.6.5.6 1.1.6 1.7v.5h6v-.5c0-.6 0-1.2.6-1.7A6 6 0 0 0 12 3z'],
-    external: ['M14 5h5v5M19 5l-8 8', 'M17 14v4a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1V8a1 1 0 0 1 1-1h4'],
+    external: ['M14 4h6v6', 'M20 4 11 13', 'M18 14v4a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4'],
     close: ['M6 6l12 12M18 6 6 18'],
     copy: ['M9 9h10v10H9z', 'M5 15V5h10'],
     sun: ['M12 16a4 4 0 1 0 0-8 4 4 0 0 0 0 8z', 'M12 2.5v2M12 19.5v2M4.6 4.6 6 6M18 18l1.4 1.4M2.5 12h2M19.5 12h2M4.6 19.4 6 18M18 6l1.4-1.4'],
-    moon: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'],
+    moon: ['M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5Z'],
     monitor: ['M4 5h16v11H4z', 'M9 20h6M12 16v4'],
     chevron: ['M9 6l6 6-6 6']
   };
@@ -83,18 +83,46 @@
       ICONS[name].map(function (d) { return s('path', { d: d }); }));
   }
 
-  /** The watching owl. Alarmed: wide eyes, small pupils. */
-  function owl(alarmed) {
-    var r = alarmed ? 5.6 : 5;
-    var pupil = alarmed ? 1.2 : 1.9;
-    return s('svg', { class: 'watch-owl', viewBox: '0 0 36 36', 'aria-hidden': 'true', focusable: 'false' }, [
-      s('circle', { class: 'owl-line', cx: 12.5, cy: 19.5, r: r }),
-      s('circle', { class: 'owl-line', cx: 23.5, cy: 19.5, r: r }),
-      s('path', { class: 'owl-line', d: alarmed ? 'M6 11c3.5-2.3 8.6-2 12 2.2 3.4-4.2 8.5-4.5 12-2.2' : 'M6 12.5c3.5-2.3 8.6-2 12 2.2 3.4-4.2 8.5-4.5 12-2.2' }),
-      s('path', { class: 'owl-line', d: 'M16.4 26.6 18 28.6l1.6-2' }),
-      s('circle', { class: 'owl-pupil', cx: 12.5, cy: 19.5, r: pupil }),
-      s('circle', { class: 'owl-pupil', cx: 23.5, cy: 19.5, r: pupil })
-    ]);
+  // Vaka's owl from the Webready design kit (characters/vaka.svg and vaka-awake.svg, 40 x 40):
+  // the body, then the eyes (watching, or wide awake while a site is down), then the beak and feet
+  var OWL = {
+    body: [
+      ['path', {'d': 'M10 12.6L7.4 6.2L10.9 8.3L11.5 5.2L14.6 10Z', 'fill': '#19acca'}],
+      ['path', {'d': 'M30 12.6L32.6 6.2L29.1 8.3L28.5 5.2L25.4 10Z', 'fill': '#19acca'}],
+      ['path', {'d': 'M20 8C27.6 8 33 13.2 33 20.8C33 29.2 27.6 35.6 20 35.6S7 29.2 7 20.8C7 13.2 12.4 8 20 8Z', 'fill': '#19acca'}],
+      ['path', {'d': 'M8.4 18.6C5.6 22.6 5.9 29.2 10 33C10.9 28.6 11.2 23.4 8.4 18.6Z', 'fill': '#0e8fab'}],
+      ['path', {'d': 'M31.6 18.6C34.4 22.6 34.1 29.2 30 33C29.1 28.6 28.8 23.4 31.6 18.6Z', 'fill': '#0e8fab'}],
+      ['path', {'d': 'M13.4 27.2C14 32 16.8 34.4 20 34.4S26 32 26.6 27.2C24.6 28.5 22.3 29.1 20 29.1S15.4 28.5 13.4 27.2Z', 'fill': '#bfeaf3'}],
+      ['path', {'d': 'M15.8 30.4l1.4 1 1.4-1M21.4 30.4l1.4 1 1.4-1', 'fill': 'none', 'stroke': '#19acca', 'stroke-width': '1.1', 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}],
+      ['path', {'d': 'M20 14.8C17.8 12.4 12.8 11.8 10.6 14.4C8.2 17.2 8.8 22.2 12.2 24.2C15 25.8 18 25.2 20 23.4C22 25.2 25 25.8 27.8 24.2C31.2 22.2 31.8 17.2 29.4 14.4C27.2 11.8 22.2 12.4 20 14.8Z', 'fill': '#8fdcec'}]
+    ],
+    eyes: [
+      ['circle', {'cx': '14.9', 'cy': '18.9', 'r': '4.6', 'fill': '#fff'}],
+      ['circle', {'cx': '25.1', 'cy': '18.9', 'r': '4.6', 'fill': '#fff'}],
+      ['circle', {'cx': '14.9', 'cy': '19.1', 'r': '2.4', 'fill': '#0f172a'}],
+      ['circle', {'cx': '25.1', 'cy': '19.1', 'r': '2.4', 'fill': '#0f172a'}],
+      ['circle', {'cx': '15.8', 'cy': '18.2', 'r': '0.8', 'fill': '#fff'}],
+      ['circle', {'cx': '26', 'cy': '18.2', 'r': '0.8', 'fill': '#fff'}]
+    ],
+    awakeEyes: [
+      ['circle', {'cx': '14.9', 'cy': '18.9', 'r': '5.3', 'fill': '#fff'}],
+      ['circle', {'cx': '25.1', 'cy': '18.9', 'r': '5.3', 'fill': '#fff'}],
+      ['circle', {'cx': '14.9', 'cy': '19.1', 'r': '1.4', 'fill': '#0f172a'}],
+      ['circle', {'cx': '25.1', 'cy': '19.1', 'r': '1.4', 'fill': '#0f172a'}],
+      ['circle', {'cx': '15.5', 'cy': '18.5', 'r': '0.8', 'fill': '#fff'}],
+      ['circle', {'cx': '25.7', 'cy': '18.5', 'r': '0.8', 'fill': '#fff'}]
+    ],
+    beak: [
+      ['path', {'d': 'M18.4 22.8L20 26L21.6 22.8Q20 23.4 18.4 22.8Z', 'fill': '#f5b942'}],
+      ['path', {'d': 'M16.2 35.4v1.8M17.8 35.4v1.8M22.2 35.4v1.8M23.8 35.4v1.8', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round'}]
+    ]
+  };
+
+  /** The owl in the night panel. Awake: wide eyes, small pupils. Its eyes blink while all is calm (CSS). */
+  function owl(awake) {
+    var draw = function (items) { return items.map(function (item) { return s(item[0], item[1]); }); };
+    return s('svg', { class: 'watch-owl' + (awake ? ' is-awake' : ''), viewBox: '0 0 40 40', 'aria-hidden': 'true', focusable: 'false' },
+      draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(awake ? OWL.awakeEyes : OWL.eyes))], draw(OWL.beak)));
   }
 
   // =================================================================
@@ -270,6 +298,9 @@
       : 'Not checked yet');
     // Nothing to watch is not an alarm: no red before the first site
     node.className = 'run-pill' + (state.data.run_ok ? ' is-ok' : state.data.totals.sites === 0 ? '' : ' is-stale');
+    // The footer's own half: the tool, its version, where the results come from and how fresh they are
+    var foot = document.querySelector('[data-foot]');
+    foot.textContent = 'Vaka ' + foot.getAttribute('data-version') + ' · ' + (last ? 'checks run every minute, the last at ' + clock(last) : 'not checked yet');
   }
 
   function renderBanner() {
@@ -313,7 +344,6 @@
     var certs = certIssues().length;
     var domains = domainIssues();
     var exposed = exposedIssues();
-    var exposedFiles = exposed.reduce(function (sum, site) { return sum + site.exposed.found.length; }, 0);
     var watched = t.sites - t.paused;
     var kind, kicker, title, line;
 
@@ -321,10 +351,9 @@
       kind = 'alert';
       kicker = 'Needs you now';
       title = plural(downNow, 'site is down', 'sites are down');
-      var more = [];
-      if (downQuiet) more.push(downQuiet + ' more ' + (downQuiet === 1 ? 'is' : 'are') + ' down but snoozed or in a maintenance window.');
-      if (t.failing) more.push(plural(t.failing, 'more site is', 'more sites are') + ' failing a check and being checked again.');
-      line = more.length ? more.join(' ') : 'Everything else is up.';
+      // The numbers beside it say how many are down or checking; the line says what they do not
+      line = downQuiet ? downQuiet + ' more ' + (downQuiet === 1 ? 'is' : 'are') + ' down but snoozed or in a maintenance window.'
+        : t.failing ? 'Everything else is up or being checked again.' : 'Everything else is up.';
     } else if (downQuiet > 0) {
       kind = 'watch';
       kicker = 'Keeping watch';
@@ -334,7 +363,7 @@
       kind = 'watch';
       kicker = 'Checking again';
       title = 'Something looks off';
-      line = plural(t.failing, 'site', 'sites') + ' failed a check. Vaka checks again within a minute: one failure is not an outage yet.';
+      line = 'Vaka checks again within a minute: one failure is not an outage yet.';
     } else if (t.up === 0) {
       kind = 'empty';
       kicker = 'Getting ready';
@@ -346,12 +375,12 @@
       if (exposed.length) notes.push(plural(exposed.length, 'site has', 'sites have') + ' private files that anyone can download.');
       if (domains.length) notes.push(plural(domains.length, 'domain needs', 'domains need') + ' renewing.');
       if (certs) notes.push(plural(certs, 'certificate needs', 'certificates need') + ' renewing soon.');
-      var up = t.up === watched ? (watched === 1 ? 'Your site is up' : 'All ' + watched + ' sites are up') : plural(t.up, 'site is up', 'sites are up');
       kind = notes.length ? 'watch' : 'calm';
       kicker = 'Keeping watch';
-      title = notes.length ? up : 'All quiet.';
-      line = notes.length ? notes.join(' ') : up + '.';
-      if (!notes.length && state.data.last_incident) line += ' The last outage was ' + ago(state.data.last_incident.at) + ', on ' + state.data.last_incident.label + '.';
+      title = !notes.length ? 'All quiet.' : t.up === watched ? (watched === 1 ? 'Your site is up' : 'All sites are up') : plural(t.up, 'site is up', 'sites are up');
+      var last = state.data.last_incident;
+      line = notes.length ? notes.join(' ')
+        : last ? 'The last outage was ' + ago(last.at) + ', on ' + last.label + '.' : 'Nothing has gone down since Vaka started watching.';
     }
 
     var ms = median(sites.filter(function (site) { return site.ms !== null && site.ms !== undefined; }).map(function (site) { return site.ms; }));
@@ -361,15 +390,7 @@
     var stats = [h('li', { class: 'is-up' }, [h('b', {}, String(t.up)), h('span', {}, 'Up')])];
     if (t.down) stats.push(h('li', { class: 'is-down' }, [h('b', {}, String(t.down)), h('span', {}, 'Down')]));
     if (t.failing) stats.push(h('li', { class: 'is-warn' }, [h('b', {}, String(t.failing)), h('span', {}, 'Checking')]));
-    if (certs) stats.push(h('li', { class: 'is-warn' }, [h('b', {}, String(certs)), h('span', {}, 'Certificates')]));
-    if (domains.length) {
-      var expired = domains.some(function (item) { return item.domain.status === 'fail'; });
-      stats.push(h('li', { class: expired ? 'is-down' : 'is-warn' }, [h('b', {}, String(domains.length)), h('span', {}, 'Domains')]));
-    }
-    if (exposedFiles) {
-      var red = exposed.some(function (site) { return site.exposed.status === 'fail'; });
-      stats.push(h('li', { class: red ? 'is-down' : 'is-warn' }, [h('b', {}, String(exposedFiles)), h('span', {}, 'Exposed files')]));
-    }
+    // Certificates, domains and exposed files are listed right below; the panel says how the sites are
     if (ms !== null) stats.push(h('li', {}, [h('b', {}, ms + ' ms'), h('span', {}, 'Typical response')]));
     if (average !== null) stats.push(h('li', {}, [h('b', {}, average + '%'), h('span', {}, 'Up, 30 days')]));
     if (t.paused) stats.push(h('li', {}, [h('b', {}, String(t.paused)), h('span', {}, 'Paused')]));

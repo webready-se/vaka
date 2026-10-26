@@ -82,6 +82,12 @@ test('php_cli is the CLI of this PHP version when the server has one by that nam
     expect(php_cli([$dir]))->toBe($versioned);
 });
 
+test('FOOTER_CREDIT turns the family credit off', function () {
+    expect(load_config()['footer_credit'])->toBeTrue()
+        ->and(load_config(['FOOTER_CREDIT' => 'false'])['footer_credit'])->toBeFalse()
+        ->and(load_config(['FOOTER_CREDIT' => 'nonsense'])['footer_credit'])->toBeTrue();
+});
+
 test('pair_list parses "key=value" pairs, keys lowercased', function () {
     expect(pair_list('se=whois.iis.se, NU = whois.iis.nu,,broken, dk='))->toBe(['se' => 'whois.iis.se', 'nu' => 'whois.iis.nu'])
         ->and(pair_list(''))->toBe([]);
