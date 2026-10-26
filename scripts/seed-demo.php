@@ -117,6 +117,25 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         if ($found) add_event($db, $id, 'exposed', ['status' => 'fail', 'previous' => 'ok', 'message' => $exposed['summary']], $exposed['changed_at']);
     }
 
+    // Security headers: a spread of grades, from a hardened site to a bare one
+    if (!in_array($story, ['paused', 'hostile'], true)) {
+        $strong = ['strict-transport-security' => ['max-age=31536000'], 'content-security-policy' => ["default-src 'self'; frame-ancestors 'self'"], 'x-content-type-options' => ['nosniff'], 'referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=(), microphone=()']];
+        $forge = ['x-frame-options' => ['SAMEORIGIN'], 'x-content-type-options' => ['nosniff']];
+        $sent = match ($url) {
+            'https://www.example.com', 'https://example.org' => $strong,
+            'https://store.example', 'https://docs.example' => ['content-security-policy' => ["script-src 'self' 'unsafe-inline'; frame-ancestors 'self'"]] + $strong,
+            'https://shop.example', 'https://blog.example' => ['referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=()']] + $forge,
+            'https://builder.example' => [],
+            'https://example.net' => ['referrer-policy' => ['no-referrer']] + $forge,
+            default => $forge,
+        };
+        $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => $url . '/', 'headers' => $sent], 10);
+        $confirmed = confirm_headers(null, $graded)['details'];
+        save_check_state($db, $id, 'headers', ['status' => $graded['status'], 'summary' => $graded['summary'], 'details' => $confirmed, 'fail_count' => 0, 'changed_at' => utc_now($month)], utc_now($now - 2 * 3600), utc_now($now + 4 * 3600));
+        $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_snapshot = ? WHERE site_id = ? AND check_name = 'headers'")
+            ->execute([$graded['status'], json_encode($confirmed['confirmed']), $id]);
+    }
+
     $alerted = in_array($story, ['down', 'snoozed', 'hostile'], true) ? 'fail' : 'ok';
     $db->prepare("UPDATE check_state SET alerted_status = ?, flapping_since = ?, snoozed_until = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([
         $story === 'snoozed' ? 'snoozed' : $alerted,

@@ -133,6 +133,8 @@ test('the overview lists sites with their state, and a restricted user only sees
     $this->db->exec("UPDATE sites SET ip = '192.0.2.10' WHERE id = {$shop}");
     save_check_state($this->db, $shop, 'ssl', ['status' => 'warn', 'summary' => 'The certificate expires in 6 days (31 Oct 2026)', 'details' => ['days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z', 'problem' => 'expiring'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
     $env = ['label' => '.env', 'what' => 'the environment file, often with database passwords and API keys', 'severity' => 'fail', 'url' => 'https://shop.example/.env'];
+    $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => 'https://shop.example/', 'headers' => ['x-frame-options' => ['SAMEORIGIN'], 'x-content-type-options' => ['nosniff']]], 10);
+    save_check_state($this->db, $shop, 'headers', ['status' => $graded['status'], 'summary' => $graded['summary'], 'details' => $graded['details'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
     save_check_state($this->db, $shop, 'exposed', ['status' => 'fail', 'summary' => '.env is public: the environment file, often with database passwords and API keys', 'details' => ['found' => [$env], 'checked' => 17, 'problem' => 'exposed'], 'fail_count' => 0, 'changed_at' => utc_now($now - 3600)], utc_now($now), utc_now($now + 3600));
     set_meta($this->db, 'last_run_at', utc_now($now - 30));
 
@@ -147,9 +149,16 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and($site['ssl'])->toMatchArray(['status' => 'warn', 'summary' => 'The certificate expires in 6 days (31 Oct 2026)', 'days_left' => 6])
         ->and($site['ssl']['advice'])->toStartWith('Renew the certificate')
         ->and($site['exposed'])->toMatchArray(['status' => 'fail', 'summary' => '.env is public: the environment file, often with database passwords and API keys', 'found' => [$env], 'since' => utc_now($now - 3600)])
-        ->and($site['exposed']['advice'])->toStartWith('Remove the files from the web root');
+        ->and($site['exposed']['advice'])->toStartWith('Remove the files from the web root')
+        ->and($site['headers'])->toBe(['status' => 'warn', 'grade' => 'E', 'summary' => 'Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy']);
     expect($admin['groups'][1]['sites'][0]['ssl'])->toBeNull()
-        ->and($admin['groups'][1]['sites'][0]['exposed'])->toBeNull();
+        ->and($admin['groups'][1]['sites'][0]['exposed'])->toBeNull()
+        ->and($admin['groups'][1]['sites'][0]['headers'])->toBeNull();
+
+    $detail = http_request('GET', WEB . "/?api=site&id={$shop}", ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
+    expect($detail['site']['headers']['grade'])->toBe('E')
+        ->and(array_column($detail['site']['headers']['items'], 'level', 'key'))->toBe(['hsts' => 'missing', 'csp' => 'missing', 'nosniff' => 'good', 'frames' => 'good', 'referrer' => 'missing', 'permissions' => 'missing'])
+        ->and($detail['site']['headers']['items'][1])->toMatchArray(['label' => 'CSP', 'fix' => SECURITY_HEADERS['csp']['fix'], 'what' => SECURITY_HEADERS['csp']['what']]);
     expect($admin['groups'][1]['sites'][0]['advice'])->toBe('');
 
     $anna = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('anna', 'anna password')['jar']])['json'];

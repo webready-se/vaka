@@ -85,7 +85,7 @@ src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_st
 src/checks/ssl.php       fetch_certificate() (verified, then unverified to describe a bad one), certificate_info(), host_matches(), evaluate_ssl(), ssl_notice() (thresholds once per certificate)
 src/checks/domain.php    Domain expiry via RDAP (IANA bootstrap)
 src/checks/exposed.php   EXPOSED_FILES, exposed_matches() (content signatures), evaluate_exposed() (soft-404 baseline), check_exposed(), exposed_notice()
-src/checks/headers.php   Security header grading and regressions
+src/checks/headers.php   SECURITY_HEADERS, header_level() (good/weak/missing), headers_grade(), evaluate_headers(), confirm_headers() (a change counts after a second look), headers_notice() (regressions only)
 src/checks/dns.php       MX, SPF, DMARC snapshots
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
 src/silence.php          Maintenance windows (parse, window_active() in local time, describe), active_silence(), snooze_site()
@@ -158,7 +158,7 @@ Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are sto
 | `ssl` | 6 h | `stream_socket_client` with `capture_peer_cert`, `openssl_x509_parse` | `warn` within 14 days, `fail` when expired or invalid | at `SSL_ALERT_DAYS` (14, 7, 1), invalid, recovered |
 | `domain` | 24 h | RDAP, base URL from the IANA bootstrap file (cached in `data/`) | `unknown` when the registry has no RDAP; never parses WHOIS | at `DOMAIN_ALERT_DAYS` |
 | `exposed` | 24 h (1 h while something is public) | GET each known path next to the site plus a made-up path as baseline, 64 KB each; match content signatures | `fail` for a file with secrets, code or data; `warn` for one that only tells versions and paths | each new file, all private again |
-| `headers` | 6 h | Response headers of a GET to the site URL; grade A-F | `warn` below B | header removed or weakened |
+| `headers` | 6 h (a change is confirmed 15 min later) | Response headers of a GET to the site URL; six protections, each good, weak or missing; grade A-F | `ok` A or B, `warn` below; a low grade is shown, never in "Needs your attention" | a protection removed or weakened (confirmed), never a low grade by itself |
 | `dns` | 6 h | `dns_get_record` for MX, TXT (SPF) and `_dmarc` TXT | `warn` when SPF or DMARC is missing | record changed |
 
 A first result (baseline) never alerts. Expiry thresholds alert once per certificate or registration; renewal resets them.
@@ -202,7 +202,7 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 1. Take `data/vaka.lock` with `flock(LOCK_EX | LOCK_NB)`. If another run holds it, exit 0 quietly.
 2. Collect due `(site, check)` pairs: `next_at <= now`, or no state yet.
 3. Uptime requests go through one `curl_multi` batch with a concurrency limit.
-4. The slower work runs after, until `RUN_BUDGET_SECONDS` (40) since the run started: SSL handshakes one by one (later DNS and RDAP too), then exposed files in parallel batches of five sites. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate; exposed files skip every site that is down.
+4. The slower work runs after, until `RUN_BUDGET_SECONDS` (40) since the run started: SSL handshakes one by one (later DNS and RDAP too), then security headers in parallel batches of 20 sites, then exposed files in batches of five. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate; headers and exposed files skip every site that is down.
 5. Store results and new states; a change writes an event.
 6. Reconcile alerts, apply silences and policies, bundle per destination and server, send. Send the daily digest when it is due.
 7. Trim old samples and audit log rows (once a day), then store `last_run_at`.

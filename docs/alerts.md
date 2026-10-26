@@ -29,6 +29,17 @@ Every site is checked once a day for files that should never be public (see [Che
 
 These alerts go out right away under the `delayed` policy too: the delay is for outages.
 
+## Security headers
+
+A grade on its own never alerts (see [Checks](checks.md#security-headers)). Vaka alerts when a protection that was in place is removed or gets weaker, compared with what it last told you:
+
+> ⚠️ **shop.example: security headers got worse, grade A to B**
+> CSP was removed
+> HSTS is weaker: it lasts only 30 days; six months or more is advised
+> If that was not on purpose, look at the last deploy, the web server or the CDN settings.
+
+A change has to show up twice, 15 minutes apart, before it counts. Improvements are recorded in the site's history without a message. Like exposed files, these alerts are not delayed by the `delayed` policy.
+
 ## One message, not fifty
 
 All alerts from one run go out together: one message per destination.
@@ -132,7 +143,7 @@ Every message is a `POST` with `Content-Type: application/json`. The fields are 
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `digest` or `test` |
+| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `headers_worse` (a security header was removed or weakened), `digest` or `test` |
 | `headline` | The alert in one sentence, as Slack and email show it |
 | `details` | Further lines: the sites and the reason |
 | `server` | The server's name or IP when sites were folded together, otherwise `null` |

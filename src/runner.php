@@ -1,6 +1,6 @@
 <?php
 
-/** Seconds a run may take before it stops starting slow checks (SSL, exposed files); what is left waits for the next run. */
+/** Seconds a run may take before it stops starting slow checks (SSL, headers, exposed files); what is left waits for the next run. */
 const RUN_BUDGET_SECONDS = 40;
 
 /**
@@ -35,6 +35,7 @@ function run(PDO $db, array $config, ?int $now = null): array
     $started = microtime(true);
     $summary = run_uptime($db, $config, $now);
     $summary['ssl'] = run_ssl($db, $config, $now, $started + RUN_BUDGET_SECONDS);
+    $summary['headers'] = run_headers($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['exposed'] = run_exposed($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $alerts = process_alerts($db, $config, $now);
     $summary['alerts'] = $alerts['alerts'];
@@ -263,6 +264,60 @@ function run_exposed(PDO $db, array $config, int $now, float $deadline): array
             if ($result['status'] !== 'unknown' && ($changed || $before !== array_column($result['details']['found'], 'label'))) {
                 $event = ['status' => $result['status'], 'previous' => $previous, 'message' => $result['summary']];
                 add_event($db, $site['id'], 'exposed', $event, $checkedAt);
+                $summary['events'][] = ['url' => $site['url']] + $event;
+            }
+            $summary['checked']++;
+        }
+    }
+    return $summary;
+}
+
+/** Sites whose security headers are due. A site that is down is left out: its headers would be an error page's. */
+function due_headers_sites(PDO $db, string $now): array
+{
+    $stmt = $db->prepare("SELECT s.*, c.status AS state_status, c.details AS state_details, c.changed_at AS state_changed_at
+        FROM sites s
+        LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'headers'
+        LEFT JOIN check_state u ON u.site_id = s.id AND u.check_name = 'uptime'
+        WHERE s.paused = 0
+            AND (',' || s.disabled_checks || ',') NOT LIKE '%,headers,%'
+            AND (c.next_at IS NULL OR c.next_at <= ?)
+            AND (u.status IS NULL OR u.status != 'fail')
+        ORDER BY c.next_at IS NOT NULL, c.next_at, s.id");
+    $stmt->execute([$now]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Grade due sites' security headers, in parallel batches, until $deadline
+ * (microtime). A change is looked at again before it counts (see
+ * confirm_headers()); a confirmed one is recorded in the history.
+ */
+function run_headers(PDO $db, array $config, int $now, float $deadline): array
+{
+    $summary = ['checked' => 0, 'left' => 0, 'events' => []];
+    $sites = due_headers_sites($db, utc_now($now));
+    $checkedAt = utc_now($now);
+    foreach (array_chunk($sites, HEADERS_SITES_PER_BATCH) as $i => $batch) {
+        if (microtime(true) >= $deadline) {
+            $summary['left'] = count($sites) - $i * HEADERS_SITES_PER_BATCH;
+            break;
+        }
+        $responses = fetch_many(array_column($batch, 'url', 'id'), $config['uptime_timeout'], user_agent($config), 20, $config['ssl_ca_file']);
+        foreach ($batch as $site) {
+            $result = evaluate_headers($responses[$site['id']], $config['uptime_timeout']);
+            $before = $site['state_status'] === null ? null : (json_decode((string) $site['state_details'], true) ?: []);
+            $next = confirm_headers($before, $result);
+            save_check_state($db, $site['id'], 'headers', [
+                'status' => $result['status'],
+                'summary' => $result['summary'],
+                'details' => $next['details'],
+                'fail_count' => 0,
+                'changed_at' => $next['change'] !== null ? $checkedAt : $site['state_changed_at'],
+            ], $checkedAt, utc_now($now + $next['wait']));
+            if ($next['change'] !== null) {
+                $event = ['status' => $result['status'], 'previous' => $site['state_status'] ?? 'pending', 'message' => $next['change']];
+                add_event($db, $site['id'], 'headers', $event, $checkedAt);
                 $summary['events'][] = ['url' => $site['url']] + $event;
             }
             $summary['checked']++;
