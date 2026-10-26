@@ -62,13 +62,12 @@ function pick_site(PDO $db, ?string $ref): array
     if ($ref === null) {
         $sites = list_sites($db);
         if (!$sites) fail('No sites yet. Add one with `php vaka site:add <url>`.');
-        $label = fn (array $site) => display_url($site['url']) . ' (' . ($site['group_name'] ?? 'no group') . ')';
         if (count($sites) === 1) {
             echo 'Which site? ' . display_url($sites[0]['url']) . " (the only one)\n";
             return site_with_group($db, $sites[0]['id']);
         }
         echo "Which site?\n";
-        foreach ($sites as $i => $site) echo sprintf("  %d) %s\n", $i + 1, $label($site));
+        foreach ($sites as $i => $site) echo sprintf("  %d) %s\n", $i + 1, site_choice($site));
         $ref = ask('Site (number, URL or domain)');
         if (ctype_digit($ref) && isset($sites[(int) $ref - 1])) return site_with_group($db, $sites[(int) $ref - 1]['id']);
     }
@@ -172,7 +171,7 @@ function move_picked_sites(PDO $db, string $group): void
     $sites = list_sites($db);
     if (!$sites) fail('No sites yet. Add one with `php vaka site:add <url>`.');
     $options = [];
-    foreach ($sites as $site) $options[$site['id']] = display_url($site['url']) . ' (' . ($site['group_name'] ?? 'no group') . ')';
+    foreach ($sites as $site) $options[$site['id']] = site_choice($site);
     $picked = choose_many('Which sites?', $options, '0 for all, Enter for none');
     if (!$picked) {
         echo "Nothing moved.\n";

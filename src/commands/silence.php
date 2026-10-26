@@ -16,7 +16,7 @@ function pick_maintenance_target(PDO $db): string
         $options['group:' . $group['name']] = "The group {$group['name']} (" . ($group['site_count'] ? plural((int) $group['site_count'], 'site', 'sites') : 'no sites') . ')';
     }
     foreach (list_sites($db) as $site) {
-        $options['site:' . $site['url']] = display_url($site['url']) . ' (' . ($site['group_name'] ?? 'no group') . ')';
+        $options['site:' . $site['url']] = site_choice($site);
     }
     if (!$options) fail('No groups or sites yet. Add a site with `php vaka site:add <url>`.');
     $choice = choose('For which group or site?', $options);
