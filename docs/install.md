@@ -21,7 +21,7 @@ Then let something outside watch Vaka itself (see [Watching Vaka](#watching-vaka
 git clone https://github.com/webready-se/vaka.git
 cd vaka
 cp .env.example .env          # optional: every setting has a default
-php vaka user:add admin       # a user for the dashboard
+php vaka user:add admin       # a user for the dashboard (Enter makes a strong password)
 php vaka site:add https://shop.example
 php vaka run                  # check it once by hand
 ```

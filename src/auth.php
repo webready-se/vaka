@@ -25,6 +25,19 @@ function save_users(string $file, array $users): void
     rename($tmp, $file);
 }
 
+/** A strong password that is easy to copy: four groups of five, about 99 bits, no look-alike characters (0/o, 1/l/i). */
+function generate_password(): string
+{
+    $alphabet = 'abcdefghjkmnpqrstuvwxyz23456789';
+    $groups = [];
+    for ($g = 0; $g < 4; $g++) {
+        $group = '';
+        for ($c = 0; $c < 5; $c++) $group .= $alphabet[random_int(0, strlen($alphabet) - 1)];
+        $groups[] = $group;
+    }
+    return implode('-', $groups);
+}
+
 function hash_password(string $password): string
 {
     return password_hash($password, PASSWORD_BCRYPT, ['cost' => 12]);

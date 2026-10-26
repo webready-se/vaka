@@ -16,13 +16,19 @@ function read_password(string $label, bool $confirm): string
         return $password;
     };
     $password = $read($label);
-    if ($confirm && $read('Again, to be sure: ') !== $password) fail('The passwords do not match.');
+    // Nothing typed means "make one for me": nothing to repeat
+    if ($confirm && $password !== '' && $read('Again, to be sure: ') !== $password) fail('The passwords do not match.');
     return $password;
 }
 
+/** Ask for a new password, or make one when Enter is pressed on an empty line, and return its hash. */
 function new_password(string $label): string
 {
-    $password = read_password($label, true);
+    $password = read_password(rtrim($label, ': ') . ' (Enter for a generated one): ', true);
+    if ($password === '') {
+        $password = generate_password();
+        echo "Generated password: {$password}\nCopy it now: Vaka keeps only a hash of it, so it cannot show it again.\n";
+    }
     if (text_length($password) < MIN_PASSWORD_LENGTH) fail('Passwords are at least ' . MIN_PASSWORD_LENGTH . ' characters.');
     return hash_password($password);
 }

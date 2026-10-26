@@ -15,6 +15,24 @@ test('user:add takes the password from stdin and stores a bcrypt hash', function
         ->and(str_starts_with($users['admin']['password'], '$2y$'))->toBeTrue();
 });
 
+test('user:add makes a strong password when none is typed, and shows it once', function () {
+    $r = vaka(['user:add', 'admin'], $this->env, "\n");
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->toContain('Enter for a generated one')
+        ->and($r['out'])->toMatch('/Generated password: ([a-z2-9]{5}(?:-[a-z2-9]{5}){3})\n/')
+        ->and($r['out'])->toContain('Copy it now');
+    preg_match('/Generated password: (\S+)/', $r['out'], $m);
+    expect(password_verify($m[1], json_decode(file_get_contents($this->env['USERS_FILE']), true)['admin']['password']))->toBeTrue();
+});
+
+test('generate_password: four groups of five, without look-alike characters', function () {
+    $passwords = array_map(fn () => generate_password(), range(1, 50));
+    expect(count(array_unique($passwords)))->toBe(50);
+    foreach ($passwords as $password) {
+        expect($password)->toMatch('/^[a-hjkmnp-z2-9]{5}(-[a-hjkmnp-z2-9]{5}){3}$/');
+    }
+});
+
 test('user:add refuses a short password, an existing user and an unknown group', function () {
     expect(vaka(['user:add', 'admin'], $this->env, "short\n")['err'])->toContain('at least 10 characters');
 

@@ -43,6 +43,8 @@ This repository will be public. Nothing about the user, the company, its custome
 
   Test every screen, message and command output with: would someone understand this in five seconds?
 
+  Small conveniences are part of this, not extras: a prompt offers a good default where one exists (Enter makes a strong password; the dashboard shows this server's own cron line), and the very first run is walked through as a new user would meet it (no users, no sites, no SSH) before calling a flow done.
+
   The look is defined in `docs/brand.md` (owl mark, Webready family tile, slate neutrals, shared status colours, Figtree, icons with stroke 2). Follow it; change the guide first if the look changes. Review visual changes with `node scripts/smoke.mjs --screenshots=<dir>` (login, light, dark, detail, phone, phone detail, and the first visit: no users, no sites).
 - **Never on the same server it watches.** If that server goes down, nobody gets an alert. The install docs say so, and Vaka watches itself: every run pings `HEARTBEAT_URL` (a dead man's switch such as Healthchecks.io's free tier, which alerts when pings stop), `/?health` returns 503 when cron has stopped, and the dashboard shows when Vaka last ran and warns when that is more than a few minutes ago.
 - **No dependencies at runtime.** PHP 8.3+ with built-in extensions only: `pdo_sqlite`, `curl`, `openssl` (`intl` optional). No Composer runtime packages, no framework, no build step, no CDN. Deploy = copy the files. Must run on Laravel Forge and on shared hosting wherever cron exists.
