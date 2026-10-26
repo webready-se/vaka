@@ -56,6 +56,9 @@ return [
     // Dead man's switch pinged at the end of every run
     'heartbeat_url' => $env('HEARTBEAT_URL'),
 
+    // Hours between reminders while a site stays down; 0 sends none
+    'remind_every_hours' => max(0, (int) $env('REMIND_EVERY_HOURS', '4')),
+
     // Alerts: defaults for groups without destinations of their own
     'digest_time' => $env('DIGEST_TIME', '08:00'),
 

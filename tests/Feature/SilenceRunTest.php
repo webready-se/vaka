@@ -108,6 +108,46 @@ test('a snoozed incident is quiet, and alerts again if it is still down when the
     expect(($this->texts)())->toHaveCount(2);
 });
 
+test('a snooze holds the reminders back, and they start over when it ends', function () {
+    $id = add_site($this->db, ['url' => 'http://127.0.0.1:8792', 'group' => 'Nightly']);
+    $config = ['remind_every_hours' => 4] + $this->config;
+    run($this->db, $config, $this->now);
+    run($this->db, $config, $this->now + 60);
+    expect(($this->texts)())->toHaveCount(1);
+
+    snooze_site($this->db, $id, 4 * 3600, $this->now + 3 * 3600);
+    run($this->db, $config, $this->now + 4 * 3600 + 60);
+    expect(($this->texts)())->toHaveCount(1);
+
+    run($this->db, $config, $this->now + 7 * 3600);
+    run($this->db, $config, $this->now + 11 * 3600 - 60);
+    expect(($this->texts)())->toHaveCount(2)
+        ->and(($this->texts)()[1])->toContain('is still down after the snooze');
+
+    run($this->db, $config, $this->now + 11 * 3600);
+    expect(($this->texts)())->toHaveCount(3)
+        ->and(($this->texts)()[2])->toContain('127.0.0.1:8792 (Nightly) has been down for 11 h');
+});
+
+test('no reminders during a maintenance window: a site still down when it ends gets one then', function () {
+    add_site($this->db, ['url' => 'http://127.0.0.1:8792', 'group' => 'Nightly']);
+    add_maintenance($this->db, null, $this->group, maintenance_fields(['at' => '00:00-07:00'], 'Europe/Stockholm'));
+    $config = ['remind_every_hours' => 4] + $this->config;
+
+    // Down at 23:00 the evening before, told at 23:01
+    run($this->db, $config, $this->now - 4 * 3600);
+    run($this->db, $config, $this->now - 4 * 3600 + 60);
+    expect(($this->texts)())->toHaveCount(1);
+
+    run($this->db, $config, $this->now + 60);
+    run($this->db, $config, $this->now + 4 * 3600 - 60);
+    expect(($this->texts)())->toHaveCount(1);
+
+    run($this->db, $config, $this->now + 4 * 3600);
+    expect(($this->texts)())->toHaveCount(2)
+        ->and(($this->texts)()[1])->toContain('127.0.0.1:8792 (Nightly) has been down for 8 h');
+});
+
 test('a recovery ends the snooze and is alerted', function () {
     $id = add_site($this->db, ['url' => 'http://127.0.0.1:8792', 'group' => 'Nightly']);
     run($this->db, $this->config, $this->now);

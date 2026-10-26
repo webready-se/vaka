@@ -6,7 +6,8 @@ Vaka tells you when something changes, once, in as few messages as it can. This 
 
 - **Down** after two failed checks in a row (`DOWN_AFTER_FAILURES`). A failing site is checked again every minute, so a real outage is confirmed within a couple of minutes, and a single hiccup sends nothing.
 - **Up again** on the first good check after that, with how long the site was down.
-- Nothing while the status stays the same. Vaka remembers what it last told you and only sends a message when that is no longer true.
+- **Still down** every four hours while a site stays down (`REMIND_EVERY_HOURS`, `0` turns it off): "shop.example has been down for 4 h", so an alert missed at night is not forgotten. A snooze or a maintenance window holds the reminders back, and groups with the digest or silent policy get none.
+- Otherwise nothing while the status stays the same. Vaka remembers what it last told you and only sends a message when that is no longer true.
 
 If a message cannot be delivered (Slack is down, the webhook answers an error, `mail()` fails), Vaka tries again on the next run.
 
@@ -98,7 +99,7 @@ php vaka snooze 203.0.113.10        # every site that is down on that server
 php vaka unsnooze shop.example
 ```
 
-There is no snooze without an end, so nothing is forgotten: if the site is still down when the snooze ends, you get "shop.example is still down after the snooze". A recovery ends the snooze and is alerted as usual.
+There is no snooze without an end, so nothing is forgotten: if the site is still down when the snooze ends, you get "shop.example is still down after the snooze", and the reminders every four hours start over from there. A recovery ends the snooze and is alerted as usual.
 
 ## Rules per group
 
@@ -153,7 +154,7 @@ Every message is a `POST` with `Content-Type: application/json`. The fields are 
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `domain_expiring`, `domain_expired`, `domain_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `headers_worse` (a security header was removed or weakened), `digest` or `test` |
+| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `reminder` (still down, every `REMIND_EVERY_HOURS`), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `domain_expiring`, `domain_expired`, `domain_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `headers_worse` (a security header was removed or weakened), `digest` or `test` |
 | `headline` | The alert in one sentence, as Slack and email show it |
 | `details` | Further lines: the sites and the reason |
 | `server` | The server's name or IP when sites were folded together, otherwise `null` |

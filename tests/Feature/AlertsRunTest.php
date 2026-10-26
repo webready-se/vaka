@@ -58,6 +58,33 @@ test('a site that goes down is one Slack message, and so is its recovery', funct
         ->and(($this->texts)()[1])->toContain(':large_green_circle: *127.0.0.1:8791 (Customers) is up again after 3 min*');
 });
 
+test('a site that stays down is reminded every 4 hours until it is up again', function () {
+    add_group($this->db, ['name' => 'Customers', 'slack_webhook' => $this->slack]);
+    $id = add_site($this->db, ['url' => 'http://127.0.0.1:8792', 'group' => 'Customers']);
+    $config = ['remind_every_hours' => 4] + $this->config;
+    $told = $this->now + 60;
+
+    run($this->db, $config, $this->now);
+    run($this->db, $config, $told);
+    run($this->db, $config, $told + 4 * 3600 - 60);
+    expect(($this->texts)())->toHaveCount(1);
+
+    run($this->db, $config, $told + 4 * 3600);
+    run($this->db, $config, $told + 4 * 3600 + 60);
+    expect(($this->texts)())->toHaveCount(2)
+        ->and(($this->texts)()[1])->toContain(':red_circle: *127.0.0.1:8792 (Customers) has been down for 4 h 1 min*')
+        ->and(($this->texts)()[1])->toContain('The site answered 500 Internal Server Error');
+
+    run($this->db, $config, $told + 8 * 3600);
+    expect(($this->texts)())->toHaveCount(3)
+        ->and(($this->texts)()[2])->toContain('has been down for 8 h 1 min');
+
+    update_site($this->db, $id, ['url' => 'http://127.0.0.1:8791']);
+    run($this->db, $config, $told + 8 * 3600 + 60);
+    expect(($this->texts)())->toHaveCount(4)
+        ->and(($this->texts)()[3])->toContain('is up again after 8 h 2 min');
+});
+
 test('a site that keeps going down and up gets three messages in all, not one per change', function () {
     add_group($this->db, ['name' => 'Customers', 'slack_webhook' => $this->slack]);
     $id = add_site($this->db, ['url' => 'http://127.0.0.1:8792', 'group' => 'Customers', 'interval' => '1']);
