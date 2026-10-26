@@ -15,6 +15,7 @@ require_once __DIR__ . '/http.php';
 require_once __DIR__ . '/checks/uptime.php';
 require_once __DIR__ . '/checks/ssl.php';
 require_once __DIR__ . '/checks/exposed.php';
+require_once __DIR__ . '/checks/headers.php';
 require_once __DIR__ . '/runner.php';
 require_once __DIR__ . '/silence.php';
 require_once __DIR__ . '/alerts.php';

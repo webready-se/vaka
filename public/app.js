@@ -602,7 +602,8 @@
           ])
         ]),
         h('div', { class: 'columns', 'aria-hidden': 'true' }, [
-          h('span', {}, 'Status'), h('span', {}, 'Site'), h('span', {}, 'Last 30 days'), h('span', { class: 'right' }, 'Response'), h('span', { class: 'right' }, 'Uptime')
+          h('span', {}, 'Status'), h('span', {}, 'Site'), h('span', {}, 'Last 30 days'), h('span', { class: 'right' }, 'Response'), h('span', { class: 'right' }, 'Uptime'),
+          h('span', { class: 'right' }, 'Headers')
         ]),
         h('ul', { class: 'site-list' }, sites.map(siteRow))
       ]));
@@ -634,20 +635,23 @@
     var cert = site.ssl && site.ssl.status !== 'ok' ? h('span', { class: site.ssl.status === 'fail' ? 'is-down' : 'is-warn' }, certificateWords(site.ssl)) : null;
     var files = site.exposed && site.exposed.status !== 'ok' ? h('span', { class: site.exposed.status === 'fail' ? 'is-down' : 'is-warn' }, exposedWords(site.exposed)) : null;
     var small = [subtitle, cert, files].filter(Boolean).reduce(function (list, part) { return list.length ? list.concat([' · ', part]) : [part]; }, []);
+    var grade = site.headers && site.headers.grade ? site.headers.grade : null;
 
     return h('li', {}, h('button', {
       type: 'button',
       class: 'site-row',
       'data-action': 'open',
       'data-site': site.id,
-      'aria-label': site.label + ': ' + STATUS_WORDS[site.status] + (site.status === 'up' ? ', ' + ms + ', ' + month + ' up over 30 days' : '. ' + site.summary)
+      'aria-label': site.label + ': ' + STATUS_WORDS[site.status] + (site.status === 'up' ? ', ' + ms + ', ' + month + ' up over 30 days' : '. ' + site.summary) +
+        (grade ? '. Security headers: grade ' + grade : '')
     }, [
       statusLabel(site.status),
       h('span', { class: 'site-name' }, [h('strong', {}, site.label), small.length ? h('small', {}, small) : null]),
       days(site.days, false, site.status === 'paused'),
       h('span', { class: 'site-figures' }, [
         h('span', { class: 'site-figure' }, [ms, h('small', {}, 'now')]),
-        h('span', { class: 'site-figure' }, [month, h('small', {}, '30 days')])
+        h('span', { class: 'site-figure' }, [month, h('small', {}, '30 days')]),
+        h('span', { class: 'site-figure' }, [grade || '–', h('small', {}, 'headers')])
       ])
     ]));
   }
@@ -728,6 +732,8 @@
       h('p', { class: 'days-legend', 'aria-hidden': 'true' }, [h('span', {}, '30 days ago'), h('span', {}, 'Today')]),
       h('h3', {}, 'Response time, last 24 hours'),
       chart(d.samples),
+      h('h3', {}, 'Security headers'),
+      headerList(site.headers),
       h('h3', {}, 'History'),
       timeline(d.events),
       h('h3', {}, 'Settings'),
@@ -736,6 +742,37 @@
       }, [])),
       h('p', { class: 'drawer-hint' }, ['Change this site with ', h('code', {}, 'php vaka site:edit ' + site.label)])
     ]));
+  }
+
+  function capitalize(text) {
+    return text.charAt(0).toUpperCase() + text.slice(1);
+  }
+
+  /** The six protections: in place, weak or missing, what each does, and the line that adds it. */
+  function headerList(headers) {
+    if (!headers) return h('p', { class: 'chart-note' }, 'Not checked yet.');
+    if (!headers.items || !headers.items.length) return h('p', { class: 'chart-note' }, headers.summary);
+    var words = { good: 'In place', weak: 'Weak', missing: 'Missing' };
+    var icons = { good: 'up', weak: 'failing', missing: 'down' };
+    return h('div', {}, [
+      h('p', { class: 'headers-summary' }, headers.summary),
+      h('ul', { class: 'header-list' }, headers.items.map(function (item) {
+        var good = item.level === 'good';
+        return h('li', { class: 'is-' + item.level }, [
+          icon(icons[item.level]),
+          h('div', {}, [
+            h('p', {}, [
+              h('b', {}, capitalize(item.label)),
+              good ? h('span', { class: 'visually-hidden' }, ': ' + words.good) : h('span', { class: 'header-level' }, ' · ' + words[item.level])
+            ]),
+            h('p', { class: 'header-what' }, item.what),
+            item.note ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
+            good ? null : h('code', {}, item.fix),
+            !good && item.tip ? h('p', { class: 'header-tip' }, item.tip) : null
+          ])
+        ]);
+      }))
+    ]);
   }
 
   function chart(samples) {

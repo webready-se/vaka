@@ -209,6 +209,8 @@ async function main() {
     expect(all('.site-row .days i.is-partial, .site-row .days i.is-down').length > 0, 'days with downtime stand out');
     expect(all('.site-row').some((r) => /behind Cloudflare/.test(r.textContent)), 'a CDN site says so');
     expect(all('.site-row').some((r) => /cafe\.example\s*2 private files are public/.test(r.textContent)), 'a site with public files says so in its row');
+    expect(all('.columns').every((c) => /Headers/.test(c.textContent)), 'a column for the security headers grade');
+    expect(all('.site-row').some((r) => /www\.example\.com/.test(r.textContent) && r.querySelectorAll('.site-figure')[2]?.textContent === 'Aheaders'), 'a site row shows its headers grade');
 
     // Hostile names and messages are text, never markup
     expect(!q('#app [onerror]') && !q('#app img') && !q('#app script'), 'no markup from the data in the page');
@@ -234,6 +236,9 @@ async function main() {
       expect(q('dialog.drawer .chart'), 'a response time chart');
       expect(all('dialog.drawer .days i').length === 30, 'thirty days in the detail');
       expect(all('dialog.drawer .timeline li').length >= 2, 'the history lists what happened');
+      expect(/Grade C: 4 of 6 in place, missing HSTS and CSP/.test(q('dialog.drawer .headers-summary')?.textContent || ''), 'the detail says the headers grade in words');
+      expect(all('dialog.drawer .header-list li').length === 6, 'the detail lists the six protections');
+      expect(all('dialog.drawer .header-list code').some((c) => /^Content-Security-Policy:/.test(c.textContent)), 'a missing protection comes with the line that adds it');
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
       expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');

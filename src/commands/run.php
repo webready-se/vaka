@@ -76,6 +76,7 @@ function cmd_check(array $config, array $args, array $opts): void
         echo '  Certificate: ' . lcfirst(check_certificate($url, $config, time())['summary']) . "\n";
     }
     if ($result['ok']) {
+        echo '  Security headers: ' . lcfirst(evaluate_headers($response, $config['uptime_timeout'])['summary']) . "\n";
         echo '  Exposed files: ' . lcfirst(check_exposed(['check' => $url], $config)['check']['summary']) . "\n";
     }
     if (!$result['ok']) exit(1);

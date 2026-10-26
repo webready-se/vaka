@@ -69,9 +69,29 @@ Vaka reads at most 64 KB of each answer, never a whole backup. While something i
 php vaka site:edit shop.example --disable=exposed
 ```
 
+## Security headers
+
+Every six hours, Vaka looks at the headers the site's page answers with and grades six protections that browsers enforce for the site's visitors:
+
+| Protection | What it does | Header that adds it |
+|------------|--------------|---------------------|
+| HSTS | Makes browsers always use https for the site | `Strict-Transport-Security: max-age=31536000` |
+| CSP | Limits which scripts may run: the main defence against injected scripts | `Content-Security-Policy: default-src 'self'` |
+| X-Content-Type-Options | Stops browsers from guessing what a file is | `X-Content-Type-Options: nosniff` |
+| Frame protection | Stops other sites from showing this one in a frame to trick visitors into clicking | `X-Frame-Options: SAMEORIGIN`, or `frame-ancestors` in the CSP |
+| Referrer-Policy | Keeps full addresses from leaking to other sites | `Referrer-Policy: strict-origin-when-cross-origin` |
+| Permissions-Policy | Turns off browser features the site does not use | `Permissions-Policy: camera=(), microphone=(), geolocation=()` |
+
+Each one is **in place**, **weak** or **missing**. Weak means it is there but lets through what it is meant to stop: HSTS for less than six months, a CSP that allows inline scripts (`'unsafe-inline'` without a nonce or hash), `eval` or scripts from anywhere, `frame-ancestors *`, or a Referrer-Policy of `unsafe-url` or `no-referrer-when-downgrade`. A `Content-Security-Policy-Report-Only` header blocks nothing, so it does not count.
+
+The grade counts what is in place: all six is A (B if one of them is weak), five B, four C, three D, two E, fewer F. The site detail lists each protection, why it is weak or missing, and the line that adds it. A site on plain http cannot have HSTS, so it gets a B at best.
+
+A low grade is shown, never alerted: many sites start at D or E, and that is something to improve, not an incident. What alerts is a protection that disappears or gets weaker, typically after a deploy or a change at the CDN; see [Alerts](alerts.md#security-headers). A change is looked at again 15 minutes later and only counts when that look agrees, so one odd answer does not alert. An error page is not graded.
+
+Vaka grades its own pages A over https.
+
 ## Coming next
 
-- **Security headers**: a grade from A to F, and an alert when a header disappears or weakens.
 - **Mail DNS**: MX, SPF and DMARC, and an alert when they change.
 - **Domain expiry** through RDAP.
 
