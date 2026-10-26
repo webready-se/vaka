@@ -102,8 +102,9 @@ test('sites are checked in parallel', function () {
         add_site($this->db, ['url' => "http://127.0.0.1:{$port}/?sleep=1"]);
     }
     try {
+        // Only the uptime phase: a whole run also grades headers, which waits for the same slow pages
         $started = microtime(true);
-        $summary = run($this->db, $this->config, $this->now);
+        $summary = run_uptime($this->db, $this->config, $this->now);
         $elapsed = microtime(true) - $started;
     } finally {
         array_map('stop_site', $servers);
