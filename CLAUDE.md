@@ -45,7 +45,7 @@ This repository will be public. Nothing about the user, the company, its custome
 
   Small conveniences are part of this, not extras: a prompt offers a good default where one exists (Enter makes a strong password; the dashboard shows this server's own cron line), and the very first run is walked through as a new user would meet it (no users, no sites, no SSH) before calling a flow done.
 
-  The look is defined in `docs/brand.md` (owl mark, Webready family tile, slate neutrals, shared status colours, Figtree, icons with stroke 2). Follow it; change the guide first if the look changes. Review visual changes with `node scripts/smoke.mjs --screenshots=<dir>` (login, light, dark, detail, phone, phone detail, and the first visit: no users, no sites).
+  The look follows the Webready open source design kit (see Design below); `docs/brand.md` holds only what is Vaka's own (the night panel, the owl's states, the tab count). Review visual changes with `node scripts/smoke.mjs --screenshots=<dir>` (login, light, dark, detail, phone, phone detail, and the first visit: no users, no sites).
 - **Never on the same server it watches.** If that server goes down, nobody gets an alert. The install docs say so, and Vaka watches itself: every run pings `HEARTBEAT_URL` (a dead man's switch such as Healthchecks.io's free tier, which alerts when pings stop), `/?health` returns 503 when cron has stopped, and the dashboard shows when Vaka last ran and warns when that is more than a few minutes ago.
 - **No dependencies at runtime.** PHP 8.3+ with built-in extensions only: `pdo_sqlite`, `curl`, `openssl` (`intl` optional). No Composer runtime packages, no framework, no build step, no CDN. Deploy = copy the files. Must run on Laravel Forge and on shared hosting wherever cron exists.
 - **"No dependencies", not "one file".** A few files loaded with plain `require` are fine. Code lives in `src/` as plain functions, so tests load it with `require` (no regex extraction or `eval`, unlike Puls's test bootstrap).
@@ -61,6 +61,16 @@ This repository will be public. Nothing about the user, the company, its custome
 - **A read API from v1 (every Webready tool).** A read-only token per site or group lets the AI assistant in a site's own project read Vaka's data and act on it, and the same API serves links between the tools. Same names as Puls: `share:create`, `share:list`, `share:revoke`, `GET /?api&share=TOKEN`. Stable field names documented in `docs/api.md`; text that came from the sites is marked as untrusted data there. Planned right after go-live (see ROADMAP).
 - **No new monthly running costs.** Raise any that come up.
 - **Prefer established standards** (RDAP, Keep a Changelog, SemVer, Slack incoming webhooks) over custom extras.
+
+## Design
+
+This tool follows the Webready open source design kit
+(https://github.com/webready-se/open-source-design-kit, cloned next to this repo).
+Read its README.md first, then the doc for what you are changing. Copy values and
+files from it; never link to it at runtime or install it. When the kit and this
+tool disagree, the kit wins, unless this tool's docs say why it differs.
+
+Vaka copied kit 0.2.1 (the version line is in the tokens at the top of `public/app.css`). The mark, the alarm mark and the four family marks are copied into `public/favicon*.svg` and `public/marks/`; the night panel's owl is generated into `OWL` in `public/app.js` from the kit's `characters/vaka.svg` and `vaka-awake.svg`. When the kit changes, copy again and update the version line.
 
 ## Architecture
 
@@ -102,9 +112,10 @@ public/dashboard.html    Dashboard markup (no inline script or style; {{csrf}}, 
 public/app.js            Dashboard JS: hero, "Needs your attention" (outages first, one card per server), sites by group with 24 h sparklines, filter, detail dialog (#site-N), snooze, theme; one click listener (data-action), DOM built with textContent
 public/app.css           Styles for the login and the dashboard (light + dark)
 public/theme.js          Applies a saved light/dark choice before paint (loaded in <head>, no inline script needed)
-public/favicon.svg       The owl on its teal tile (favicon-alert.svg: red tile, wide eyes, shown while a site is down)
+public/favicon.svg       The kit's owl mark on deep teal (favicon-alert.svg: on red, eyes wide, shown while a site is down)
+public/marks/            The four Webready tools' marks from the kit, inline in the top bar, the login and the footer credit
 public/fonts/            Figtree (SIL OFL, variable, Latin) and its licence: self-hosted, no CDN
-docs/brand.md            The brand: concept, logo construction, colour and status tokens, type, icons, motion, voice
+docs/brand.md            What is Vaka's own on top of the design kit: the owl's files and states, the night panel, motion
 users.json               User credentials (bcrypt, created by the CLI, gitignored)
 data/vaka.sqlite         SQLite database (auto-created, gitignored)
 data/vaka.lock           Run lock (flock)

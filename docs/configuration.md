@@ -31,6 +31,7 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | `WEBHOOK_URL` | (empty) | Default JSON webhook |
 | `ALERT_EMAIL` | (empty) | Default email recipients, comma-separated |
 | `ALERT_FROM` | (empty) | The sender address of email alerts |
+| `FOOTER_CREDIT` | `true` | "Made by Webready in Sweden" and the Webready tools' marks in the footer and on the login page; `false` leaves only Vaka's own half (the version and how fresh the results are) |
 
 Webhook URLs are secrets: keep `.env` out of git (it is in `.gitignore`).
 
