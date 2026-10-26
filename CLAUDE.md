@@ -224,7 +224,7 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 | `POST /?login` | No | Login (CSRF, lockout per IP, constant-time check for unknown users) |
 | `POST /?logout` | Yes | End the session (CSRF in `_token`); GET answers 405 |
 | `GET /` | Yes | Dashboard (redirects to `/?login` without a session) |
-| `GET /?api=overview` | Yes | Totals, last run, the last outage, `setup` (this server's cron line, whether alerts can go anywhere; only for users who see everything), and every visible site by group: status, summary, advice, since, response time, server, snooze, maintenance, unstable, 24 h and 30 d uptime, 30 daily bars, hourly buckets, and the certificate, domain, exposed files and headers grade |
+| `GET /?api=overview` | Yes | Totals, last run, the last outage, `setup` (this server's PHP command, the directory to run commands in, the cron line, whether alerts can go anywhere; only for users who see everything), and every visible site by group: status, summary, advice, since, response time, server, snooze, maintenance, unstable, 24 h and 30 d uptime, 30 daily bars, hourly buckets, and the certificate, domain, exposed files and headers grade |
 | `GET /?api=site&id=N` | Yes | One site: the overview's fields plus each security header (what it does, how to add it), uptime 24 h / 7 d / 30 d, samples of the last 24 h, last 100 uptime events, maintenance windows. 404 when not visible |
 | `POST /?api=snooze` | Yes | `{site_id, for: "1h"\|"4h"\|"24h"}` or `{site_id, action: "unsnooze"}`; needs `X-CSRF-Token`; 404 when not visible |
 

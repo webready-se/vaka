@@ -268,7 +268,8 @@
     append(text, state.data.totals.sites === 0 ? 'No sites yet' : last
       ? [h('span', { class: 'run-count' }, 'Watching ' + plural(watched, 'site', 'sites') + ' · '), 'checked ' + ago(last)]
       : 'Not checked yet');
-    node.className = 'run-pill ' + (state.data.run_ok ? 'is-ok' : 'is-stale');
+    // Nothing to watch is not an alarm: no red before the first site
+    node.className = 'run-pill' + (state.data.run_ok ? ' is-ok' : state.data.totals.sites === 0 ? '' : ' is-stale');
   }
 
   function renderBanner() {
@@ -409,18 +410,18 @@
     var running = data.run_ok;
     return h('div', { class: 'empty' }, [
       h('h2', {}, 'Nothing to watch yet'),
-      h('p', {}, 'Three steps, and Vaka keeps watch from the next minute on. Run the commands where Vaka is installed.'),
+      h('p', {}, ['Three steps, and Vaka keeps watch from the next minute on. Run the commands on the server, in ', h('code', {}, setup.dir), '.']),
       h('ol', { class: 'steps' }, [
         step(false, 'Add a site, or import a whole list', [
-          command('php vaka site:add https://shop.example'),
-          command('php vaka site:import sites.csv'),
+          command(setup.php + ' vaka site:add https://shop.example'),
+          command(setup.php + ' vaka site:import sites.csv'),
           h('small', {}, 'A list is a CSV file with a url column, and optionally group and enabled.')
         ]),
         step(running, running ? 'Cron runs the checks every minute' : 'Run the checks every minute from cron', running
           ? [h('small', {}, 'Last run ' + ago(data.last_run_at) + '.')]
           : [command(setup.cron), data.last_run_at ? h('small', {}, 'The last run was ' + ago(data.last_run_at) + ': is cron still running it?') : null]),
         step(setup.alerts, setup.alerts ? 'Alerts have somewhere to go: send a test to be sure' : 'Tell Vaka where alerts go (SLACK_WEBHOOK_URL in .env), then send a test', [
-          command('php vaka alert:test')
+          command(setup.php + ' vaka alert:test')
         ])
       ])
     ]);

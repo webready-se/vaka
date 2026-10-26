@@ -57,11 +57,31 @@ function env_file(string $root): string
     return resolve_path('.env', $root);
 }
 
-/** The cron line that runs Vaka from $root; on a Forge zero-downtime deploy through current/, which follows every release. */
-function cron_line(string $root): string
+/** Where Vaka's commands run from: $root, or on a Forge zero-downtime deploy current/, which follows every release. */
+function run_dir(string $root): string
 {
-    if (preg_match('#^(/home/forge/[^/]+)/releases/\d+#', $root, $m)) $root = $m[1] . '/current';
-    return '* * * * * php ' . rtrim($root, '/') . '/vaka run';
+    if (preg_match('#^(/home/forge/[^/]+)/releases/\d+#', $root, $m)) return $m[1] . '/current';
+    return rtrim($root, '/');
+}
+
+/**
+ * The PHP command for this server: the CLI of the same version as the PHP
+ * running now (php8.5 next to php-fpm8.5 on Forge and other Debian or Ubuntu
+ * servers, where plain php may be another version), else php.
+ */
+function php_cli(array $dirs = ['/usr/bin', '/usr/local/bin']): string
+{
+    $versioned = 'php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+    foreach ($dirs as $dir) {
+        if (is_executable("{$dir}/{$versioned}")) return $versioned;
+    }
+    return 'php';
+}
+
+/** The cron line that runs Vaka every minute from run_dir(). */
+function cron_line(string $root, string $php = 'php'): string
+{
+    return "* * * * * {$php} " . run_dir($root) . '/vaka run';
 }
 
 /** "se=whois.iis.se,nu=whois.iis.nu" as key => value, keys lowercased. Pairs without both halves are dropped. */

@@ -143,8 +143,12 @@ test('before the first user exists, the login page says how to create one', func
 
 test('the first steps come with the real cron line and whether alerts are set up, for users who see everything', function () {
     $admin = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
-    expect($admin['setup']['cron'])->toBe(cron_line(dirname(__DIR__, 2)))
-        ->and($admin['setup']['alerts'])->toBeFalse();
+    expect($admin['setup'])->toBe([
+        'php' => php_cli(),
+        'dir' => run_dir(dirname(__DIR__, 2)),
+        'cron' => cron_line(dirname(__DIR__, 2), php_cli()),
+        'alerts' => false,
+    ]);
     $anna = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('anna', 'anna password')['jar']])['json'];
     expect($anna['setup'])->toBeNull();
 });
