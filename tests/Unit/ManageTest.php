@@ -36,6 +36,21 @@ test('save_site_form adds a site, changes it, and writes who did what in its his
     expect($events)->toBe(['Added by admin', 'Changed by admin: address now shop.example/start, named "The shop", looks for "Welcome", Mail DNS turned off']);
 });
 
+test('saving a site without changing what is checked keeps every check on its schedule', function () {
+    $saved = save_site_form($this->db, test_config(), ['url' => 'shop.example', 'checks' => CHECKS], null, 'admin', $this->now);
+    $schedule = fn () => $this->db->query('SELECT check_name, next_at FROM check_state ORDER BY check_name')->fetchAll(PDO::FETCH_KEY_PAIR);
+    foreach (['uptime', 'dns', 'headers'] as $check) {
+        save_check_state($this->db, $saved['id'], $check, ['status' => 'ok', 'summary' => '', 'details' => [], 'fail_count' => 0, 'changed_at' => utc_now($this->now)], utc_now($this->now), utc_now($this->now + 3600));
+    }
+    $before = $schedule();
+
+    // The form always sends every field; only a real change may move a check forward
+    save_site_form($this->db, test_config(), ['url' => 'https://shop.example', 'name' => 'The shop', 'checks' => CHECKS], $saved['id'], 'admin', $this->now + 60);
+    expect($schedule())->toBe($before);
+    save_site_form($this->db, test_config(), ['url' => 'https://shop.example', 'name' => 'The shop', 'keyword' => 'Welcome', 'checks' => CHECKS], $saved['id'], 'admin', $this->now + 120);
+    expect($schedule())->toBe(['dns' => $before['dns'], 'headers' => $before['headers'], 'uptime' => null]);
+});
+
 test('describe_site_changes says how the interval, the group, pausing and the checks changed', function () {
     $site = find_site($this->db, (string) add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers', 'interval' => '2', 'disabled_checks' => 'dns']));
     $after = ['group_id' => null, 'interval_minutes' => null, 'paused' => 1, 'disabled_checks' => 'exposed'] + $site;

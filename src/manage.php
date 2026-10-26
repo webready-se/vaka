@@ -85,7 +85,11 @@ function save_site_form(PDO $db, array $config, array $form, ?int $id, string $u
         return ['id' => $id, 'changes' => [], 'errors' => []];
     }
     $old = find_site($db, (string) $id);
-    update_site($db, $id, $checked['input']);
+    // The form sends every field: pass on only what changed, so the checks that did not change keep their schedule
+    $columns = ['url' => 'url', 'group' => 'group_id', 'name' => 'name', 'keyword' => 'keyword', 'interval' => 'interval_minutes', 'paused' => 'paused', 'disabled_checks' => 'disabled_checks'];
+    $clean = clean_site_fields($db, $checked['input']);
+    $changed = array_filter($checked['input'], fn ($value, $key) => $clean[$columns[$key]] != $old[$columns[$key]], ARRAY_FILTER_USE_BOTH);
+    update_site($db, $id, $changed);
     $changes = describe_site_changes($db, $old, find_site($db, (string) $id), $config['uptime_interval']);
     if ($changes) add_event($db, $id, 'settings', ['status' => 'changed', 'previous' => '', 'message' => "Changed by {$user}: " . implode(', ', $changes)], utc_now($now));
     return ['id' => $id, 'changes' => $changes, 'errors' => []];
