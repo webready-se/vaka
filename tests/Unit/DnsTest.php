@@ -81,7 +81,7 @@ test('dns_items: MX, SPF and DMARC with what each does and the record to add', f
         ->and($items[1])->toMatchArray(['label' => 'SPF', 'records' => ['v=spf1 -all']])
         ->and($items[2]['note'])->toBe('p=none only monitors: email that fails the check is still delivered')
         ->and($items[2]['fix_label'])->toBe('Change the TXT record at _dmarc.shop.example to:')
-        ->and($items[2]['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:dmarc@shop.example');
+        ->and($items[2]['fix'])->toBe('v=DMARC1; p=quarantine');
 
     // A null MX (RFC 7505) says on purpose that the domain takes no email
     $this->records['shop.example'][DNS_MX] = [['type' => 'MX', 'pri' => 0, 'target' => '']];
@@ -99,6 +99,16 @@ test('dns_items: MX, SPF and DMARC with what each does and the record to add', f
 // =====================================================================
 // Changes, confirmed by a second look
 // =====================================================================
+
+test('a DMARC record that only monitors keeps everything else when the hint says to quarantine', function () {
+    $record = 'v=DMARC1; p=none; rua=mailto:dmarc@shop.example; ruf=mailto:dmarc@shop.example; fo=1';
+    $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => [$record]])['details']);
+    expect($items[2]['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:dmarc@shop.example; ruf=mailto:dmarc@shop.example; fo=1');
+
+    // Written without spaces, and with sp= for subdomains left alone
+    $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1;p=none;sp=none;pct=100']])['details']);
+    expect($items[2]['fix'])->toBe('v=DMARC1;p=quarantine;sp=none;pct=100');
+});
 
 test('confirm_mail_dns: a change counts only when a second look agrees', function () {
     $first = evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=reject']]);
