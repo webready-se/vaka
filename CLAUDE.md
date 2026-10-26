@@ -30,7 +30,7 @@ This repository will be public. Nothing about the user, the company, its custome
 - Demo data comes from a seed script with fake sites.
 - Sensitive project notes (real groups, servers, migration steps) go in `.private/` (gitignored). Read `.private/README.md` for what is there. Never reference its contents from tracked files.
 - Handoffs go in `.claude/handoffs/` (gitignored), since they name real sites.
-- Before every commit, check the staged diff for real names, domains, IPs and URLs.
+- Before every commit, check the staged diff, the commit message and the PR title and text for real names, domains, IPs and URLs. Text written while looking at production data is where they slip in: describe the case with example names instead.
 
 ## Principles
 
@@ -350,7 +350,7 @@ Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.
 - One logical change per commit. Stage files explicitly (never `git add .` or `-A`).
 - Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. During the MVP (until the first tagged release, 0.1.0), merge a PR to main yourself once CI is green. **After 0.1.0, ask before merging to main.**
 - Feature branches, never push straight to main. Tests must pass before pushing (pre-push hook).
-- Before every commit, scan the staged diff for real names, domains, IPs and URLs.
+- Before every commit, scan the staged diff, the commit message and the PR text for real names, domains, IPs and URLs.
 
 ## Roadmap
 
