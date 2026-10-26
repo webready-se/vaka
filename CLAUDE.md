@@ -31,6 +31,7 @@ This repository will be public. Nothing about the user, the company, its custome
 - Sensitive project notes (real groups, servers, migration steps) go in `.private/` (gitignored). Read `.private/README.md` for what is there. Never reference its contents from tracked files.
 - Handoffs go in `.claude/handoffs/` (gitignored), since they name real sites.
 - Before every commit, check the staged diff, the commit message and the PR title and text for real names, domains, IPs and URLs. Text written while looking at production data is where they slip in: describe the case with example names instead.
+- Hooks enforce it against the gitignored `.private/real-names.txt`: `scripts/hooks/pre-commit` and `commit-msg` for commits, `.claude/hooks/no-real-names.sh` for PR, issue and release texts. See `.claude/rules/no-real-names.md`; never bypass them.
 
 ## Principles
 
@@ -138,10 +139,13 @@ scripts/seed-demo.php    Demo database with fake sites, groups, servers, history
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail, phone, and the first visit (no users, no sites)
 scripts/readme-media.mjs README screenshots and the social preview in docs/screenshots/, from the seeded demo (no hostile names), each cut to a dashboard element
 scripts/hooks/pre-push   Git hook: runs Pest before push
+scripts/hooks/pre-commit, commit-msg, real-names  Git hooks: stop real names (from .private/real-names.txt) in added lines and commit messages
 docs/                    install.md, configuration.md, checks.md, alerts.md (alerts.md: when, where, JSON fields), api.md (the read API's fields; change them only with a changelog note)
 docs/screenshots/        README images, made by scripts/readme-media.mjs (run it again after a visual change)
 .claude/settings.json    Project hooks (PHP lint after edit) and read denies for .env / users.json
 .claude/hooks/php-lint.sh PostToolUse hook: php -l on edited PHP files and the vaka CLI
+.claude/hooks/no-real-names.sh PreToolUse hook: stops gh PR/issue/release texts with real names
+.claude/rules/           Project rules for Claude Code (no-real-names.md)
 .claude/handoffs/        Session handoffs (gitignored)
 .private/                Sensitive project notes (gitignored, never referenced from tracked files)
 ```
