@@ -46,6 +46,12 @@ test('resolve_path resolves relative paths against the project root', function (
     expect(resolve_path('data/vaka.sqlite', '/srv/vaka'))->toBe('/srv/vaka/data/vaka.sqlite');
 });
 
+test('the .env file is read from the site root on a Forge zero-downtime deploy, where Forge keeps it', function () {
+    expect(env_file('/srv/vaka'))->toBe('/srv/vaka/.env')
+        ->and(env_file('/home/forge/vaka.example.com/releases/20261026120000'))->toBe('/home/forge/vaka.example.com/.env')
+        ->and(env_file('/home/forge/vaka.example.com'))->toBe('/home/forge/vaka.example.com/.env');
+});
+
 test('resolve_path resolves a Forge zero-downtime release to the site root', function () {
     $root = '/home/forge/vaka.example.com/releases/20261025120000';
     expect(resolve_path('data/vaka.sqlite', $root))->toBe('/home/forge/vaka.example.com/data/vaka.sqlite');
