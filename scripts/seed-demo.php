@@ -146,6 +146,21 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             ->execute([$graded['status'], json_encode($confirmed['confirmed']), $id]);
     }
 
+    // Mail DNS: most domains have SPF and DMARC, some only monitor, a couple lack DMARC
+    if (!in_array($story, ['paused', 'hostile'], true)) {
+        $domain = (string) parse_url($url, PHP_URL_HOST);
+        $records = match ($url) {
+            'https://cafe.example', 'https://builder.example' => ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example ~all'], 'dmarc' => []],
+            'https://example.net', 'https://deals2.example' => ['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ["v=DMARC1; p=none; rua=mailto:dmarc@{$domain}"]],
+            default => ['mx' => ['10 mx1.mail.example', '20 mx2.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ["v=DMARC1; p=reject; rua=mailto:dmarc@{$domain}"]],
+        };
+        $mail = evaluate_mail_dns($domain, $records);
+        $confirmed = confirm_mail_dns(null, $mail)['details'];
+        save_check_state($db, $id, 'dns', ['status' => $mail['status'], 'summary' => $mail['summary'], 'details' => $confirmed, 'fail_count' => 0, 'changed_at' => utc_now($month)], utc_now($now - 3 * 3600), utc_now($now + 3 * 3600));
+        $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_snapshot = ? WHERE site_id = ? AND check_name = 'dns'")
+            ->execute([$mail['status'], json_encode($confirmed['confirmed']), $id]);
+    }
+
     $alerted = in_array($story, ['down', 'snoozed', 'hostile'], true) ? 'fail' : 'ok';
     $db->prepare("UPDATE check_state SET alerted_status = ?, flapping_since = ?, snoozed_until = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([
         $story === 'snoozed' ? 'snoozed' : $alerted,

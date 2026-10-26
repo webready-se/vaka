@@ -51,6 +51,17 @@ A grade on its own never alerts (see [Checks](checks.md#security-headers)). Vaka
 
 A change has to show up twice, 15 minutes apart, before it counts. Improvements are recorded in the site's history without a message. Like exposed files, these alerts are not delayed by the `delayed` policy.
 
+## Mail DNS
+
+Missing SPF or DMARC records never alert by themselves (see [Checks](checks.md#mail-dns)). Any change to the domain's MX, SPF or DMARC records does, compared with what Vaka last told you, because whoever can change them can read or send the domain's email:
+
+> ⚠️ **shop.example: mail DNS changed**
+> MX now 10 mx.other.example (was 10 mx1.mail.example)
+> DMARC removed (was v=DMARC1; p=reject)
+> If that was not you or your DNS provider, someone may have access to the domain: check who can change its DNS.
+
+A change has to show up twice, 15 minutes apart, before it counts. Sites that share a domain get one alert per group. The first look is recorded in the history without a message.
+
 ## One message, not fifty
 
 All alerts from one run go out together: one message per destination.
@@ -154,7 +165,7 @@ Every message is a `POST` with `Content-Type: application/json`. The fields are 
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `reminder` (still down, every `REMIND_EVERY_HOURS`), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `domain_expiring`, `domain_expired`, `domain_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `headers_worse` (a security header was removed or weakened), `digest` or `test` |
+| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `reminder` (still down, every `REMIND_EVERY_HOURS`), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `domain_expiring`, `domain_expired`, `domain_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `headers_worse` (a security header was removed or weakened), `dns_changed` (the domain's MX, SPF or DMARC records changed), `digest` or `test` |
 | `headline` | The alert in one sentence, as Slack and email show it |
 | `details` | Further lines: the sites and the reason |
 | `server` | The server's name or IP when sites were folded together, otherwise `null` |

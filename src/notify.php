@@ -15,7 +15,7 @@ function alert_emoji(string $kind): string
     return match ($kind) {
         'down', 'still_down', 'reminder', 'ssl_invalid', 'domain_expired', 'exposed' => ':red_circle:',
         'up', 'stable', 'ssl_fixed', 'ssl_renewed', 'domain_renewed', 'exposed_fixed' => ':large_green_circle:',
-        'unstable', 'ssl_expiring', 'domain_expiring', 'exposed_minor', 'headers_worse' => ':warning:',
+        'unstable', 'ssl_expiring', 'domain_expiring', 'exposed_minor', 'headers_worse', 'dns_changed' => ':warning:',
         'digest' => ':clipboard:',
         default => ':bell:',
     };

@@ -46,6 +46,7 @@ function run(PDO $db, array $config, ?int $now = null): array
     $summary = run_uptime($db, $config, $now);
     $summary['ssl'] = run_ssl($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['domain'] = run_domain($db, $config, $now, $started + RUN_BUDGET_SECONDS);
+    $summary['dns'] = run_dns($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['headers'] = run_headers($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['exposed'] = run_exposed($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $alerts = process_alerts($db, $config, $now);
@@ -328,6 +329,62 @@ function run_domain(PDO $db, array $config, int $now, float $deadline): array
         if ($changed && $result['status'] !== 'unknown') {
             $event = ['status' => $result['status'], 'previous' => $previous, 'message' => $result['summary']];
             add_event($db, $site['id'], 'domain', $event, $checkedAt);
+            $summary['events'][] = ['url' => $site['url']] + $event;
+        }
+        $summary['checked']++;
+    }
+    return $summary;
+}
+
+/** Sites whose mail records are due, with the domain the domain check found. Sites that are down are looked up too: mail does not depend on the web server. */
+function due_dns_sites(PDO $db, string $now): array
+{
+    $stmt = $db->prepare("SELECT s.*, c.status AS state_status, c.details AS state_details, c.changed_at AS state_changed_at, d.details AS domain_details
+        FROM sites s
+        LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'dns'
+        LEFT JOIN check_state d ON d.site_id = s.id AND d.check_name = 'domain'
+        WHERE s.paused = 0
+            AND (',' || s.disabled_checks || ',') NOT LIKE '%,dns,%'
+            AND (c.next_at IS NULL OR c.next_at <= ?)
+        ORDER BY c.next_at IS NOT NULL, c.next_at, s.id");
+    $stmt->execute([$now]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Read due domains' mail records (MX, SPF, DMARC) one by one until
+ * $deadline (microtime); sites that share a domain cause one set of
+ * lookups. A change is looked at again before it counts (see
+ * confirm_mail_dns()); a confirmed one is recorded in the history.
+ * $config['dns_resolve'] replaces the resolver in tests.
+ */
+function run_dns(PDO $db, array $config, int $now, float $deadline): array
+{
+    $summary = ['checked' => 0, 'left' => 0, 'events' => []];
+    $sites = due_dns_sites($db, utc_now($now));
+    $checkedAt = utc_now($now);
+    $resolve = $config['dns_resolve'] ?? 'dns_lookup';
+    $lookups = [];
+    foreach ($sites as $i => $site) {
+        if (microtime(true) >= $deadline) {
+            $summary['left'] = count($sites) - $i;
+            break;
+        }
+        $domain = mail_domain($site['url'], json_decode((string) $site['domain_details'], true)['domain'] ?? null);
+        if ($domain !== null && !array_key_exists($domain, $lookups)) $lookups[$domain] = lookup_mail_dns($domain, $resolve);
+        $result = evaluate_mail_dns($domain, $domain === null ? null : $lookups[$domain]);
+        $before = $site['state_status'] === null ? null : (json_decode((string) $site['state_details'], true) ?: []);
+        $next = confirm_mail_dns($before, $result);
+        save_check_state($db, $site['id'], 'dns', [
+            'status' => $result['status'],
+            'summary' => $result['summary'],
+            'details' => $next['details'],
+            'fail_count' => 0,
+            'changed_at' => $next['change'] !== null ? $checkedAt : $site['state_changed_at'],
+        ], $checkedAt, utc_now($now + $next['wait']));
+        if ($next['change'] !== null) {
+            $event = ['status' => $result['status'], 'previous' => $site['state_status'] ?? 'pending', 'message' => $next['change']];
+            add_event($db, $site['id'], 'dns', $event, $checkedAt);
             $summary['events'][] = ['url' => $site['url']] + $event;
         }
         $summary['checked']++;

@@ -99,7 +99,7 @@ src/checks/ssl.php       fetch_certificate() (verified, then unverified to descr
 src/checks/domain.php    registrable_candidates(), RDAP (IANA bootstrap, cached in data/rdap-dns.json) and WHOIS for .se/.nu (expires: line only), evaluate_domain(), domain_notice()
 src/checks/exposed.php   EXPOSED_FILES, exposed_matches() (content signatures), evaluate_exposed() (soft-404 baseline), check_exposed(), exposed_notice()
 src/checks/headers.php   SECURITY_HEADERS, header_level() (good/weak/missing), headers_grade(), evaluate_headers(), confirm_headers() (a change counts after a second look), headers_notice() (regressions only)
-src/checks/dns.php       MX, SPF, DMARC snapshots
+src/checks/dns.php       lookup_mail_dns() (MX, SPF, DMARC in one spelling; resolver injected), mail_domain(), evaluate_mail_dns(), dns_items(), confirm_mail_dns() (a change counts after a second look), dns_notice() (any confirmed change)
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
 src/silence.php          Maintenance windows (parse, window_active() in local time, describe), active_silence(), snooze_site()
 src/share.php            Read tokens: create_share_token() (only a SHA-256 and the first 8 characters are kept), find_share_token(), share_scope(), share_expiry()
@@ -181,7 +181,7 @@ Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are sto
 | `domain` | 24 h (1 h after a failed lookup) | RDAP, base URL from the IANA bootstrap file (cached in `data/` for a week); WHOIS only for the TLDs in `WHOIS_SERVERS` (.se and .nu have no RDAP), reading only the `expires:` line | `warn` within `DOMAIN_ALERT_DAYS`, `fail` when expired, `unknown` when nothing readable (no other WHOIS parsing) | at `DOMAIN_ALERT_DAYS`, expired, renewed; one alert per domain for sites that share it |
 | `exposed` | 24 h (1 h while something is public) | GET each known path next to the site plus a made-up path as baseline, 64 KB each; match content signatures | `fail` for a file with secrets, code or data; `warn` for one that only tells versions and paths | each new file, all private again |
 | `headers` | 6 h (a change is confirmed 15 min later) | Response headers of a GET to the site URL; six protections, each good, weak or missing; grade A-F | `ok` A or B, `warn` below; a low grade is shown, never in "Needs your attention" | a protection removed or weakened (confirmed), never a low grade by itself |
-| `dns` | 6 h | `dns_get_record` for MX, TXT (SPF) and `_dmarc` TXT | `warn` when SPF or DMARC is missing | record changed |
+| `dns` | 6 h (a change is confirmed 15 min later; 1 h after a failed lookup) | `dns_get_record` for MX, TXT (SPF) and `_dmarc` TXT of the domain the domain check found; one lookup per domain per run | `ok` with SPF and DMARC, `warn` when one is missing or SPF is there twice; no MX and DMARC `p=none` are shown, not warned | any record changed (confirmed), one alert per domain; never missing records by themselves |
 
 A first result (baseline) never alerts. Expiry thresholds alert once per certificate or registration; renewal resets them.
 
@@ -226,7 +226,7 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 1. Take `data/vaka.lock` with `flock(LOCK_EX | LOCK_NB)`. If another run holds it, exit 0 quietly.
 2. Collect due `(site, check)` pairs: `next_at <= now`, or no state yet.
 3. Uptime requests go through one `curl_multi` batch with a concurrency limit.
-4. The slower work runs after, until `RUN_BUDGET_SECONDS` (40) since the run started: SSL handshakes one by one, then domain lookups one by one (later DNS too), then security headers in parallel batches of 20 sites, then exposed files in batches of five. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate; headers and exposed files skip every site that is down.
+4. The slower work runs after, until `RUN_BUDGET_SECONDS` (40) since the run started: SSL handshakes one by one, then domain lookups one by one, then mail DNS one domain at a time, then security headers in parallel batches of 20 sites, then exposed files in batches of five. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate; headers and exposed files skip every site that is down.
 5. Store results and new states; a change writes an event.
 6. Reconcile alerts, apply silences and policies, bundle per destination and server, send. Send the daily digest when it is due.
 7. Trim old samples and audit log rows (once a day), then store `last_run_at`.

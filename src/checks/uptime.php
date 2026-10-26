@@ -99,6 +99,10 @@ function advice_for(string $problem, int $status): string
         'domain_expired' => 'Renew it with the registrar right away: when the registry takes it down, the site and its email stop working.',
         'exposed' => 'Remove the files from the web root, or block them in the web server. Then change every password and key they held: assume someone has read them.',
         'exposed_minor' => 'Remove the files from the web root, or block them in the web server. They hold no secrets, but they tell attackers which software and versions the site runs.',
+        'no_spf' => 'Add an SPF record that lists the servers that send the domain\'s email, so nobody else can send in its name.',
+        'no_dmarc' => 'Add a DMARC record, so receivers know what to do with email that pretends to come from the domain.',
+        'no_spf_dmarc' => 'Add SPF and DMARC records, so nobody else can send email in the domain\'s name.',
+        'spf_twice' => 'Merge the two SPF records into one: with two, receivers treat SPF as broken.',
         default => '',
     };
 }

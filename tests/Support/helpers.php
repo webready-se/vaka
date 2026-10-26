@@ -90,7 +90,8 @@ function test_config(array $overrides = []): array
 {
     static $base;
     $base ??= load_config();
-    return $overrides + $base;
+    // No real DNS in tests: the mail DNS check finds no records unless a test gives it some
+    return $overrides + $base + ['dns_resolve' => fn (string $name, int $type) => []];
 }
 
 /**
@@ -220,4 +221,18 @@ function http_request(string $method, string $url, array $options = []): array
     }
     $body = (string) curl_exec($handle);
     return ['status' => (int) curl_getinfo($handle, CURLINFO_RESPONSE_CODE), 'headers' => $headers, 'body' => $body, 'json' => json_decode($body, true)];
+}
+
+/** A DNS resolver for the mail DNS check, answering from $records: [name => [DNS_MX|DNS_TXT => records, or false for a failed lookup]]. */
+function fake_resolver(array &$records): Closure
+{
+    return function (string $name, int $type) use (&$records) {
+        return $records[$name][$type] ?? [];
+    };
+}
+
+/** A TXT record as dns_get_record returns it: long values split into 255-character entries. */
+function txt(string $value): array
+{
+    return ['type' => 'TXT', 'txt' => $value, 'entries' => str_split($value, 255)];
 }

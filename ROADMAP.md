@@ -79,7 +79,7 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 
 - [x] Exposed files: `.env`, `.git/HEAD`, `.git/config`, `composer.json`/`.lock`, `package.json`, `phpinfo.php`/`info.php`, `.DS_Store`, backups (`backup.zip`, `site.zip`, `db.sql`, `*.sql.gz`), `wp-config.php.bak`, `server-status`; content signatures plus a soft-404 baseline
 - [x] Security headers: HSTS, CSP, X-Content-Type-Options, frame-ancestors/X-Frame-Options, Referrer-Policy, Permissions-Policy; grade A-F; alert when one disappears or weakens
-- [ ] Mail DNS: MX, SPF and DMARC via `dns_get_record`; alert on change
+- [x] Mail DNS: MX, SPF and DMARC via `dns_get_record`; alert on change
 - [x] Domain expiry via RDAP (IANA bootstrap, cached); WHOIS for .se and .nu, which have no RDAP; "unknown" where neither gives a date
 
 ## Milestone 4: Manage from the dashboard
