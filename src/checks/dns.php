@@ -90,7 +90,8 @@ function dmarc_policy(string $record): ?string
 function evaluate_mail_dns(?string $domain, ?array $records): array
 {
     if ($domain === null) return ['status' => 'unknown', 'summary' => 'No domain to look up: the site is reached by its address', 'details' => ['domain' => null, 'problem' => '']];
-    if ($records === null) return ['status' => 'unknown', 'summary' => "Could not look up the mail records for {$domain}", 'details' => ['domain' => $domain, 'problem' => 'lookup_failed']];
+    $shown = display_domain($domain);
+    if ($records === null) return ['status' => 'unknown', 'summary' => "Could not look up the mail records for {$shown}", 'details' => ['domain' => $domain, 'problem' => 'lookup_failed']];
 
     $policy = dmarc_policy($records['dmarc'][0] ?? '');
     [$status, $words, $problem] = match (true) {
@@ -100,7 +101,7 @@ function evaluate_mail_dns(?string $domain, ?array $records): array
         !$records['dmarc'] => ['warn', 'DMARC is missing', 'no_dmarc'],
         default => ['ok', 'SPF and DMARC in place' . ($policy === 'none' ? ', DMARC only monitors (p=none)' : ''), ''],
     };
-    return ['status' => $status, 'summary' => "Mail for {$domain}: {$words}", 'details' => ['domain' => $domain, 'records' => $records, 'dmarc_policy' => $policy, 'problem' => $problem]];
+    return ['status' => $status, 'summary' => "Mail for {$shown}: {$words}", 'details' => ['domain' => $domain, 'records' => $records, 'dmarc_policy' => $policy, 'problem' => $problem]];
 }
 
 /**
@@ -115,6 +116,7 @@ function dns_items(array $details): array
 {
     if (!isset($details['records'])) return [];
     $domain = $details['domain'];
+    $shown = display_domain($domain);
     $records = $details['records'];
     $monitoring = $records['dmarc'] && $details['dmarc_policy'] === 'none';
     $nullMx = $records['mx'] === ['0 .'];
@@ -135,14 +137,14 @@ function dns_items(array $details): array
         $item('spf', [
             'level' => match (count($records['spf'])) { 0 => 'missing', 1 => 'good', default => 'weak' },
             'note' => count($records['spf']) > 1 ? 'Two SPF records: receivers treat that as an error. Merge them into one.' : '',
-            'fix_label' => count($records['spf']) > 1 ? "Keep one TXT record at {$domain}, such as:" : "Add a TXT record at {$domain}:",
+            'fix_label' => count($records['spf']) > 1 ? "Keep one TXT record at {$shown}, such as:" : "Add a TXT record at {$shown}:",
             'fix' => 'v=spf1 include:<your mail provider> -all',
             'tip' => 'Sends no email at all? Publish v=spf1 -all, so nobody can send in its name.',
         ]),
         $item('dmarc', [
             'level' => !$records['dmarc'] ? 'missing' : ($monitoring ? 'weak' : 'good'),
             'note' => $monitoring ? 'p=none only monitors: email that fails the check is still delivered' : '',
-            'fix_label' => $monitoring ? "Change the TXT record at _dmarc.{$domain} to:" : "Add a TXT record at _dmarc.{$domain}:",
+            'fix_label' => $monitoring ? "Change the TXT record at _dmarc.{$shown} to:" : "Add a TXT record at _dmarc.{$shown}:",
             'fix' => 'v=DMARC1; p=' . ($monitoring ? 'quarantine' : 'none') . "; rua=mailto:dmarc@{$domain}",
             'tip' => $monitoring
                 ? 'Do it once the reports show only your own servers sending; reject is the step after that.'

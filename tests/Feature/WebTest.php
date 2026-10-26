@@ -182,7 +182,7 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and($site['ssl']['advice'])->toStartWith('Renew the certificate')
         ->and($site['exposed'])->toMatchArray(['status' => 'fail', 'summary' => '.env is public: the environment file, often with database passwords and API keys', 'found' => [$env], 'since' => utc_now($now - 3600)])
         ->and($site['exposed']['advice'])->toStartWith('Remove the files from the web root')
-        ->and($site['domain'])->toMatchArray(['status' => 'warn', 'summary' => 'shop.example expires in 12 days (6 Nov 2026)', 'domain' => 'shop.example', 'days_left' => 12, 'registrar' => 'Example Registrar AB'])
+        ->and($site['domain'])->toMatchArray(['status' => 'warn', 'summary' => 'shop.example expires in 12 days (6 Nov 2026)', 'domain' => 'shop.example', 'label' => 'shop.example', 'days_left' => 12, 'registrar' => 'Example Registrar AB'])
         ->and($site['domain']['advice'])->toStartWith('Renew it with the registrar')
         ->and($site['headers'])->toBe(['status' => 'warn', 'grade' => 'E', 'summary' => 'Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy']);
     expect($admin['groups'][1]['sites'][0]['ssl'])->toBeNull()

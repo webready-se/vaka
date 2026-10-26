@@ -140,6 +140,12 @@ function display_url(string $url): string
     return $shown;
 }
 
+/** A domain as people write it: an international one (xn--) in its own letters, with intl. */
+function display_domain(string $domain): string
+{
+    return display_url('https://' . $domain);
+}
+
 /** Number of characters (not bytes) in a UTF-8 string, without needing mbstring. */
 function text_length(string $text): int
 {

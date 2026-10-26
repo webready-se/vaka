@@ -159,3 +159,23 @@ test('list_sites sorts by group then URL, ungrouped last, and can filter by grou
     expect(array_column(list_sites($this->db, find_group($this->db, 'B')['id']), 'url'))->toBe(['https://m.example']);
     expect(list_sites($this->db)[0]['group_name'])->toBe('A');
 });
+
+test('an international domain name reads as it is written in every summary and alert, not as xn--', function () {
+    expect(display_domain('xn--rksmrgs-5wao1o.example'))->toBe('räksmörgås.example')
+        ->and(display_domain('shop.example'))->toBe('shop.example');
+
+    $now = strtotime('2026-10-26T12:00:00Z');
+    $lookup = ['status' => 'found', 'domain' => 'xn--rksmrgs-5wao1o.example', 'expires' => $now + 8 * 86400 + 3600, 'registrar' => 'Example Registrar AB', 'source' => 'rdap', 'error' => ''];
+    $domain = evaluate_domain($lookup, $now, 30);
+    expect($domain['summary'])->toStartWith('räksmörgås.example expires in 8 days')
+        ->and($domain['details']['domain'])->toBe('xn--rksmrgs-5wao1o.example');
+
+    $mail = evaluate_mail_dns('xn--rksmrgs-5wao1o.example', ['mx' => [], 'spf' => [], 'dmarc' => []]);
+    expect($mail['summary'])->toBe('Mail for räksmörgås.example: SPF and DMARC are missing')
+        ->and(dns_items($mail['details'])[2]['fix_label'])->toBe('Add a TXT record at _dmarc.räksmörgås.example:')
+        // The value is pasted into DNS as it is: an email address there keeps the xn-- form
+        ->and(dns_items($mail['details'])[2]['fix'])->toBe('v=DMARC1; p=none; rua=mailto:dmarc@xn--rksmrgs-5wao1o.example');
+
+    $notice = notice(['kind' => 'domain_expiring', 'domain' => 'xn--rksmrgs-5wao1o.example', 'days_left' => 8, 'server_key' => null, 'server' => null, 'summary' => $domain['summary']]);
+    expect(alert_text(bundle_notices([$notice], [])[0]['items'][0])['headline'])->toBe('räksmörgås.example (Customers): the domain expires in 8 days');
+})->skip(!function_exists('idn_to_utf8'), 'needs the intl extension');

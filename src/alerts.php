@@ -642,7 +642,7 @@ function alert_text(array $item): array
         $in = $site['group'] !== null ? " ({$site['group']})" : '';
         $who = display_url($site['url']) . $in;
         // Domain alerts are about the registration, which sites can share
-        $domain = ($site['domain'] ?? '') !== '' ? $site['domain'] . $in : $who;
+        $domain = ($site['domain'] ?? '') !== '' ? display_domain($site['domain']) . $in : $who;
         $after = $site['down_seconds'] > 0 ? ' after ' . human_duration($site['down_seconds']) : '';
         return match ($item['kind']) {
             'down' => ['headline' => "{$who} is down", 'details' => [$site['summary']]],

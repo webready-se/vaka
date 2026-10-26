@@ -173,14 +173,16 @@ function lookup_domain(string $host, array $config, int $now, array &$cache = []
 function evaluate_domain(array $lookup, int $now, int $warnDays): array
 {
     $domain = $lookup['domain'];
+    // The details keep the domain as DNS has it; the words use it as people write it
+    $shown = display_domain($domain);
     $unknown = fn (string $summary, string $problem = '') => ['status' => 'unknown', 'summary' => $summary, 'details' => ['domain' => $domain, 'problem' => $problem]];
     $tld = substr((string) strrchr('.' . $domain, '.'), 1);
 
     if ($lookup['status'] === 'no_domain') return $unknown('No domain to look up: the site is reached by its address');
     if ($lookup['status'] === 'no_registry') return $unknown("The .{$tld} registry publishes no expiry dates that Vaka can read");
-    if ($lookup['status'] === 'not_found') return $unknown("The registry does not know {$domain}");
-    if ($lookup['status'] === 'error') return $unknown("Could not look up {$domain}: {$lookup['error']}", 'lookup_failed');
-    if ($lookup['expires'] === null) return $unknown("The registry does not say when {$domain} expires");
+    if ($lookup['status'] === 'not_found') return $unknown("The registry does not know {$shown}");
+    if ($lookup['status'] === 'error') return $unknown("Could not look up {$shown}: {$lookup['error']}", 'lookup_failed');
+    if ($lookup['expires'] === null) return $unknown("The registry does not say when {$shown} expires");
 
     $date = date('j M Y', $lookup['expires']);
     $daysLeft = (int) floor(($lookup['expires'] - $now) / 86400);
@@ -194,7 +196,7 @@ function evaluate_domain(array $lookup, int $now, int $warnDays): array
     ];
 
     if ($now >= $lookup['expires']) {
-        return ['status' => 'fail', 'summary' => "{$domain} expired on {$date}", 'details' => ['problem' => 'domain_expired'] + $details];
+        return ['status' => 'fail', 'summary' => "{$shown} expired on {$date}", 'details' => ['problem' => 'domain_expired'] + $details];
     }
     if ($daysLeft <= $warnDays) {
         $when = match ($daysLeft) {
@@ -202,10 +204,10 @@ function evaluate_domain(array $lookup, int $now, int $warnDays): array
             1 => 'tomorrow',
             default => "in {$daysLeft} days",
         };
-        return ['status' => 'warn', 'summary' => "{$domain} expires {$when} ({$date})", 'details' => ['problem' => 'domain_expiring'] + $details];
+        return ['status' => 'warn', 'summary' => "{$shown} expires {$when} ({$date})", 'details' => ['problem' => 'domain_expiring'] + $details];
     }
     $with = $lookup['registrar'] !== '' ? ", with {$lookup['registrar']}" : '';
-    return ['status' => 'ok', 'summary' => "{$domain} is registered until {$date} ({$daysLeft} days){$with}", 'details' => $details];
+    return ['status' => 'ok', 'summary' => "{$shown} is registered until {$date} ({$daysLeft} days){$with}", 'details' => $details];
 }
 
 /** Look up one URL's domain registration, for `php vaka check`. */
