@@ -98,7 +98,8 @@ function cmd_status(array $config, array $args, array $opts): void
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
         LEFT JOIN check_state cs ON cs.site_id = s.id AND cs.check_name = 'ssl'
         LEFT JOIN check_state ce ON ce.site_id = s.id AND ce.check_name = 'exposed'
-        ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
+        ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE")->fetchAll();
+    $sites = sort_sites($sites);
 
     $lastRun = get_meta($db, 'last_run_at');
     if ($lastRun === null) {

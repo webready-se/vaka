@@ -269,7 +269,7 @@ function group_filter(?array $allowed): string
 
 function overview_rows(PDO $db, string $where): array
 {
-    return $db->query("SELECT s.*, g.name AS group_name, g.policy, g.delay_minutes,
+    $rows = $db->query("SELECT s.*, g.name AS group_name, g.policy, g.delay_minutes,
             c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until, c.flapping_since,
             cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details,
             ce.status AS exposed_status, ce.summary AS exposed_summary, ce.details AS exposed_details, ce.changed_at AS exposed_changed_at,
@@ -283,7 +283,8 @@ function overview_rows(PDO $db, string $where): array
         LEFT JOIN check_state ch ON ch.site_id = s.id AND ch.check_name = 'headers'
         LEFT JOIN check_state cd ON cd.site_id = s.id AND cd.check_name = 'domain'
         WHERE {$where}
-        ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
+        ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE")->fetchAll();
+    return sort_sites($rows);
 }
 
 /** One site as the dashboard shows it. */

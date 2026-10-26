@@ -698,10 +698,10 @@ function send_digests(PDO $db, array $config, int $now): array
             ORDER BY e.created_at, e.id");
         $events->execute([$group['id'], $since, utc_now($now)]);
         $down = $db->prepare("SELECT s.url, c.summary, c.changed_at FROM check_state c JOIN sites s ON s.id = c.site_id
-            WHERE s.group_id = ? AND s.paused = 0 AND c.check_name = 'uptime' AND c.status = 'fail' ORDER BY s.url");
+            WHERE s.group_id = ? AND s.paused = 0 AND c.check_name = 'uptime' AND c.status = 'fail'");
         $down->execute([$group['id']]);
         $events = $events->fetchAll();
-        $down = $down->fetchAll();
+        $down = sort_sites($down->fetchAll(), false);
         if (!$events && !$down) continue;
 
         $item = ['kind' => 'digest', 'text' => digest_text($group['name'], $events, $down, $config['timezone']), 'sites' => []];

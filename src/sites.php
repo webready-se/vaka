@@ -82,12 +82,27 @@ function site_host(string $url): string
 const ON_SERVER_SQL = "((s.ip = ? AND s.cdn = '' AND s.server = '') OR lower(s.server) = lower(?)
     OR (s.cdn = '' AND s.server = '' AND s.ip IN (SELECT ip FROM servers WHERE lower(label) = lower(?))))";
 
-/** Every site on a server (see ON_SERVER_SQL), paused ones too, by URL. */
+/** Every site on a server (see ON_SERVER_SQL), paused ones too, in the order they are shown. */
 function sites_on_server(PDO $db, string $server): array
 {
-    $stmt = $db->prepare('SELECT s.* FROM sites s WHERE ' . ON_SERVER_SQL . ' ORDER BY s.url');
+    $stmt = $db->prepare('SELECT s.* FROM sites s WHERE ' . ON_SERVER_SQL);
     $stmt->execute([$server, $server, $server]);
-    return $stmt->fetchAll();
+    return sort_sites($stmt->fetchAll(), false);
+}
+
+/**
+ * Sites in the order people read them: by the address as it is shown, so an
+ * international domain sorts by its letters (räksmörgås), not by its xn--
+ * form. With $byGroup, they stay in their groups in the order the query
+ * gave the groups.
+ */
+function sort_sites(array $sites, bool $byGroup = true): array
+{
+    $groups = [];
+    foreach ($sites as $site) $groups[$byGroup ? ($site['group_id'] ?? 'none') : 'all'] ??= count($groups);
+    $key = fn (array $site) => [$groups[$byGroup ? ($site['group_id'] ?? 'none') : 'all'], display_url($site['url'])];
+    usort($sites, fn (array $a, array $b) => $key($a) <=> $key($b));
+    return $sites;
 }
 
 /** A URL without its scheme, as people say it: an international domain as it is written (with intl), not as xn--. */
@@ -484,8 +499,8 @@ function site_authority(string $url): string
 function list_sites(PDO $db, ?int $groupId = null): array
 {
     $where = $groupId === null ? '' : 'WHERE s.group_id = ' . $groupId;
-    return $db->query("SELECT s.*, g.name AS group_name FROM sites s
+    return sort_sites($db->query("SELECT s.*, g.name AS group_name FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         {$where}
-        ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
+        ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE")->fetchAll());
 }
