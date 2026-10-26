@@ -338,6 +338,16 @@ async function main() {
             all('dialog.drawer [data-action="window-remove"]').find((b) => /Sat/.test(b.getAttribute('aria-label'))).click();
             await waitFor(() => !all('dialog.drawer .settings dd').some((dd) => /^Sat 00:00-07:00/.test(dd.textContent)), 'the window to be removed');
           }
+          // The same for every site in the group, from the site
+          q('[data-action="add-window"]').click();
+          if (await waitFor(() => q('[data-form="window"] [name="target"][value="group"]'), 'the choice of the whole group')) {
+            q('[name="target"][value="group"]').checked = true;
+            q('[data-form="window"]').requestSubmit();
+            if (await waitFor(() => all('dialog.drawer .settings dd').some((dd) => /^every day 00:00-07:00, for the group/.test(dd.textContent)), 'the group window in the detail')) {
+              all('dialog.drawer [data-action="window-remove"]').find((b) => /every day 00:00-07:00/.test(b.getAttribute('aria-label'))).click();
+              await waitFor(() => !all('dialog.drawer .settings dd').some((dd) => /for the group/.test(dd.textContent)), 'the group window to be removed');
+            }
+          }
         }
       }
       if (await waitFor(() => q('dialog.drawer[open] [data-action="edit-server"]'), 'the server settings button')) {

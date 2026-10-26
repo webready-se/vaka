@@ -414,7 +414,8 @@ test('maintenance windows and server names are set in the dashboard too', functi
     expect($r['status'])->toBe(200)->and($r['json']['when'])->toBe('weekends 22:00-02:00');
     $detail = http_request('GET', WEB . "/?api=site&id={$shop}", ['jar' => $jar])['json'];
     expect($detail['maintenance'][0])->toMatchArray(['when' => 'weekends 22:00-02:00', 'label' => 'Backups', 'for' => 'site'])
-        ->and($detail['site']['server_ip'])->toBe('203.0.113.10');
+        ->and($detail['site']['server_ip'])->toBe('203.0.113.10')
+        ->and($detail['site']['group_id'])->toBe(find_group($this->db, 'Customers')['id']);
 
     $group = find_group($this->db, 'Customers')['id'];
     expect($post('maintenance-add', ['group_id' => $group, 'kind' => 'daily', 'start' => '00:00', 'end' => '07:00'])['status'])->toBe(200)

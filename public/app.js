@@ -1695,7 +1695,7 @@
     if (action === 'remove-group') removeGroup(target);
     if (action === 'add-window' && state.detail) {
       var site = state.detail.site;
-      openWindowForm({ back: 'site', siteId: site.id, siteLabel: site.label, groupName: site.group, groupId: null });
+      openWindowForm({ back: 'site', siteId: site.id, siteLabel: site.label, groupName: site.group, groupId: site.group_id });
     }
     if (action === 'add-window-group' && state.form) openWindowForm({ back: 'group', groupId: state.form.id, groupName: state.form.label });
     if (action === 'window-remove') removeWindow(target);

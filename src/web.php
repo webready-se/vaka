@@ -590,6 +590,8 @@ function api_site(PDO $db, array $config, array $row, int $now): array
             'checks_off' => array_values(array_filter(explode(',', $row['disabled_checks']))),
             // The server's IP when it can be named (not behind a CDN, not set by hand)
             'server_ip' => str_starts_with((string) server_key($row), 'ip:') ? $row['ip'] : null,
+            // For a maintenance window for the site's whole group
+            'group_id' => $row['group_id'],
             'created_at' => $row['created_at'],
         ],
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
