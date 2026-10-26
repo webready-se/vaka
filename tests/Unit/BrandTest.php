@@ -16,6 +16,12 @@ test('the footer credit links Webready and the released tools only, each mark li
         ->and(footer_credit(['footer_credit' => false]))->toBe('');
 });
 
+test('the tokens at the top of the stylesheet are the design kit\'s tokens.css, as they are', function () {
+    $kit = __DIR__ . '/../../../open-source-design-kit';
+    if (!is_dir($kit)) $this->markTestSkipped('the design kit is not cloned next to this repo');
+    expect(file_get_contents(__DIR__ . '/../../public/app.css'))->toContain(file_get_contents("{$kit}/tokens.css"));
+});
+
 test('the favicons are the design kit marks', function () {
     $kit = __DIR__ . '/../../../open-source-design-kit/marks';
     if (!is_dir($kit)) $this->markTestSkipped('the design kit is not cloned next to this repo');
