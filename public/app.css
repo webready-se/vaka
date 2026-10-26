@@ -22,7 +22,7 @@
  * Dark mode follows the system, and a data-theme="light" or "dark" attribute
  * on <html> overrides it.
  *
- * Kit version 0.2.1 (see CHANGELOG.md). Keep this line in your copy and
+ * Kit version 0.4.0 (see CHANGELOG.md). Keep this line in your copy and
  * update it when you copy again.
  */
 
@@ -63,7 +63,7 @@
   --up-bar-soft: #6ee7b7;
   --warn-bar: #f59e0b;
   --down-bar: #ef4444;
-  --running-bar: #e2e8f0;
+  --running-bar: #64748b;
 
   /* Night: a dark surface that stays dark in both themes (Vaka's watch panel) */
   --night: #0f172a;
@@ -76,6 +76,8 @@
   --radius-sm: 10px;
   --shadow: 0 1px 2px rgb(15 23 42 / 0.04), 0 10px 30px -18px rgb(15 23 42 / 0.25);
   --focus: var(--accent);
+  /* Text on a filled --accent (a primary button): white here, dark slate in dark mode where every accent is light */
+  --on-accent: #ffffff;
 
   color-scheme: light;
 }
@@ -104,7 +106,8 @@
   --neutral-soft: rgb(148 163 184 / 0.12);
   --none: #475569;
 
-  --running-bar: #334155;
+  --running-bar: #94a3b8;
+  --on-accent: #0f172a;
   --shadow: none;
 
   color-scheme: dark;
@@ -135,7 +138,8 @@
     --neutral-soft: rgb(148 163 184 / 0.12);
     --none: #475569;
 
-    --running-bar: #334155;
+    --running-bar: #94a3b8;
+    --on-accent: #0f172a;
     --shadow: none;
 
     color-scheme: dark;
@@ -332,8 +336,8 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 }
 .incident summary::-webkit-details-marker { display: none; }
 .incident summary:hover { background: var(--surface-2); }
-.incident summary > .icon { width: 16px; height: 16px; color: var(--text-3); transition: transform 0.15s; }
-.incident details[open] > summary > .icon { transform: rotate(90deg); }
+.incident summary > .icon { width: 16px; height: 16px; color: var(--text-3); transform: rotate(-90deg); transition: transform 0.15s; }
+.incident details[open] > summary > .icon { transform: none; }
 .medallion { width: 40px; height: 40px; border-radius: 12px; display: grid; place-items: center; }
 .medallion .icon { width: 20px; height: 20px; }
 .incident .medallion { width: 34px; height: 34px; border-radius: 10px; }
