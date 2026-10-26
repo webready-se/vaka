@@ -2,6 +2,7 @@
 
 function start_tls(string $cert, int $port): mixed
 {
+    assert_port_free($port);
     $dir = __DIR__ . '/../fixtures';
     $proc = proc_open(
         [PHP_BINARY, "{$dir}/tls-server.php", (string) $port, "{$dir}/certs/{$cert}.pem", "{$dir}/certs/{$cert}.key"],

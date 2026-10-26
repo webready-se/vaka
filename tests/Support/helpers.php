@@ -28,19 +28,35 @@ function load_config(array $env = []): array
 }
 
 /**
- * Serve tests/fixtures/sites/<name> with `php -S` on 127.0.0.1:<port>, using
- * its index.php as the router. Several workers, so a slow request does not
- * hold up the others. Returns once the port accepts connections.
+ * Stop with a clear message when another process already listens on $port:
+ * otherwise the tests would quietly talk to that process instead.
  */
-function start_site(string $name, int $port): mixed
+function assert_port_free(int $port): void
 {
+    set_error_handler(fn () => true);
+    $sock = fsockopen('127.0.0.1', $port, $errno, $errstr, 0.2);
+    restore_error_handler();
+    if (!$sock) return;
+    fclose($sock);
+    throw new RuntimeException("Port {$port} is already taken by another process, so the tests cannot start their server there. See what holds it with `lsof -nP -iTCP:{$port} -sTCP:LISTEN`.");
+}
+
+/**
+ * Serve tests/fixtures/sites/<name> with `php -S` on 127.0.0.1:<port>, using
+ * its index.php as the router, with $env for the router to read. Several
+ * workers, so a slow request does not hold up the others. Returns once the
+ * port accepts connections.
+ */
+function start_site(string $name, int $port, array $env = []): mixed
+{
+    assert_port_free($port);
     $dir = __DIR__ . '/../fixtures/sites/' . $name;
     $proc = proc_open(
         [PHP_BINARY, '-S', "127.0.0.1:{$port}", '-t', $dir, $dir . '/index.php'],
         [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
         $pipes,
         null,
-        ['PHP_CLI_SERVER_WORKERS' => '8', 'PATH' => getenv('PATH')],
+        $env + ['PHP_CLI_SERVER_WORKERS' => '8', 'PATH' => getenv('PATH')],
     );
     // Refused connections are expected until the server is up; keep them from
     // reaching the test runner's error handler (which sees past @)
@@ -144,6 +160,7 @@ function down_sites(int $count, array $overrides = []): array
  */
 function start_web(int $port, array $env): mixed
 {
+    assert_port_free($port);
     $public = __DIR__ . '/../../public';
     $proc = proc_open(
         [PHP_BINARY, '-S', "127.0.0.1:{$port}", '-t', $public],

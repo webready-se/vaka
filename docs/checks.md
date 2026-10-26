@@ -40,6 +40,16 @@ Every six hours for https sites. See [Alerts](alerts.md#certificates) for when i
 
 The handshakes happen one at a time and stop 40 seconds into a run; what is left waits for the next run.
 
+## Domain expiry
+
+Once a day, Vaka looks up when each site's domain registration runs out. `shop.example.se` is looked up as `example.se`; sites that share a domain cause one lookup.
+
+- **RDAP** is the registries' own structured data. Vaka finds the right registry in IANA's bootstrap file, kept in `data/` for a week.
+- **WHOIS**, for registries without RDAP, such as .se and .nu (`WHOIS_SERVERS`). Only the `expires:` line is read.
+- **Unknown** when the registry publishes no expiry date Vaka can read, when it does not know the domain, or for a site reached by its IP address. That never alerts.
+
+See [Alerts](alerts.md#domains) for when it alerts. Sites that are down are looked up too: an expired domain may be why.
+
 ## Exposed files
 
 Once a day, Vaka asks each site for files that should never be on the web. It looks next to the site's address, so `https://shop.example/blog` is checked in `/blog/`. See [Alerts](alerts.md#exposed-files) for when it alerts.
@@ -93,6 +103,5 @@ Vaka grades its own pages A over https.
 ## Coming next
 
 - **Mail DNS**: MX, SPF and DMARC, and an alert when they change.
-- **Domain expiry** through RDAP.
 
 See the [roadmap](../ROADMAP.md).

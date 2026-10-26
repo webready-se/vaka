@@ -1,0 +1,17 @@
+{
+  "objectClassName": "domain",
+  "ldhName": "SHOP.EXAMPLE",
+  "status": ["client transfer prohibited"],
+  "events": [
+    {"eventAction": "registration", "eventDate": "2019-03-04T10:00:00Z"},
+    {"eventAction": "expiration", "eventDate": "2027-03-04T10:00:00Z"},
+    {"eventAction": "last update of RDAP database", "eventDate": "2026-10-25T08:00:00Z"}
+  ],
+  "entities": [
+    {
+      "objectClassName": "entity",
+      "roles": ["registrar"],
+      "vcardArray": ["vcard", [["version", {}, "text", "4.0"], ["fn", {}, "text", "Example Registrar, Inc."]]]
+    }
+  ]
+}

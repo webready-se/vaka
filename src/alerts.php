@@ -270,6 +270,68 @@ function collect_ssl_notices(PDO $db, array $config, int $now): array
 }
 
 /**
+ * Domain notices that are due (see domain_notice()). Sites that share a
+ * domain are one notice per group: the registration is the same.
+ * Maintenance windows hold them back like any other alert.
+ *
+ * @return array{notices: list<array>, nowhere: int}
+ */
+function collect_domain_notices(PDO $db, array $config, int $now): array
+{
+    $rows = $db->query("SELECT c.*, s.url, s.group_id, g.name AS group_name, g.policy, g.slack_webhook, g.webhook_url, g.email
+        FROM check_state c
+        JOIN sites s ON s.id = c.site_id
+        LEFT JOIN groups g ON g.id = s.group_id
+        WHERE c.check_name = 'domain' AND s.paused = 0 AND c.status IN ('ok', 'warn', 'fail')
+        ORDER BY s.id")->fetchAll();
+    $windows = load_windows($db, $now);
+    $notices = [];
+    $byDomain = [];
+    $nowhere = 0;
+
+    foreach ($rows as $row) {
+        if (active_silence(['id' => $row['site_id'], 'group_id' => $row['group_id'], 'snoozed_until' => null], $windows, $now, $config['timezone']) !== '') continue;
+        $group = $row['group_id'] === null ? null : $row;
+        $details = json_decode($row['details'], true) ?: [];
+        $notice = domain_notice(['details' => $details] + $row, $group, $config['domain_alert_days']);
+        if ($notice['action'] === 'none') continue;
+
+        $destinations = $notice['action'] === 'send' ? alert_destinations($group, $config) : [];
+        if (!$destinations) {
+            mark_alerted($db, $row['site_id'], 'domain', $row['status'], null, $now, $notice['thresholds']);
+            if ($notice['action'] === 'send') $nowhere++;
+            continue;
+        }
+        $key = ($row['group_id'] ?? 'none') . '|' . ($details['domain'] ?? '') . '|' . $notice['kind'];
+        if (isset($byDomain[$key])) {
+            $notices[$byDomain[$key]]['also'][] = ['site_id' => $row['site_id'], 'thresholds' => $notice['thresholds']];
+            continue;
+        }
+        $byDomain[$key] = count($notices);
+        $notices[] = [
+            'site_id' => $row['site_id'],
+            'check' => 'domain',
+            'status' => $row['status'],
+            'url' => $row['url'],
+            'domain' => $details['domain'] ?? '',
+            'group' => $row['group_name'],
+            'kind' => $notice['kind'],
+            'summary' => $row['summary'],
+            'since' => $row['changed_at'],
+            'down_seconds' => 0,
+            'outages' => 0,
+            'days_left' => $details['days_left'] ?? null,
+            'thresholds' => $notice['thresholds'],
+            'also' => [],
+            'server_key' => null,
+            'server' => null,
+            'destinations' => $destinations,
+        ];
+    }
+    return ['notices' => $notices, 'nowhere' => $nowhere];
+}
+
+/**
  * Exposed-file notices that are due (see exposed_notice()). Maintenance
  * windows hold them back like any other alert; a snooze is for outages only.
  *
@@ -384,12 +446,15 @@ function collect_headers_notices(PDO $db, array $config, int $now): array
 function process_alerts(PDO $db, array $config, int $now): array
 {
     $collected = collect_notices($db, $config, $now);
-    $ssl = collect_ssl_notices($db, $config, $now);
-    $exposed = collect_exposed_notices($db, $config, $now);
-    $headers = collect_headers_notices($db, $config, $now);
+    $more = [
+        collect_ssl_notices($db, $config, $now),
+        collect_domain_notices($db, $config, $now),
+        collect_exposed_notices($db, $config, $now),
+        collect_headers_notices($db, $config, $now),
+    ];
     $collected = [
-        'notices' => [...$collected['notices'], ...$ssl['notices'], ...$exposed['notices'], ...$headers['notices']],
-        'nowhere' => $collected['nowhere'] + $ssl['nowhere'] + $exposed['nowhere'] + $headers['nowhere'],
+        'notices' => array_merge($collected['notices'], ...array_column($more, 'notices')),
+        'nowhere' => $collected['nowhere'] + array_sum(array_column($more, 'nowhere')),
     ];
     $results = [];
     $told = [];
@@ -407,6 +472,8 @@ function process_alerts(PDO $db, array $config, int $now): array
     }
     foreach ($told as $notice) {
         mark_alerted($db, $notice['site_id'], $notice['check'], $notice['status'], $notice['kind'] === 'unstable' ? utc_now($now) : null, $now, $notice['thresholds'] ?? null, $notice['snapshot'] ?? null);
+        // Other sites with the same domain were told in the same notice
+        foreach ($notice['also'] ?? [] as $also) mark_alerted($db, $also['site_id'], $notice['check'], $notice['status'], null, $now, $also['thresholds']);
     }
     return ['alerts' => $results, 'nowhere' => $collected['nowhere']];
 }
@@ -431,7 +498,7 @@ function bundle_notices(array $notices, array $serverSizes): array
     }
 
     $order = ['unstable' => 0, 'still_down' => 1, 'down' => 2, 'up' => 3, 'stable' => 4, 'ssl_invalid' => 5, 'ssl_expiring' => 6, 'ssl_fixed' => 7, 'ssl_renewed' => 8,
-        'exposed' => 9, 'exposed_minor' => 10, 'exposed_fixed' => 11, 'headers_worse' => 12];
+        'domain_expired' => 9, 'domain_expiring' => 10, 'domain_renewed' => 11, 'exposed' => 12, 'exposed_minor' => 13, 'exposed_fixed' => 14, 'headers_worse' => 15];
     $bundles = [];
     foreach ($byDestination as $bundle) {
         $groups = [];
@@ -469,7 +536,10 @@ function alert_text(array $item): array
 
     if ($item['server'] === null) {
         $site = $sites[0];
-        $who = display_url($site['url']) . ($site['group'] !== null ? " ({$site['group']})" : '');
+        $in = $site['group'] !== null ? " ({$site['group']})" : '';
+        $who = display_url($site['url']) . $in;
+        // Domain alerts are about the registration, which sites can share
+        $domain = ($site['domain'] ?? '') !== '' ? $site['domain'] . $in : $who;
         $after = $site['down_seconds'] > 0 ? ' after ' . human_duration($site['down_seconds']) : '';
         return match ($item['kind']) {
             'down' => ['headline' => "{$who} is down", 'details' => [$site['summary']]],
@@ -488,6 +558,16 @@ function alert_text(array $item): array
             ],
             'ssl_fixed' => ['headline' => "{$who}: the SSL certificate is valid again", 'details' => [$site['summary']]],
             'ssl_renewed' => ['headline' => "{$who}: the SSL certificate was renewed", 'details' => [$site['summary']]],
+            'domain_expiring' => [
+                'headline' => "{$domain}: the domain expires " . match ((int) $site['days_left']) {
+                    0 => 'today',
+                    1 => 'tomorrow',
+                    default => "in {$site['days_left']} days",
+                },
+                'details' => [$site['summary'], advice_for('domain_expiring', 0)],
+            ],
+            'domain_expired' => ['headline' => "{$domain}: the domain has expired", 'details' => [$site['summary'], advice_for('domain_expired', 0)]],
+            'domain_renewed' => ['headline' => "{$domain}: the domain was renewed", 'details' => [$site['summary']]],
             'exposed', 'exposed_minor' => exposed_text($who, $site),
             'exposed_fixed' => ['headline' => "{$who}: nothing that should be private is public any more", 'details' => []],
             'headers_worse' => [
@@ -606,7 +686,7 @@ function send_digests(PDO $db, array $config, int $now): array
     $results = [];
     foreach ($db->query("SELECT * FROM groups WHERE policy = 'digest' ORDER BY name")->fetchAll() as $group) {
         $events = $db->prepare("SELECT e.*, s.url FROM events e JOIN sites s ON s.id = e.site_id
-            WHERE s.group_id = ? AND e.check_name IN ('uptime', 'ssl', 'exposed', 'headers') AND e.created_at > ? AND e.created_at <= ?
+            WHERE s.group_id = ? AND e.check_name IN ('uptime', 'ssl', 'domain', 'exposed', 'headers') AND e.created_at > ? AND e.created_at <= ?
                 AND NOT (e.previous = 'pending' AND (e.status = 'ok' OR e.check_name = 'headers'))
             ORDER BY e.created_at, e.id");
         $events->execute([$group['id'], $since, utc_now($now)]);

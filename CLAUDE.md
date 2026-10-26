@@ -83,7 +83,7 @@ src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, 
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
 src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), advice_for(), plain-words errors and durations
 src/checks/ssl.php       fetch_certificate() (verified, then unverified to describe a bad one), certificate_info(), host_matches(), evaluate_ssl(), ssl_notice() (thresholds once per certificate)
-src/checks/domain.php    Domain expiry via RDAP (IANA bootstrap)
+src/checks/domain.php    registrable_candidates(), RDAP (IANA bootstrap, cached in data/rdap-dns.json) and WHOIS for .se/.nu (expires: line only), evaluate_domain(), domain_notice()
 src/checks/exposed.php   EXPOSED_FILES, exposed_matches() (content signatures), evaluate_exposed() (soft-404 baseline), check_exposed(), exposed_notice()
 src/checks/headers.php   SECURITY_HEADERS, header_level() (good/weak/missing), headers_grade(), evaluate_headers(), confirm_headers() (a change counts after a second look), headers_notice() (regressions only)
 src/checks/dns.php       MX, SPF, DMARC snapshots
@@ -106,14 +106,17 @@ docs/brand.md            The brand: concept, logo construction, colour and statu
 users.json               User credentials (bcrypt, created by the CLI, gitignored)
 data/vaka.sqlite         SQLite database (auto-created, gitignored)
 data/vaka.lock           Run lock (flock)
+data/rdap-dns.json       IANA's RDAP bootstrap file, refreshed weekly
 composer.json            Platform requirements (PHP 8.3+, pdo_sqlite, curl, openssl) + Pest (dev only)
 phpunit.xml              Test configuration (Pest)
 tests/                   Pest suite: Unit/, Feature/, fixtures/
-tests/Support/helpers.php temp_dir(), load_config(), cli_env() and vaka() (CLI as a subprocess, never reads the local .env)
+tests/Support/helpers.php temp_dir(), load_config(), cli_env() and vaka() (CLI as a subprocess, never reads the local .env); start_site()/start_web() refuse a port another process holds (assert_port_free())
 tests/fixtures/import/   CSV files for site:import (example domains only)
 tests/fixtures/sites/    Fixture sites served by `php -S` in feature tests (start_site()/stop_site() in helpers); hooks/ records alert POSTs
 tests/fixtures/certs/    Test-only CA and certificates (valid, wrong name, self-signed), made by generate.php; keys are not secrets
 tests/fixtures/tls-server.php  Minimal TLS server for the SSL check tests
+tests/fixtures/rdap/     RDAP bootstrap file and domain answers (served by sites/rdap), .se WHOIS answers; reserved names only
+tests/fixtures/whois-server.php  Minimal WHOIS server for the domain check tests
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups, servers, history and samples (`--hostile` adds markup-laden names for the smoke test)
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail and phone views
@@ -156,7 +159,7 @@ Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are sto
 |-------|------------------|-----|--------|--------|
 | `uptime` | 5 min (per site); a failing site is rechecked every run | GET via curl_multi, follows redirects, `UPTIME_TIMEOUT`; records response time and the IP it answered on | `ok` on 2xx/3xx (and keyword found); `fail` after `DOWN_AFTER_FAILURES` consecutive failures | down, recovered |
 | `ssl` | 6 h | `stream_socket_client` with `capture_peer_cert`, `openssl_x509_parse` | `warn` within 14 days, `fail` when expired or invalid | at `SSL_ALERT_DAYS` (14, 7, 1), invalid, recovered |
-| `domain` | 24 h | RDAP, base URL from the IANA bootstrap file (cached in `data/`) | `unknown` when the registry has no RDAP; never parses WHOIS | at `DOMAIN_ALERT_DAYS` |
+| `domain` | 24 h (1 h after a failed lookup) | RDAP, base URL from the IANA bootstrap file (cached in `data/` for a week); WHOIS only for the TLDs in `WHOIS_SERVERS` (.se and .nu have no RDAP), reading only the `expires:` line | `warn` within `DOMAIN_ALERT_DAYS`, `fail` when expired, `unknown` when nothing readable (no other WHOIS parsing) | at `DOMAIN_ALERT_DAYS`, expired, renewed; one alert per domain for sites that share it |
 | `exposed` | 24 h (1 h while something is public) | GET each known path next to the site plus a made-up path as baseline, 64 KB each; match content signatures | `fail` for a file with secrets, code or data; `warn` for one that only tells versions and paths | each new file, all private again |
 | `headers` | 6 h (a change is confirmed 15 min later) | Response headers of a GET to the site URL; six protections, each good, weak or missing; grade A-F | `ok` A or B, `warn` below; a low grade is shown, never in "Needs your attention" | a protection removed or weakened (confirmed), never a low grade by itself |
 | `dns` | 6 h | `dns_get_record` for MX, TXT (SPF) and `_dmarc` TXT | `warn` when SPF or DMARC is missing | record changed |
@@ -202,7 +205,7 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 1. Take `data/vaka.lock` with `flock(LOCK_EX | LOCK_NB)`. If another run holds it, exit 0 quietly.
 2. Collect due `(site, check)` pairs: `next_at <= now`, or no state yet.
 3. Uptime requests go through one `curl_multi` batch with a concurrency limit.
-4. The slower work runs after, until `RUN_BUDGET_SECONDS` (40) since the run started: SSL handshakes one by one (later DNS and RDAP too), then security headers in parallel batches of 20 sites, then exposed files in batches of five. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate; headers and exposed files skip every site that is down.
+4. The slower work runs after, until `RUN_BUDGET_SECONDS` (40) since the run started: SSL handshakes one by one, then domain lookups one by one (later DNS too), then security headers in parallel batches of 20 sites, then exposed files in batches of five. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate; headers and exposed files skip every site that is down.
 5. Store results and new states; a change writes an event.
 6. Reconcile alerts, apply silences and policies, bundle per destination and server, send. Send the daily digest when it is due.
 7. Trim old samples and audit log rows (once a day), then store `last_run_at`.
@@ -219,8 +222,8 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 | `POST /?login` | No | Login (CSRF, lockout per IP, constant-time check for unknown users) |
 | `POST /?logout` | Yes | End the session (CSRF in `_token`); GET answers 405 |
 | `GET /` | Yes | Dashboard (redirects to `/?login` without a session) |
-| `GET /?api=overview` | Yes | Totals, last run, and every visible site by group: status, summary, since, response time, server, snooze, maintenance, unstable, 24 h uptime, hourly buckets |
-| `GET /?api=site&id=N` | Yes | One site: summary, uptime 24 h / 7 d / 30 d, samples of the last 24 h, last 100 events, maintenance windows. 404 when not visible |
+| `GET /?api=overview` | Yes | Totals, last run, the last outage, and every visible site by group: status, summary, advice, since, response time, server, snooze, maintenance, unstable, 24 h and 30 d uptime, 30 daily bars, hourly buckets, and the certificate, domain, exposed files and headers grade |
+| `GET /?api=site&id=N` | Yes | One site: the overview's fields plus each security header (what it does, how to add it), uptime 24 h / 7 d / 30 d, samples of the last 24 h, last 100 uptime events, maintenance windows. 404 when not visible |
 | `POST /?api=snooze` | Yes | `{site_id, for: "1h"\|"4h"\|"24h"}` or `{site_id, action: "unsnooze"}`; needs `X-CSRF-Token`; 404 when not visible |
 
 Any other path answers 404. Restricted users (`groups` in users.json) only ever see their groups' sites, and a site they may not see is a 404, so its existence does not leak.
@@ -284,7 +287,7 @@ Cron in production:
 Pest, dev dependency only. **No real network in tests.** Fixtures use reserved example names and documentation IPs only.
 
 - **Unit** (`tests/Unit/`): pure functions. Header grading, cert expiry from a fixture PEM, exposed-file signature matching, RDAP parsing from fixture JSON, SPF/DMARC parsing, URL normalization, state transitions, alert reconciliation, maintenance window matching (including across midnight), policies, grouping by server, alert formatting. CLI as a subprocess for deterministic output.
-- **Feature** (`tests/Feature/`): start `php -S` against `tests/fixtures/sites/*` (one site with an exposed `.env`, one with good headers, one that answers 500, one soft-404 site that answers 200 for everything) and run the checks against them. RDAP from fixture JSON served the same way. DNS through an injected resolver. Alerts against a local fixture webhook that records what it received.
+- **Feature** (`tests/Feature/`): start `php -S` against `tests/fixtures/sites/*` (`exposed` leaks a `.env` and `.git/`, `headers` sends five of six protections, `error` answers 500, `good` is a soft-404 site that answers 200 for everything, `rdap` is a registry) and run the checks against them, with `rdap_bootstrap_url` and `whois_servers` pointing at the fixtures. A fixed port per server; a port another process holds fails loudly. DNS through an injected resolver. Alerts against a local fixture webhook that records what it received.
 - **Smoke** (`scripts/smoke.mjs`): headless Chrome over the DevTools protocol, no npm dependencies. Seeds a demo database with hostile names and messages, logs in through the form and walks the dashboard: hero, incidents, groups, filter, detail, snooze, theme, phone width. Fails on JS errors, on CSP violations (reported by a CDP-injected `securitypolicyviolation` listener and the console) and when markup from the data renders as markup. Runs as its own CI job.
 
 Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.sqlite`, then `DB_PATH=/tmp/demo.sqlite php -S localhost:8080 -t public` with a user from `php vaka user:add`, or `node scripts/smoke.mjs --screenshots=<dir>` for the five standard views.

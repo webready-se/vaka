@@ -99,6 +99,16 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         $db->prepare("UPDATE check_state SET alerted_status = ?, thresholds_sent = ? WHERE site_id = ? AND check_name = 'ssl'")
             ->execute([$ssl['status'], json_encode(['valid_to' => utc_now($validTo), 'sent' => $days <= 7 ? [14, 7] : []]), $id]);
     }
+    // Domains: registered for a year or more, except one that runs out in 12 days
+    if (!in_array($story, ['paused', 'hostile'], true)) {
+        $name = registrable_candidates((string) parse_url($url, PHP_URL_HOST))[0];
+        $until = $now + ($url === 'https://docs.example' ? 12 * 86400 + 7200 : (120 + mt_rand(0, 600)) * 86400);
+        $domain = evaluate_domain(['status' => 'found', 'domain' => $name, 'expires' => $until, 'registrar' => 'Example Registrar AB', 'source' => 'rdap', 'error' => ''], $now, 30);
+        save_check_state($db, $id, 'domain', ['fail_count' => 0, 'changed_at' => utc_now($month)] + $domain, utc_now($now - 5 * 3600), utc_now($now + 19 * 3600));
+        $db->prepare("UPDATE check_state SET alerted_status = ?, thresholds_sent = ? WHERE site_id = ? AND check_name = 'domain'")
+            ->execute([$domain['status'], json_encode(['expires' => utc_now($until), 'sent' => $domain['status'] === 'warn' ? [30, 14] : []]), $id]);
+    }
+
     // Exposed files: one site has left its .env and Git repository public
     if (!in_array($story, ['paused', 'hostile'], true)) {
         $leaks = $url === 'https://cafe.example' ? ['.env', '.git/'] : [];

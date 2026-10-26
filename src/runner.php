@@ -1,6 +1,6 @@
 <?php
 
-/** Seconds a run may take before it stops starting slow checks (SSL, headers, exposed files); what is left waits for the next run. */
+/** Seconds a run may take before it stops starting slow checks (SSL, domains, headers, exposed files); what is left waits for the next run. */
 const RUN_BUDGET_SECONDS = 40;
 
 /**
@@ -35,6 +35,7 @@ function run(PDO $db, array $config, ?int $now = null): array
     $started = microtime(true);
     $summary = run_uptime($db, $config, $now);
     $summary['ssl'] = run_ssl($db, $config, $now, $started + RUN_BUDGET_SECONDS);
+    $summary['domain'] = run_domain($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['headers'] = run_headers($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $summary['exposed'] = run_exposed($db, $config, $now, $started + RUN_BUDGET_SECONDS);
     $alerts = process_alerts($db, $config, $now);
@@ -268,6 +269,58 @@ function run_exposed(PDO $db, array $config, int $now, float $deadline): array
             }
             $summary['checked']++;
         }
+    }
+    return $summary;
+}
+
+/** Sites whose domain registration is due. Sites that are down are looked up too: an expired domain may be why. */
+function due_domain_sites(PDO $db, string $now): array
+{
+    $stmt = $db->prepare("SELECT s.*, c.status AS state_status, c.changed_at AS state_changed_at
+        FROM sites s
+        LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'domain'
+        WHERE s.paused = 0
+            AND (',' || s.disabled_checks || ',') NOT LIKE '%,domain,%'
+            AND (c.next_at IS NULL OR c.next_at <= ?)
+        ORDER BY c.next_at IS NOT NULL, c.next_at, s.id");
+    $stmt->execute([$now]);
+    return $stmt->fetchAll();
+}
+
+/**
+ * Look up due domains one by one (RDAP and WHOIS are single requests to a
+ * registry) until $deadline (microtime). Sites that share a domain cause one
+ * lookup. The rest stays due for the next run.
+ */
+function run_domain(PDO $db, array $config, int $now, float $deadline): array
+{
+    $summary = ['checked' => 0, 'left' => 0, 'events' => []];
+    $sites = due_domain_sites($db, utc_now($now));
+    $checkedAt = utc_now($now);
+    $cache = [];
+    foreach ($sites as $i => $site) {
+        if (microtime(true) >= $deadline) {
+            $summary['left'] = count($sites) - $i;
+            break;
+        }
+        $lookup = lookup_domain((string) parse_url($site['url'], PHP_URL_HOST), $config, $now, $cache);
+        $result = evaluate_domain($lookup, $now, max([0, ...$config['domain_alert_days']]));
+        $previous = $site['state_status'] ?? 'pending';
+        $changed = $previous !== $result['status'];
+        $wait = $result['details']['problem'] === 'lookup_failed' ? DOMAIN_RETRY_SECONDS : DOMAIN_INTERVAL_SECONDS;
+        save_check_state($db, $site['id'], 'domain', [
+            'status' => $result['status'],
+            'summary' => $result['summary'],
+            'details' => $result['details'],
+            'fail_count' => 0,
+            'changed_at' => $changed ? $checkedAt : $site['state_changed_at'],
+        ], $checkedAt, utc_now($now + $wait));
+        if ($changed && $result['status'] !== 'unknown') {
+            $event = ['status' => $result['status'], 'previous' => $previous, 'message' => $result['summary']];
+            add_event($db, $site['id'], 'domain', $event, $checkedAt);
+            $summary['events'][] = ['url' => $site['url']] + $event;
+        }
+        $summary['checked']++;
     }
     return $summary;
 }

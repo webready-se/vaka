@@ -18,7 +18,9 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | `UPTIME_TIMEOUT` | `10` | Seconds before a request counts as failed |
 | `DOWN_AFTER_FAILURES` | `2` | Failed checks in a row before a site counts as down |
 | `SSL_ALERT_DAYS` | `14,7,1` | Days before a certificate expires to alert, each once per certificate |
-| `DOMAIN_ALERT_DAYS` | `30,14,7,1` | The same for domain registrations (once the domain check exists) |
+| `DOMAIN_ALERT_DAYS` | `30,14,7,1` | The same for domain registrations, each once per registration period. If your registrar renews on the expiry day, every renewal passes these: use fewer days, such as `7,1` |
+| `RDAP_BOOTSTRAP_URL` | IANA's `dns.json` | Where Vaka learns which registry to ask about a domain (cached in `data/` for a week) |
+| `WHOIS_SERVERS` | `se=whois.iis.se,nu=whois.iis.nu` | Registries without RDAP that are asked over WHOIS instead, as `tld=server`. Only an `expires:` line is read, so add a TLD only if its WHOIS answers in that form |
 | `SAMPLES_RETENTION_DAYS` | `30` | Days of response times to keep |
 | `SSL_CA_FILE` | (empty) | A CA bundle to verify certificates against instead of the system's, for an internal authority |
 | `USER_AGENT` | `Vaka/<version> (+<APP_URL>)` | The User-Agent of every check |

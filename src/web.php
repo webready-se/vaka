@@ -259,13 +259,15 @@ function overview_rows(PDO $db, string $where): array
             c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until, c.flapping_since,
             cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details,
             ce.status AS exposed_status, ce.summary AS exposed_summary, ce.details AS exposed_details, ce.changed_at AS exposed_changed_at,
-            ch.status AS headers_status, ch.summary AS headers_summary, ch.details AS headers_details
+            ch.status AS headers_status, ch.summary AS headers_summary, ch.details AS headers_details,
+            cd.status AS domain_status, cd.summary AS domain_summary, cd.details AS domain_details
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
         LEFT JOIN check_state cs ON cs.site_id = s.id AND cs.check_name = 'ssl'
         LEFT JOIN check_state ce ON ce.site_id = s.id AND ce.check_name = 'exposed'
         LEFT JOIN check_state ch ON ch.site_id = s.id AND ch.check_name = 'headers'
+        LEFT JOIN check_state cd ON cd.site_id = s.id AND cd.check_name = 'domain'
         WHERE {$where}
         ORDER BY s.group_id IS NULL, g.name COLLATE NOCASE, s.url")->fetchAll();
 }
@@ -309,6 +311,19 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'advice' => advice_for($exposedDetails['problem'] ?? '', 0),
         ];
     }
+    $domain = null;
+    if (in_array($row['domain_status'], ['ok', 'warn', 'fail', 'unknown'], true)) {
+        $domainDetails = json_decode((string) $row['domain_details'], true) ?: [];
+        $domain = [
+            'status' => $row['domain_status'],
+            'summary' => $row['domain_summary'],
+            'domain' => $domainDetails['domain'] ?? null,
+            'days_left' => $domainDetails['days_left'] ?? null,
+            'expires' => $domainDetails['expires'] ?? null,
+            'registrar' => $domainDetails['registrar'] ?? '',
+            'advice' => in_array($row['domain_status'], ['warn', 'fail'], true) ? advice_for($domainDetails['problem'] ?? '', 0) : '',
+        ];
+    }
     // The grade only: what each header does comes with the site detail (see api_site())
     $headers = null;
     if (in_array($row['headers_status'], ['ok', 'warn', 'unknown'], true)) {
@@ -334,6 +349,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'maintenance' => $quiet === 'maintenance',
         'unstable' => $row['flapping_since'] !== null,
         'ssl' => $ssl,
+        'domain' => $domain,
         'exposed' => $exposed,
         'headers' => $headers,
         'uptime_24h' => site_uptime($db, $row, 86400, $now),

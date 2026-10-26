@@ -36,6 +36,12 @@ return [
 
     'domain_alert_days' => int_list($env('DOMAIN_ALERT_DAYS', '30,14,7,1')),
 
+    // Where domain expiry dates come from: RDAP through IANA's bootstrap file, and WHOIS
+    // (its "expires:" line only) for registries without RDAP, such as .se and .nu
+    'rdap_bootstrap_url' => $env('RDAP_BOOTSTRAP_URL', 'https://data.iana.org/rdap/dns.json'),
+
+    'whois_servers' => pair_list($env('WHOIS_SERVERS', 'se=whois.iis.se,nu=whois.iis.nu')),
+
     'samples_retention_days' => max(1, (int) $env('SAMPLES_RETENTION_DAYS', '30')),
 
     'user_agent' => $env('USER_AGENT'),

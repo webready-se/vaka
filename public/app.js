@@ -64,6 +64,7 @@
     pending: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M12 7.5V12l3 2'],
     quiet: ['M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z'],
     shield: ['M12 3l7 3v6c0 4.5-3 7.6-7 9-4-1.4-7-4.5-7-9V6z', 'M12 8v4.5', 'M12 15.8v.1'],
+    globe: ['M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0z', 'M3 12h18', 'M12 3c2.4 2.6 3.7 5.6 3.7 9s-1.3 6.4-3.7 9c-2.4-2.6-3.7-5.6-3.7-9s1.3-6.4 3.7-9z'],
     file: ['M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z', 'M14 3v5h5', 'M12 11.5v3.5', 'M12 18.3v.1'],
     bell: ['M18 16H6l1.5-2.2V10a4.5 4.5 0 0 1 9 0v3.8z', 'M10 19a2 2 0 0 0 4 0'],
     server: ['M4 4.5h16v6H4zM4 13.5h16v6H4z', 'M8 7.5h.01M8 16.5h.01'],
@@ -157,6 +158,12 @@
     return p.day === today.day && p.month === today.month && p.year === today.year ? time : p.day + ' ' + p.month + ' ' + time;
   }
 
+  /** "7 Nov 2026" */
+  function date(iso) {
+    var p = dateParts(new Date(iso));
+    return p.day + ' ' + p.month + ' ' + p.year;
+  }
+
   function day(isoDate) {
     var p = dateParts(new Date(isoDate + 'T12:00:00Z'));
     return p.day + ' ' + p.month;
@@ -217,6 +224,19 @@
     return allSites().filter(function (site) {
       return site.ssl && (site.ssl.status === 'warn' || (site.ssl.status === 'fail' && site.status !== 'down'));
     });
+  }
+
+  /** Domains that expire soon or have expired: one entry per domain, with the sites that use it. */
+  function domainIssues() {
+    var byName = {};
+    var list = [];
+    allSites().forEach(function (site) {
+      var d = site.domain;
+      if (!d || (d.status !== 'warn' && d.status !== 'fail')) return;
+      if (!byName[d.domain]) list.push(byName[d.domain] = { domain: d, sites: [] });
+      byName[d.domain].sites.push(site);
+    });
+    return list.sort(function (a, b) { return (a.domain.days_left || 0) - (b.domain.days_left || 0); });
   }
 
   /** Sites with files that anyone can download but that should be private. */
@@ -288,6 +308,7 @@
     var downNow = sites.filter(function (site) { return site.status === 'down' && !isQuiet(site); }).length;
     var downQuiet = t.down - downNow;
     var certs = certIssues().length;
+    var domains = domainIssues();
     var exposed = exposedIssues();
     var exposedFiles = exposed.reduce(function (sum, site) { return sum + site.exposed.found.length; }, 0);
     var watched = t.sites - t.paused;
@@ -320,6 +341,7 @@
       // Up, but not all quiet while a file is public or a certificate is about to run out
       var notes = [];
       if (exposed.length) notes.push(plural(exposed.length, 'site has', 'sites have') + ' private files that anyone can download.');
+      if (domains.length) notes.push(plural(domains.length, 'domain needs', 'domains need') + ' renewing.');
       if (certs) notes.push(plural(certs, 'certificate needs', 'certificates need') + ' renewing soon.');
       var up = t.up === watched ? (watched === 1 ? 'Your site is up' : 'All ' + watched + ' sites are up') : plural(t.up, 'site is up', 'sites are up');
       kind = notes.length ? 'watch' : 'calm';
@@ -337,6 +359,10 @@
     if (t.down) stats.push(h('li', { class: 'is-down' }, [h('b', {}, String(t.down)), h('span', {}, 'Down')]));
     if (t.failing) stats.push(h('li', { class: 'is-warn' }, [h('b', {}, String(t.failing)), h('span', {}, 'Checking')]));
     if (certs) stats.push(h('li', { class: 'is-warn' }, [h('b', {}, String(certs)), h('span', {}, 'Certificates')]));
+    if (domains.length) {
+      var expired = domains.some(function (item) { return item.domain.status === 'fail'; });
+      stats.push(h('li', { class: expired ? 'is-down' : 'is-warn' }, [h('b', {}, String(domains.length)), h('span', {}, 'Domains')]));
+    }
     if (exposedFiles) {
       var red = exposed.some(function (site) { return site.exposed.status === 'fail'; });
       stats.push(h('li', { class: red ? 'is-down' : 'is-warn' }, [h('b', {}, String(exposedFiles)), h('span', {}, 'Exposed files')]));
@@ -394,8 +420,9 @@
     clear(node);
     var problems = allSites().filter(function (site) { return site.status === 'down' || site.status === 'failing'; });
     var certs = certIssues().sort(function (a, b) { return (a.ssl.status === 'fail' ? 0 : 1) - (b.ssl.status === 'fail' ? 0 : 1) || (a.ssl.days_left || 0) - (b.ssl.days_left || 0); });
+    var domains = domainIssues();
     var exposed = exposedIssues();
-    node.hidden = problems.length + certs.length + exposed.length === 0;
+    node.hidden = problems.length + certs.length + domains.length + exposed.length === 0;
     if (node.hidden) return;
 
     var rank = function (site) { return site.status === 'failing' ? 1 : 0; };
@@ -420,6 +447,7 @@
 
     // Certificates and exposed files after the outages: what is broken now before what is about to be
     var checks = certs.map(function (site) { return { rank: site.ssl.status === 'fail' ? 0 : 1, row: certIncident(site) }; })
+      .concat(domains.map(function (item) { return { rank: item.domain.status === 'fail' ? 0 : 1, row: domainIncident(item) }; }))
       .concat(exposed.map(function (site) { return { rank: site.exposed.status === 'fail' ? 0 : 1, row: exposedIncident(site) }; }))
       .sort(function (a, b) { return a.rank - b.rank; });
 
@@ -506,6 +534,26 @@
         h('p', { class: 'incident-meta' }, site.group || 'No group'),
         advice(site.ssl.advice),
         h('div', { class: 'actions' }, siteActions(site, false))
+      ]);
+  }
+
+  function domainWords(domain) {
+    if (domain.status === 'fail') return 'domain has expired';
+    var days = domain.days_left;
+    return 'domain expires ' + (days === 0 ? 'today' : days === 1 ? 'tomorrow' : 'in ' + days + ' days');
+  }
+
+  /** One row per domain, however many sites use it: renewing it is one job. */
+  function domainIncident(item) {
+    var domain = item.domain;
+    var sites = item.sites;
+    var others = sites.map(function (site) { return site.label; }).filter(function (label) { return label !== domain.domain; });
+    var when = domain.expires ? (domain.status === 'fail' ? 'Ran out ' : 'Runs out ') + date(domain.expires) + (domain.registrar ? ', with ' + domain.registrar : '') : domain.summary;
+    return incident('domain:' + domain.domain, domain.status === 'fail' ? 'down' : 'warn', 'globe', domain.domain, domainWords(domain), when,
+      domain.status === 'fail' ? timeBox('Expired', 'Domain') : timeBox(plural(domain.days_left, 'day', 'days'), 'Expires in'), [
+        h('p', { class: 'incident-meta' }, [sites[0].group || 'No group', others.length ? ' · used by ' + others.join(', ') : null]),
+        advice(domain.advice),
+        h('div', { class: 'actions' }, siteActions(sites[0], false))
       ]);
   }
 
@@ -633,8 +681,9 @@
     if (site.maintenance) notes.push('in maintenance');
     var subtitle = notes.join(' · ');
     var cert = site.ssl && site.ssl.status !== 'ok' ? h('span', { class: site.ssl.status === 'fail' ? 'is-down' : 'is-warn' }, certificateWords(site.ssl)) : null;
+    var registration = site.domain && (site.domain.status === 'warn' || site.domain.status === 'fail') ? h('span', { class: site.domain.status === 'fail' ? 'is-down' : 'is-warn' }, domainWords(site.domain)) : null;
     var files = site.exposed && site.exposed.status !== 'ok' ? h('span', { class: site.exposed.status === 'fail' ? 'is-down' : 'is-warn' }, exposedWords(site.exposed)) : null;
-    var small = [subtitle, cert, files].filter(Boolean).reduce(function (list, part) { return list.length ? list.concat([' · ', part]) : [part]; }, []);
+    var small = [subtitle, cert, registration, files].filter(Boolean).reduce(function (list, part) { return list.length ? list.concat([' · ', part]) : [part]; }, []);
     var grade = site.headers && site.headers.grade ? site.headers.grade : null;
 
     return h('li', {}, h('button', {
@@ -700,6 +749,7 @@
       ['Checked every', site.interval_minutes + ' min'],
       ['Server', site.cdn ? 'Behind ' + site.cdn : (site.server || 'Not known yet')],
       ['Certificate', site.ssl ? site.ssl.summary : (/^https:/.test(site.url) ? 'Not checked yet' : 'No https')],
+      ['Domain', site.domain ? site.domain.summary : 'Not checked yet'],
       ['Exposed files', site.exposed ? site.exposed.summary : 'Not checked yet']
     ];
     if (site.keyword) settings.splice(2, 0, ['Looks for the text', '"' + site.keyword + '"']);
@@ -716,6 +766,7 @@
       site.summary ? h('p', { class: 'incident-summary' }, site.summary) : null,
       advice(site.advice),
       site.ssl && site.ssl.advice ? advice(site.ssl.summary + '. ' + site.ssl.advice) : null,
+      site.domain && site.domain.advice ? advice(site.domain.summary + '. ' + site.domain.advice) : null,
       site.exposed && site.exposed.advice ? advice(site.exposed.summary + '. ' + site.exposed.advice) : null,
       badges(site),
       h('div', { class: 'actions' }, siteActions(site, true).filter(function (n) { return n.getAttribute('data-action') !== 'open'; })),

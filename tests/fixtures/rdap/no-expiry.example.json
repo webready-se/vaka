@@ -1,0 +1,5 @@
+{
+  "objectClassName": "domain",
+  "ldhName": "no-expiry.example",
+  "events": [{"eventAction": "registration", "eventDate": "2019-03-04T10:00:00Z"}]
+}
