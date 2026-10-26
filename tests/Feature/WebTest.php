@@ -122,6 +122,29 @@ test('what people type is never echoed back as markup', function () {
     expect($r['body'])->not->toContain('<script>alert(1)</script>');
 });
 
+test('before the first user exists, the login page says how to create one', function () {
+    unlink($GLOBALS['web_dir'] . '/users.json');
+    $r = http_request('GET', WEB . '/?login');
+    expect($r['status'])->toBe(200)
+        ->and($r['body'])->toContain('No users yet')
+        ->and($r['body'])->toContain('php vaka user:add')
+        ->and($r['body'])->toContain('users.json')
+        ->and($r['body'])->not->toContain('name="password"');
+
+    // Posting anyway shows the same page and does not count as a failed login
+    $r = http_request('POST', WEB . '/?login', ['form' => ['username' => 'admin', 'password' => 'x']]);
+    expect($r['body'])->toContain('No users yet')
+        ->and((int) $this->db->query('SELECT COUNT(*) FROM audit_log')->fetchColumn())->toBe(0);
+});
+
+test('the first steps come with the real cron line and whether alerts are set up, for users who see everything', function () {
+    $admin = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
+    expect($admin['setup']['cron'])->toBe(cron_line(dirname(__DIR__, 2)))
+        ->and($admin['setup']['alerts'])->toBeFalse();
+    $anna = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('anna', 'anna password')['jar']])['json'];
+    expect($anna['setup'])->toBeNull();
+});
+
 test('the overview lists sites with their state, and a restricted user only sees their groups', function () {
     add_group($this->db, ['name' => 'Customers']);
     add_group($this->db, ['name' => 'Own']);

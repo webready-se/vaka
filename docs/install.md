@@ -28,6 +28,8 @@ php vaka run                  # check it once by hand
 
 `data/` (the database) and `users.json` are created on first use and stay out of git. Keep them outside the document root: only `public/` may be served.
 
+Open the dashboard. Before the first user exists, it says how to create one. Without sites, it shows the first steps, with this server's own cron line, and ticks them off as cron starts running and alerts get somewhere to go.
+
 Add the cron line (use the full path to `php` if cron does not find it):
 
 ```cron
@@ -58,9 +60,20 @@ The deploy script needs nothing beyond pulling the code. Database changes are ap
 
 Any host with PHP 8.3, SQLite and cron works.
 
+**With SSH, or a terminal in the host's control panel:**
+
 1. Upload the files, keeping the folders as they are.
 2. Point the domain's document root at `public/`. If the host does not let you choose it, put Vaka outside the web root and make the web root a link to `public/`.
-3. Add the cron line in the host's control panel.
+3. Run `php vaka user:add admin`, then add your sites with `php vaka site:add <url>` or `php vaka site:import sites.csv`.
+4. Add the cron line in the host's control panel. The dashboard shows the exact line once you have logged in.
+
+**Without SSH:**
+
+1. On your own computer (PHP 8.3 with SQLite), in Vaka's folder: `php vaka user:add admin`, then add your sites and groups. This creates `users.json` and `data/vaka.sqlite`.
+2. Upload everything, including `users.json`, `data/` and `.env` if you made one.
+3. Point the document root at `public/` and add the cron line.
+
+Later changes to sites and groups need the command line on the server. Uploading the database again replaces the history Vaka has collected since, so make the changes before the first upload.
 
 Check that `https://vaka.example.com/users.json`, `/.env` and `/data/vaka.sqlite` answer 404: if they do not, the document root is wrong.
 

@@ -252,6 +252,8 @@
     renderWatch();
     renderAttention();
     renderGroups();
+    // No list to show or filter before the first site
+    regions.sites.hidden = state.data.totals.sites === 0;
     renderTab();
     document.getElementById('app').setAttribute('aria-busy', 'false');
   }
@@ -263,7 +265,7 @@
     var text = node.querySelector('[data-run-text]');
     clear(text);
     // On a phone only the freshness shows: "Checked just now"
-    append(text, last
+    append(text, state.data.totals.sites === 0 ? 'No sites yet' : last
       ? [h('span', { class: 'run-count' }, 'Watching ' + plural(watched, 'site', 'sites') + ' · '), 'checked ' + ago(last)]
       : 'Not checked yet');
     node.className = 'run-pill ' + (state.data.run_ok ? 'is-ok' : 'is-stale');
@@ -389,14 +391,37 @@
     ]);
   }
 
+  /** The first steps, ticked off as they get done: cron runs, alerts have somewhere to go. */
   function emptyState() {
+    var data = state.data;
+    var setup = data.setup;
+    if (!setup) {
+      return h('div', { class: 'empty' }, [
+        h('h2', {}, 'No sites here yet'),
+        h('p', {}, 'Nobody has added sites to your groups yet. Ask whoever runs Vaka for your sites.')
+      ]);
+    }
+    var step = function (done, title, body) {
+      return h('li', { class: done ? 'is-done' : null }, h('div', {}, [
+        h('p', {}, [title, done ? h('span', { class: 'visually-hidden' }, ' (done)') : null])
+      ].concat(body)));
+    };
+    var running = data.run_ok;
     return h('div', { class: 'empty' }, [
       h('h2', {}, 'Nothing to watch yet'),
-      h('p', {}, 'Three steps, and Vaka keeps watch from the next minute on.'),
+      h('p', {}, 'Three steps, and Vaka keeps watch from the next minute on. Run the commands where Vaka is installed.'),
       h('ol', { class: 'steps' }, [
-        h('li', {}, h('div', {}, [h('p', {}, 'Add a site, or a whole list'), command('php vaka site:add https://shop.example')])),
-        h('li', {}, h('div', {}, [h('p', {}, 'Run the checks every minute from cron'), command('* * * * * php /path/to/vaka run')])),
-        h('li', {}, h('div', {}, [h('p', {}, 'Tell Vaka where alerts go (SLACK_WEBHOOK_URL in .env), then send a test'), command('php vaka alert:test')]))
+        step(false, 'Add a site, or import a whole list', [
+          command('php vaka site:add https://shop.example'),
+          command('php vaka site:import sites.csv'),
+          h('small', {}, 'A list is a CSV file with a url column, and optionally group and enabled.')
+        ]),
+        step(running, running ? 'Cron runs the checks every minute' : 'Run the checks every minute from cron', running
+          ? [h('small', {}, 'Last run ' + ago(data.last_run_at) + '.')]
+          : [command(setup.cron), data.last_run_at ? h('small', {}, 'The last run was ' + ago(data.last_run_at) + ': is cron still running it?') : null]),
+        step(setup.alerts, setup.alerts ? 'Alerts have somewhere to go: send a test to be sure' : 'Tell Vaka where alerts go (SLACK_WEBHOOK_URL in .env), then send a test', [
+          command('php vaka alert:test')
+        ])
       ])
     ]);
   }

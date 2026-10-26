@@ -43,7 +43,7 @@ This repository will be public. Nothing about the user, the company, its custome
 
   Test every screen, message and command output with: would someone understand this in five seconds?
 
-  The look is defined in `docs/brand.md` (owl mark, Webready family tile, slate neutrals, shared status colours, Figtree, icons with stroke 2). Follow it; change the guide first if the look changes. Review visual changes with `node scripts/smoke.mjs --screenshots=<dir>` (login, light, dark, detail, phone and phone detail).
+  The look is defined in `docs/brand.md` (owl mark, Webready family tile, slate neutrals, shared status colours, Figtree, icons with stroke 2). Follow it; change the guide first if the look changes. Review visual changes with `node scripts/smoke.mjs --screenshots=<dir>` (login, light, dark, detail, phone, phone detail, and the first visit: no users, no sites).
 - **Never on the same server it watches.** If that server goes down, nobody gets an alert. The install docs say so, and Vaka watches itself: every run pings `HEARTBEAT_URL` (a dead man's switch such as Healthchecks.io's free tier, which alerts when pings stop), `/?health` returns 503 when cron has stopped, and the dashboard shows when Vaka last ran and warns when that is more than a few minutes ago.
 - **No dependencies at runtime.** PHP 8.3+ with built-in extensions only: `pdo_sqlite`, `curl`, `openssl` (`intl` optional). No Composer runtime packages, no framework, no build step, no CDN. Deploy = copy the files. Must run on Laravel Forge and on shared hosting wherever cron exists.
 - **"No dependencies", not "one file".** A few files loaded with plain `require` are fine. Code lives in `src/` as plain functions, so tests load it with `require` (no regex extraction or `eval`, unlike Puls's test bootstrap).
@@ -119,7 +119,7 @@ tests/fixtures/rdap/     RDAP bootstrap file and domain answers (served by sites
 tests/fixtures/whois-server.php  Minimal WHOIS server for the domain check tests
 .github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups, servers, history and samples (`--hostile` adds markup-laden names for the smoke test)
-scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail and phone views
+scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail, phone, and the first visit (no users, no sites)
 scripts/hooks/pre-push   Git hook: runs Pest before push
 docs/                    install.md, configuration.md, checks.md, alerts.md (alerts.md: when, where, JSON fields)
 .claude/settings.json    Project hooks (PHP lint after edit) and read denies for .env / users.json
@@ -218,11 +218,11 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 | Endpoint | Auth | Purpose |
 |----------|------|---------|
 | `GET /?health` | No | `{status: ok\|stale\|never_run, last_run_at, seconds_since_last_run}`; 200 only when the last run is under 5 min old, so something external can watch the watcher |
-| `GET /?login` | No | Login form (server-rendered, CSRF token in the session) |
+| `GET /?login` | No | Login form (server-rendered, CSRF token in the session); before the first user exists, how to create one instead |
 | `POST /?login` | No | Login (CSRF, lockout per IP, constant-time check for unknown users) |
 | `POST /?logout` | Yes | End the session (CSRF in `_token`); GET answers 405 |
 | `GET /` | Yes | Dashboard (redirects to `/?login` without a session) |
-| `GET /?api=overview` | Yes | Totals, last run, the last outage, and every visible site by group: status, summary, advice, since, response time, server, snooze, maintenance, unstable, 24 h and 30 d uptime, 30 daily bars, hourly buckets, and the certificate, domain, exposed files and headers grade |
+| `GET /?api=overview` | Yes | Totals, last run, the last outage, `setup` (this server's cron line, whether alerts can go anywhere; only for users who see everything), and every visible site by group: status, summary, advice, since, response time, server, snooze, maintenance, unstable, 24 h and 30 d uptime, 30 daily bars, hourly buckets, and the certificate, domain, exposed files and headers grade |
 | `GET /?api=site&id=N` | Yes | One site: the overview's fields plus each security header (what it does, how to add it), uptime 24 h / 7 d / 30 d, samples of the last 24 h, last 100 uptime events, maintenance windows. 404 when not visible |
 | `POST /?api=snooze` | Yes | `{site_id, for: "1h"\|"4h"\|"24h"}` or `{site_id, action: "unsnooze"}`; needs `X-CSRF-Token`; 404 when not visible |
 
@@ -290,7 +290,7 @@ Pest, dev dependency only. **No real network in tests.** Fixtures use reserved e
 - **Feature** (`tests/Feature/`): start `php -S` against `tests/fixtures/sites/*` (`exposed` leaks a `.env` and `.git/`, `headers` sends five of six protections, `error` answers 500, `good` is a soft-404 site that answers 200 for everything, `rdap` is a registry) and run the checks against them, with `rdap_bootstrap_url` and `whois_servers` pointing at the fixtures. A fixed port per server; a port another process holds fails loudly. DNS through an injected resolver. Alerts against a local fixture webhook that records what it received.
 - **Smoke** (`scripts/smoke.mjs`): headless Chrome over the DevTools protocol, no npm dependencies. Seeds a demo database with hostile names and messages, logs in through the form and walks the dashboard: hero, incidents, groups, filter, detail, snooze, theme, phone width. Fails on JS errors, on CSP violations (reported by a CDP-injected `securitypolicyviolation` listener and the console) and when markup from the data renders as markup. Runs as its own CI job.
 
-Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.sqlite`, then `DB_PATH=/tmp/demo.sqlite php -S localhost:8080 -t public` with a user from `php vaka user:add`, or `node scripts/smoke.mjs --screenshots=<dir>` for the five standard views.
+Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.sqlite`, then `DB_PATH=/tmp/demo.sqlite php -S localhost:8080 -t public` with a user from `php vaka user:add`, or `node scripts/smoke.mjs --screenshots=<dir>` for the standard views.
 
 | Change | Test? |
 |--------|-------|

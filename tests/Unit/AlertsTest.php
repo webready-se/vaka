@@ -43,6 +43,18 @@ test('alert_decision follows the state and the group policy', function (array $s
     'silent' => [['status' => 'fail', 'alerted_status' => 'ok'], ['policy' => 'silent', 'delay_minutes' => 0], 0, 'quiet'],
 ]);
 
+test('alerts_configured: true once alerts can go somewhere, by default or for a group', function () {
+    $db = get_db(temp_dir() . '/vaka.sqlite');
+    $none = ['slack_webhook_url' => '', 'webhook_url' => '', 'alert_email' => []];
+    expect(alerts_configured($db, $none))->toBeFalse()
+        ->and(alerts_configured($db, ['slack_webhook_url' => 'https://hooks.example/a'] + $none))->toBeTrue()
+        ->and(alerts_configured($db, ['alert_email' => ['ops@example.com']] + $none))->toBeTrue();
+    add_group($db, ['name' => 'Customers']);
+    expect(alerts_configured($db, $none))->toBeFalse();
+    add_group($db, ['name' => 'Own', 'webhook_url' => 'https://hooks.example/b']);
+    expect(alerts_configured($db, $none))->toBeTrue();
+});
+
 test('alert_destinations: the group\'s own, otherwise the defaults in .env', function () {
     $config = ['slack_webhook_url' => 'https://hooks.example/default', 'webhook_url' => '', 'alert_email' => ['ops@example.com']];
     $own = ['slack_webhook' => 'https://hooks.example/own', 'webhook_url' => 'https://example.com/hook', 'email' => ''];
