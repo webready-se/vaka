@@ -1,0 +1,9 @@
+{
+  "description": "RDAP bootstrap file for the tests: the reserved TLDs point at the fixture RDAP server",
+  "publication": "2026-10-22T23:00:04Z",
+  "services": [
+    [["example", "test"], ["http://127.0.0.1:8796/"]],
+    [["co.example"], ["http://127.0.0.1:8796/co/"]]
+  ],
+  "version": "1.0"
+}

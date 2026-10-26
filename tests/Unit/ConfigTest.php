@@ -56,6 +56,13 @@ test('int_list parses a comma-separated list into unique integers, largest first
         ->and(int_list(''))->toBe([]);
 });
 
+test('pair_list parses "key=value" pairs, keys lowercased', function () {
+    expect(pair_list('se=whois.iis.se, NU = whois.iis.nu,,broken, dk='))->toBe(['se' => 'whois.iis.se', 'nu' => 'whois.iis.nu'])
+        ->and(pair_list(''))->toBe([]);
+    expect(load_config()['whois_servers'])->toBe(['se' => 'whois.iis.se', 'nu' => 'whois.iis.nu'])
+        ->and(load_config()['rdap_bootstrap_url'])->toBe('https://data.iana.org/rdap/dns.json');
+});
+
 test('config.php reads settings from the environment', function () {
     $dir = temp_dir();
     $config = load_config(['DB_PATH' => $dir . '/custom.sqlite', 'SSL_ALERT_DAYS' => '7,30']);

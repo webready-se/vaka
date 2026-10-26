@@ -75,6 +75,10 @@ function cmd_check(array $config, array $args, array $opts): void
     if (str_starts_with($url, 'https://') && !in_array($result['problem'], ['timeout', 'dns', 'refused', 'connect'], true)) {
         echo '  Certificate: ' . lcfirst(check_certificate($url, $config, time())['summary']) . "\n";
     }
+    // Even when the site is down: an expired domain may be why
+    if (registrable_candidates((string) parse_url($url, PHP_URL_HOST))) {
+        echo '  Domain: ' . check_domain($url, $config, time())['summary'] . "\n";
+    }
     if ($result['ok']) {
         echo '  Security headers: ' . lcfirst(evaluate_headers($response, $config['uptime_timeout'])['summary']) . "\n";
         echo '  Exposed files: ' . lcfirst(check_exposed(['check' => $url], $config)['check']['summary']) . "\n";

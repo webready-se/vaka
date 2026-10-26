@@ -43,10 +43,11 @@ function assert_port_free(int $port): void
 
 /**
  * Serve tests/fixtures/sites/<name> with `php -S` on 127.0.0.1:<port>, using
- * its index.php as the router. Several workers, so a slow request does not
- * hold up the others. Returns once the port accepts connections.
+ * its index.php as the router, with $env for the router to read. Several
+ * workers, so a slow request does not hold up the others. Returns once the
+ * port accepts connections.
  */
-function start_site(string $name, int $port): mixed
+function start_site(string $name, int $port, array $env = []): mixed
 {
     assert_port_free($port);
     $dir = __DIR__ . '/../fixtures/sites/' . $name;
@@ -55,7 +56,7 @@ function start_site(string $name, int $port): mixed
         [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
         $pipes,
         null,
-        ['PHP_CLI_SERVER_WORKERS' => '8', 'PATH' => getenv('PATH')],
+        $env + ['PHP_CLI_SERVER_WORKERS' => '8', 'PATH' => getenv('PATH')],
     );
     // Refused connections are expected until the server is up; keep them from
     // reaching the test runner's error handler (which sees past @)

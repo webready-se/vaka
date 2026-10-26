@@ -18,7 +18,7 @@ Know when a site goes down, hear about it once, and see what got worse since yes
 
 - **Uptime and response time**, with an optional keyword that must be on the page. Down after two failures in a row, so one hiccup does not wake anyone.
 - **SSL certificates**: a warning at 14, 7 and 1 days before they expire, and when they turn invalid.
-- **Domain expiry** through RDAP, the registries' own structured data.
+- **Domain expiry** through RDAP, the registries' own structured data, and the .se and .nu registry's WHOIS.
 - **Exposed files** like `.env`, `.git/HEAD`, database dumps and backup zips, matched on their content so a site that answers 200 for everything does not cry wolf.
 - **Security headers** graded A to F.
 - **Mail DNS**: MX, SPF and DMARC.

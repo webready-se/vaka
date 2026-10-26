@@ -20,6 +20,16 @@ Every https site's certificate is checked every six hours, the way a browser see
 
 A site that does not answer at all is not checked for its certificate (the uptime alert covers it); a site that is down because of its certificate is, since that is what explains it. For certificates from an internal authority, point `SSL_CA_FILE` at a CA bundle that includes it.
 
+## Domains
+
+Every site's domain is looked up once a day (see [Checks](checks.md#domain-expiry)):
+
+- **Expiring**: an alert at 30, 14, 7 and 1 days before the registration runs out (`DOMAIN_ALERT_DAYS`), each once per registration period. Sites that share a domain get one alert.
+- **Expired**: right away. When the registry takes a domain down, the site and its email stop working.
+- **Renewed**: after a warning, once the new date shows up.
+
+If your registrar renews on the expiry day, every renewal passes the thresholds and alerts. Use fewer days then, such as `DOMAIN_ALERT_DAYS=7,1`.
+
 ## Exposed files
 
 Every site is checked once a day for files that should never be public (see [Checks](checks.md#exposed-files)):
@@ -143,7 +153,7 @@ Every message is a `POST` with `Content-Type: application/json`. The fields are 
 
 | Field | Meaning |
 |-------|---------|
-| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `headers_worse` (a security header was removed or weakened), `digest` or `test` |
+| `kind` | `down`, `up`, `unstable`, `stable`, `still_down` (after a snooze), `ssl_expiring`, `ssl_invalid`, `ssl_fixed`, `ssl_renewed`, `domain_expiring`, `domain_expired`, `domain_renewed`, `exposed` (a file with secrets, code or data is public), `exposed_minor` (a file that tells versions and paths), `exposed_fixed`, `headers_worse` (a security header was removed or weakened), `digest` or `test` |
 | `headline` | The alert in one sentence, as Slack and email show it |
 | `details` | Further lines: the sites and the reason |
 | `server` | The server's name or IP when sites were folded together, otherwise `null` |

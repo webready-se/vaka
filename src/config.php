@@ -47,6 +47,17 @@ function resolve_path(string $path, string $root): string
     return rtrim($root, '/') . '/' . $path;
 }
 
+/** "se=whois.iis.se,nu=whois.iis.nu" as key => value, keys lowercased. Pairs without both halves are dropped. */
+function pair_list(string $value): array
+{
+    $pairs = [];
+    foreach (explode(',', $value) as $part) {
+        [$key, $val] = array_map('trim', explode('=', $part, 2)) + [1 => ''];
+        if ($key !== '' && $val !== '') $pairs[strtolower($key)] = $val;
+    }
+    return $pairs;
+}
+
 /** "14,7,1" as unique integers, largest first. Anything that is not a number is dropped. */
 function int_list(string $value): array
 {

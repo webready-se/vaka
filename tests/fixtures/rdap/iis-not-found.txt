@@ -1,0 +1,4 @@
+# Copyright (c) 1997- The Swedish Internet Foundation.
+# All rights reserved.
+
+domain "nothing.example.se" not found.

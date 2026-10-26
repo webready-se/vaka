@@ -181,7 +181,7 @@ async function main() {
     // Needs your attention: one compact row each, outages first, the quiet ones folded away last
     const rows = all('.attention > .incidents > .incident');
     const summary = (row) => row?.querySelector('summary')?.textContent || '';
-    expect(rows.length === 6, `six rows need attention (got ${rows.length})`);
+    expect(rows.length === 7, `seven rows need attention (got ${rows.length})`);
     expect(/shop\.example\s*is down/.test(summary(rows[0])), 'an outage comes first');
     expect(/The site answered 503/.test(summary(rows[0])), 'the row says why in one line');
     expect(/The site itself answers with an error/.test(rows[0]?.textContent || ''), 'the advice is inside the row');
@@ -189,7 +189,10 @@ async function main() {
     expect(/cafe\.example\s*2 private files are public/.test(summary(rows[3])) && /\.env, \.git\//.test(summary(rows[3])), 'public files come after them, and say which');
     expect(/the environment file/.test(rows[3]?.textContent || '') && /change every password and key/.test(rows[3]?.textContent || ''), 'the row says what each file holds and what to do');
     expect(/booking\.example\s*certificate expires in 6 days/.test(summary(rows[4])), 'an expiring certificate comes after what is broken now');
-    expect(/1 site is down, snoozed/.test(summary(rows[5])) && /deals2\.example/.test(rows[5].textContent), 'snoozed outages are folded into one row at the end');
+    expect(/docs\.example\s*domain expires in 12 days/.test(summary(rows[5])), 'a domain that runs out soon comes with the other warnings');
+    expect(/Renew it with the registrar/.test(rows[5]?.textContent || ''), 'the domain row says what to do');
+    expect(/1 site is down, snoozed/.test(summary(rows[6])) && /deals2\.example/.test(rows[6].textContent), 'snoozed outages are folded into one row at the end');
+    expect(/1\s*Domains/.test(q('.watch-stats')?.textContent || ''), 'the watch counts the domains to renew');
     expect(/2\s*Exposed files/.test(q('.watch-stats')?.textContent || ''), 'the watch counts the exposed files');
     expect(!q('.attention details[open]'), 'with two outages, every row starts closed');
     expect(rows.every((row) => row.getBoundingClientRect().height < 90), 'closed rows are compact');

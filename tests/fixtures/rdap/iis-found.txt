@@ -1,0 +1,14 @@
+# Copyright (c) 1997- The Swedish Internet Foundation.
+# All rights reserved.
+
+state:            active
+domain:           example.se
+holder:           (hidden)
+created:          2005-09-13
+modified:         2025-08-14
+expires:          2031-09-13
+transferred:      2018-06-01
+nserver:          ns1.example.se
+dnssec:           signed delegation
+status:           ok
+registrar:        Example Registrar AB
