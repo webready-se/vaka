@@ -1,5 +1,10 @@
 <?php
 
+test('display_url shows an international domain the way it is written', function () {
+    expect(display_url('https://xn--rksmrgs-5wao1o.example/shop'))->toBe('räksmörgås.example/shop')
+        ->and(display_url('https://shop.example/xn--path'))->toBe('shop.example/xn--path');
+})->skip(!function_exists('idn_to_utf8'), 'needs the intl extension');
+
 test('normalize_url adds https when the scheme is missing', function () {
     expect(normalize_url('shop.example'))->toBe('https://shop.example');
 });

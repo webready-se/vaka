@@ -284,7 +284,7 @@
     if (!data.last_run_at) {
       append(node, h('div', { class: 'banner', role: 'alert' }, [icon('pending'), h('span', {}, [
         h('strong', {}, 'Vaka has not checked anything yet. '),
-        'Run it every minute from cron: ', h('code', {}, '* * * * * php /path/to/vaka run')
+        data.setup ? ['Run it every minute from cron: ', h('code', {}, data.setup.cron)] : 'Whoever runs Vaka needs to start it from cron.'
       ])]));
     } else if (!data.run_ok) {
       append(node, h('div', { class: 'banner', role: 'alert' }, [icon('failing'), h('span', {}, [

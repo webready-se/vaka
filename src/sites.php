@@ -74,10 +74,16 @@ function site_host(string $url): string
     return str_starts_with($host, 'www.') ? substr($host, 4) : $host;
 }
 
-/** A URL without its scheme, as people say it. */
+/** A URL without its scheme, as people say it: an international domain as it is written (with intl), not as xn--. */
 function display_url(string $url): string
 {
-    return preg_replace('#^https?://#', '', $url);
+    $shown = preg_replace('#^https?://#', '', $url);
+    $host = (string) parse_url($url, PHP_URL_HOST);
+    if (str_contains($host, 'xn--') && function_exists('idn_to_utf8')) {
+        $written = idn_to_utf8($host, IDNA_DEFAULT, INTL_IDNA_VARIANT_UTS46);
+        if ($written !== false && str_starts_with($shown, $host)) $shown = $written . substr($shown, strlen($host));
+    }
+    return $shown;
 }
 
 /** Number of characters (not bytes) in a UTF-8 string, without needing mbstring. */
