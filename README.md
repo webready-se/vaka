@@ -63,7 +63,9 @@ Run Vaka on a different server than the sites it watches: if that server goes do
 - **Domain expiry** through RDAP, the registries' own structured data, and WHOIS for .se and .nu.
 - **Exposed files** like `.env`, `.git/`, database dumps and backup zips, matched on their content, so a site that answers 200 for everything does not cry wolf.
 - **Security headers** graded A to F, with what each one does and the line to add.
-- **Coming next:** mail DNS (MX, SPF and DMARC), and a read API for your own tools and AI assistants.
+- **Coming next:** mail DNS (MX, SPF and DMARC).
+
+Everything is also in a [read API](docs/api.md), as JSON or CSV, with a read-only token per site or group: for your own reports, for a customer, or for the AI assistant in a site's own project.
 
 Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other CDNs are recognised and alerted on their own, since they share the CDN's addresses with unrelated sites.
 
@@ -116,6 +118,7 @@ Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other C
 - [Configuration](docs/configuration.md): every `.env` setting and every CLI command
 - [Checks](docs/checks.md): what each check looks at and when it runs
 - [Alerts](docs/alerts.md): when alerts go out, where they go, policies, maintenance, snooze, and the JSON webhook's fields
+- [Read API](docs/api.md): JSON and CSV with a read token, also for [your AI assistant](docs/api.md#use-it-from-an-ai-assistant)
 - [Changelog](CHANGELOG.md) and [roadmap](ROADMAP.md)
 
 ## License

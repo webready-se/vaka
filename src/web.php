@@ -58,6 +58,13 @@ function handle_request(array $config): never
 
     if ($path !== '/' && $path !== '/index.php') respond(404, 'Not found', 'text/plain; charset=utf-8');
     if (isset($_GET['health'])) health($config, $now);
+    // The read API with a token needs no session (and sets no cookie)
+    $readApi = ($_GET['api'] ?? null) === '';
+    if ($readApi && ($token = share_token_from_request($_GET, $_SERVER)) !== '') {
+        $found = find_share_token(get_db($config['db_path']), $token, $now);
+        if (!$found) respond_json(404, ['error' => 'No such read token: it may have been revoked or have expired']);
+        read_api($config, share_scope($found), $method, $now);
+    }
 
     start_session($config);
     if (isset($_GET['login'])) {
@@ -70,7 +77,8 @@ function handle_request(array $config): never
 
     $user = current_user($config);
     if (isset($_GET['api'])) {
-        if (!$user) respond_json(401, ['error' => 'Log in first']);
+        if (!$user) respond_json(401, ['error' => $readApi ? 'Send a read token: ?api&share=TOKEN, or the header Authorization: Bearer TOKEN' : 'Log in first']);
+        if ($readApi) read_api($config, ['type' => 'user', 'name' => $user['name'], 'where' => group_filter(user_group_ids(get_db($config['db_path']), $user))], $method, $now);
         handle_api($config, $user, (string) $_GET['api'], $method, $now);
     }
     if (!$user) redirect('/?login');
@@ -462,7 +470,6 @@ function api_site(PDO $db, array $config, array $row, int $now): array
     $events->execute([$row['id']]);
 
     $windows = load_windows($db, $now);
-    $mine = array_values(array_filter($windows, fn ($w) => $w['site_id'] === $row['id'] || ($w['group_id'] !== null && $w['group_id'] === $row['group_id'])));
     $site = site_summary($db, $config, $row, server_labels($db), $windows, $samples, $now);
     if ($site['headers'] !== null) $site['headers']['items'] = header_items(json_decode((string) $row['headers_details'], true) ?: []);
 
@@ -480,10 +487,152 @@ function api_site(PDO $db, array $config, array $row, int $now): array
         ],
         'samples' => $samples,
         'events' => $events->fetchAll(),
-        'maintenance' => array_map(fn ($w) => [
-            'when' => describe_window($w, $config['timezone']),
-            'label' => $w['label'],
-            'active' => window_active($w, $now, $config['timezone']),
-        ], $mine),
+        'maintenance' => site_maintenance($windows, $row, $config['timezone'], $now),
     ];
+}
+
+/** The maintenance windows that cover a site (its own and its group's), in words. */
+function site_maintenance(array $windows, array $row, string $timezone, int $now): array
+{
+    $mine = array_filter($windows, fn ($w) => $w['site_id'] === $row['id'] || ($w['group_id'] !== null && $w['group_id'] === $row['group_id']));
+    return array_values(array_map(fn ($w) => [
+        'when' => describe_window($w, $timezone),
+        'label' => $w['label'],
+        'active' => window_active($w, $now, $timezone),
+    ], $mine));
+}
+
+// =====================================================================
+// The read API (docs/api.md): stable field names for other tools
+// =====================================================================
+
+/** A read token from the Authorization header (kept out of URLs and logs), or from ?share=. */
+function share_token_from_request(array $get, array $server): string
+{
+    $header = (string) ($server['HTTP_AUTHORIZATION'] ?? $server['REDIRECT_HTTP_AUTHORIZATION'] ?? '');
+    if (preg_match('/^Bearer\s+(\S+)$/i', trim($header), $m)) return $m[1];
+    return is_string($get['share'] ?? null) ? $get['share'] : '';
+}
+
+/**
+ * Answer the read API for the sites in $scope (see share_scope()): every
+ * site, or one in detail with ?site=, as JSON, or CSV with &format=csv.
+ */
+function read_api(array $config, array $scope, string $method, int $now): never
+{
+    if ($method !== 'GET') respond_json(405, ['error' => 'The read API only answers GET']);
+    $db = get_db($config['db_path']);
+    $csv = ($_GET['format'] ?? '') === 'csv';
+    $lastRun = get_meta($db, 'last_run_at');
+    $about = [
+        'version' => VAKA_VERSION,
+        'generated_at' => utc_now($now),
+        'timezone' => $config['timezone'],
+        'scope' => ['type' => $scope['type'], 'name' => $scope['name']],
+        'last_run_at' => $lastRun,
+        'run_ok' => $lastRun !== null && $now - strtotime($lastRun) <= STALE_RUN_SECONDS,
+    ];
+
+    if (is_string($_GET['site'] ?? null)) {
+        $site = find_site($db, $_GET['site']);
+        $row = $site ? (overview_rows($db, 's.id = ' . (int) $site['id'] . ' AND ' . $scope['where'])[0] ?? null) : null;
+        if (!$row) respond_json(404, ['error' => 'No such site']);
+        $detail = read_api_site($db, $config, $row, max(1, min(720, (int) ($_GET['hours'] ?? 24))), $now);
+        if ($csv) respond_csv(['checked_at', 'status_code', 'ms', 'ok'], array_map(fn ($s) => [$s['checked_at'], $s['status_code'], $s['ms'], (int) $s['ok']], $detail['samples']));
+        respond_json(200, $about + $detail);
+    }
+
+    $labels = server_labels($db);
+    $windows = load_windows($db, $now);
+    $totals = ['sites' => 0, 'up' => 0, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0];
+    $sites = [];
+    foreach (overview_rows($db, $scope['where']) as $row) {
+        $site = api_site_fields($db, site_summary($db, $config, $row, $labels, $windows, [], $now), $row, $now);
+        $totals['sites']++;
+        $totals[$site['status']]++;
+        $sites[] = $site;
+    }
+    if ($csv) {
+        respond_csv(
+            ['url', 'group', 'status', 'since', 'response_ms', 'uptime_24h', 'uptime_7d', 'uptime_30d', 'ssl_days_left', 'domain_days_left', 'headers_grade', 'exposed'],
+            array_map(fn ($s) => [
+                $s['url'], $s['group'], $s['status'], $s['since'], $s['response_ms'], $s['uptime']['24h'], $s['uptime']['7d'], $s['uptime']['30d'],
+                $s['ssl']['days_left'] ?? null, $s['domain']['days_left'] ?? null, $s['headers']['grade'] ?? null, $s['exposed']['status'] ?? null,
+            ], $sites),
+        );
+    }
+    respond_json(200, $about + ['totals' => $totals, 'sites' => $sites]);
+}
+
+/** A site in the read API's field names, which stay the same between versions (docs/api.md). */
+function api_site_fields(PDO $db, array $summary, array $row, int $now): array
+{
+    return [
+        'url' => $summary['url'],
+        'label' => $summary['label'],
+        'name' => $summary['name'],
+        'group' => $summary['group'],
+        'status' => $summary['status'],
+        'summary' => $summary['summary'],
+        'advice' => $summary['advice'],
+        'since' => $summary['since'],
+        'checked_at' => $summary['checked_at'],
+        'response_ms' => $summary['ms'],
+        'server' => $summary['server'],
+        'cdn' => $summary['cdn'],
+        'snoozed_until' => $summary['snoozed_until'],
+        'maintenance' => $summary['maintenance'],
+        'unstable' => $summary['unstable'],
+        'uptime' => ['24h' => $summary['uptime_24h'], '7d' => site_uptime($db, $row, 7 * 86400, $now), '30d' => $summary['uptime_30d']],
+        'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'advice']),
+        'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'days_left', 'expires', 'registrar', 'advice']),
+        'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice']),
+        'headers' => api_pick($summary['headers'], ['status', 'grade', 'summary']),
+    ];
+}
+
+/** Only $keys of $values, in that order; null stays null. */
+function api_pick(?array $values, array $keys): ?array
+{
+    if ($values === null) return null;
+    $picked = [];
+    foreach ($keys as $key) $picked[$key] = $values[$key] ?? null;
+    return $picked;
+}
+
+/** One site in detail: its settings, 30 days, the response times of the last $hours, and the history of every check. */
+function read_api_site(PDO $db, array $config, array $row, int $hours, int $now): array
+{
+    $windows = load_windows($db, $now);
+    $site = api_site_fields($db, site_summary($db, $config, $row, server_labels($db), $windows, [], $now), $row, $now) + [
+        'keyword' => $row['keyword'],
+        'interval_minutes' => site_interval($row, $config),
+        'created_at' => $row['created_at'],
+    ];
+    if ($site['headers'] !== null) {
+        $site['headers']['items'] = array_map(fn ($item) => api_pick($item, ['key', 'label', 'level', 'note', 'what', 'fix', 'tip']), header_items(json_decode((string) $row['headers_details'], true) ?: []));
+    }
+    $samples = $db->prepare('SELECT checked_at, status_code, ms, ok FROM samples WHERE site_id = ? AND checked_at >= ? ORDER BY checked_at');
+    $samples->execute([$row['id'], utc_now($now - $hours * 3600)]);
+    $events = $db->prepare('SELECT check_name, status, previous, message, silenced_by, created_at FROM events WHERE site_id = ? ORDER BY created_at DESC, id DESC LIMIT 100');
+    $events->execute([$row['id']]);
+
+    return [
+        'site' => $site,
+        'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
+        'samples' => array_map(fn ($s) => ['checked_at' => $s['checked_at'], 'status_code' => (int) $s['status_code'], 'ms' => (int) $s['ms'], 'ok' => (bool) $s['ok']], $samples->fetchAll()),
+        'events' => array_map(fn ($e) => ['check' => $e['check_name']] + array_diff_key($e, ['check_name' => true]), $events->fetchAll()),
+        'maintenance' => site_maintenance($windows, $row, $config['timezone'], $now),
+    ];
+}
+
+/** CSV for a spreadsheet; a cell that starts like a formula is quoted, so it stays text. */
+function respond_csv(array $header, array $rows): never
+{
+    $out = fopen('php://temp', 'r+');
+    foreach ([$header, ...$rows] as $row) {
+        fputcsv($out, array_map(fn ($cell) => is_string($cell) && preg_match('/^[=+\-@\t\r]/', $cell) ? "'{$cell}" : $cell, $row), ',', '"', '', "\n");
+    }
+    rewind($out);
+    respond(200, (string) stream_get_contents($out), 'text/csv; charset=utf-8', ['Cache-Control' => 'no-store']);
 }

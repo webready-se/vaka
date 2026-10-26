@@ -1,15 +1,15 @@
 <?php
 
-/** The group or site a maintenance window is for (a group name wins): [site_id, group_id, words]. */
-function maintenance_target(PDO $db, string $target): array
+/** The group or site a command is for (a group name wins): [site_id, group_id, words]. */
+function group_or_site(PDO $db, string $target): array
 {
     if ($group = find_group($db, $target)) return [null, $group['id'], "group {$group['name']}"];
     if ($site = find_site($db, $target)) return [$site['id'], null, display_url($site['url'])];
     fail("No group or site matches \"{$target}\". See `php vaka group:list` and `php vaka site:list`.");
 }
 
-/** A group or a site to give a maintenance window, picked from a list: groups first. Returns its name as maintenance_target() takes it. */
-function pick_maintenance_target(PDO $db): string
+/** A group or a site, picked from a list: groups first. Returns its name as group_or_site() takes it. */
+function pick_group_or_site(PDO $db): string
 {
     $options = [];
     foreach (list_groups($db) as $group) {
@@ -47,7 +47,7 @@ function cmd_maintenance_add(array $config, array $args, array $opts): void
 {
     allow_options($opts, ['at', 'days', 'from', 'to', 'label']);
     $db = get_db($config['db_path']);
-    [$siteId, $groupId, $name] = maintenance_target($db, $args[1] ?? pick_maintenance_target($db));
+    [$siteId, $groupId, $name] = group_or_site($db, $args[1] ?? pick_group_or_site($db));
     if (!$opts) $opts = ask_window();
 
     try {

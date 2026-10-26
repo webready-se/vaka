@@ -65,8 +65,8 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [x] Certificates in the dashboard (attention list, rows, detail) and in `check` and `status`
 - [x] Docs: install (Forge, shared hosting cron; never on the same server as the sites it watches), configuration, checks, alerts (honest about `mail()` needing an MTA)
 - [x] Run in production next to the previous monitor, then switch over (switched over 2026-10-26, the day Vaka went live)
-- [ ] Read API right after go-live, named like Puls: `share:create <site|group> [--label=...] [--expires=YYYY-MM-DD]`, `share:list`, `share:revoke`; read with `GET /?api&share=TOKEN` (JSON, CSV where it helps). Read-only, scoped to one site or group, stored hashed, optional expiry. Returns status per check, incidents and response-time history
-- [ ] `docs/api.md`: stable field names with a field reference, fields that hold text from the sites marked as untrusted data, and a "Use it from an AI assistant" section (token in the site project's gitignored .env, never in CLAUDE.md; a CLAUDE.md snippet with the curl call)
+- [x] Read API right after go-live, named like Puls: `share:create <site|group> [--label=...] [--expires=YYYY-MM-DD]`, `share:list`, `share:revoke`; read with `GET /?api&share=TOKEN` (JSON, CSV where it helps). Read-only, scoped to one site or group, stored hashed, optional expiry. Returns status per check, incidents and response-time history
+- [x] `docs/api.md`: stable field names with a field reference, fields that hold text from the sites marked as untrusted data, and a "Use it from an AI assistant" section (token in the site project's gitignored .env, never in CLAUDE.md; a CLAUDE.md snippet with the curl call)
 
 ## Design
 
