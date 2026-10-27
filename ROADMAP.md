@@ -95,7 +95,7 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 
 ## Milestone 5: Open source
 
-- [ ] Release zip with runtime files only, first tagged release (0.1.0)
+- [x] Release zip with runtime files only, first tagged release (0.1.0)
 - [x] README screenshots generated from the seeded demo database (`node scripts/readme-media.mjs`)
 - [ ] Make the repository public
 

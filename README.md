@@ -19,7 +19,7 @@ One cron line, no dependencies, and one alert when a whole server goes down.
   <img alt="The Vaka dashboard: a night-blue panel says one site is down, with the numbers that matter; below, what needs attention (an outage with advice and snooze buttons, a failing check, public files, an expiring certificate and domain), then every site with 30 days of uptime bars, response time, uptime and a security header grade" src="docs/screenshots/dashboard-light.png">
 </picture>
 
-> **Status:** Vaka watches Webready's own and our customers' sites in production. The first release (0.1.0, a zip with only the files that run) is on the [roadmap](ROADMAP.md); until then, install from a clone of this repository.
+> **Status:** Vaka watches Webready's own and our customers' sites in production. 0.1.0 is the first release: a zip with only the files that run.
 
 ## Get started
 
