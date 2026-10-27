@@ -23,10 +23,10 @@ One cron line, no dependencies, and one alert when a whole server goes down.
 
 ## Get started
 
-On a server with PHP 8.3 or newer and cron:
+On a server with PHP 8.3 or newer and cron, download the [latest release](https://github.com/webready-se/vaka/releases/latest), then:
 
 ```bash
-git clone https://github.com/webready-se/vaka.git && cd vaka
+unzip vaka-*.zip && cd vaka-*/
 php vaka user:add admin              # press Enter for a strong password
 php vaka site:add https://shop.example
 php vaka run                         # check now

@@ -17,14 +17,17 @@ Then let something outside watch Vaka itself (see [Watching Vaka](#watching-vaka
 
 ## Install
 
+Download the zip from the [latest release](https://github.com/webready-se/vaka/releases/latest): it holds only the files Vaka needs to run, and its docs. Unpack it on the server:
+
 ```bash
-git clone https://github.com/webready-se/vaka.git
-cd vaka
+unzip vaka-*.zip && cd vaka-*/
 cp .env.example .env          # optional: every setting has a default
 php vaka user:add admin       # a user for the dashboard (Enter makes a strong password)
 php vaka site:add https://shop.example
 php vaka run                  # check it once by hand
 ```
+
+Or `git clone https://github.com/webready-se/vaka.git` to follow `main` (it also has the tests and the demo scripts).
 
 `data/` (the database) and `users.json` are created on first use and stay out of git. Keep them outside the document root: only `public/` may be served.
 
@@ -111,9 +114,11 @@ Three things tell you when Vaka itself stops:
 
 ## Upgrading
 
-Replace the files (or pull and deploy), keep `data/`, `.env` and `users.json`. Database changes are applied on first use. Read the [changelog](../CHANGELOG.md) first.
+Read the [changelog](../CHANGELOG.md) first: it says when something needs your attention. Then copy the files from the new release over the old ones (or pull and deploy), and keep `data/`, `.env` and `users.json`. Database changes are applied on first use.
 
 ## Trying it without real sites
+
+From a clone of the repository (the demo script is not in the release zip):
 
 ```bash
 php scripts/seed-demo.php /tmp/vaka-demo.sqlite
