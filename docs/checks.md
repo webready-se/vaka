@@ -96,9 +96,11 @@ Every six hours, Vaka looks at the headers the site's page answers with and grad
 
 Each one is **in place**, **weak** or **missing**. Weak means it is there but lets through what it is meant to stop: HSTS for less than six months, a CSP that allows inline scripts (`'unsafe-inline'` without a nonce or hash), `eval` or scripts from anywhere, `frame-ancestors *`, or a Referrer-Policy of `unsafe-url` or `no-referrer-when-downgrade`. A `Content-Security-Policy-Report-Only` header blocks nothing, so it does not count.
 
+X-Content-Type-Options matters most on scripts and styles, and they are where it most often goes missing. So Vaka also reads the first stylesheet and the first script the page loads from its own host, and checks that they say `nosniff` too. When the page does and they do not, X-Content-Type-Options counts as weak, and the site detail names the files. The usual cause is a web server rule for those files that adds a header of its own, such as `Cache-Control`: in nginx, a `location` with its own `add_header` drops every `add_header` set for the whole server, for those files only. Only files that answer 200 count (a missing file can end up at the site's own error page), files on another host, such as a CDN, are left out, and frame protection and CSP are not asked of them, since they do nothing on a file.
+
 The grade counts what is in place: all six is A (B if one of them is weak), five B, four C, three D, two E, fewer F. The site detail lists each protection, why it is weak or missing, and the line that adds it. A site on plain http cannot have HSTS, so it gets a B at best.
 
-A low grade is shown, never alerted: many sites start at D or E, and that is something to improve, not an incident. What alerts is a protection that disappears or gets weaker, typically after a deploy or a change at the CDN; see [Alerts](alerts.md#security-headers). A change is looked at again 15 minutes later and only counts when that look agrees, so one odd answer does not alert. An error page is not graded.
+A low grade is shown, never alerted: many sites start at D or E, and that is something to improve, not an incident. What alerts is a protection that disappears or gets weaker, typically after a deploy or a change at the CDN, and `nosniff` disappearing from the scripts and styles, typically after a new cache rule; see [Alerts](alerts.md#security-headers). A change is looked at again 15 minutes later and only counts when that look agrees, so one odd answer does not alert. An error page is not graded.
 
 Vaka grades its own pages A over https.
 

@@ -125,3 +125,58 @@ test('Vaka grades its own pages: everything but HSTS over plain http, which only
         stop_site($web);
     }
 });
+
+test('the scripts and styles a page loads are checked for nosniff too', function () {
+    $fine = add_site($this->db, ['url' => 'http://127.0.0.1:8794/with-files']);
+    $cached = add_site($this->db, ['url' => 'http://127.0.0.1:8794/cached-files']);
+    ($this->headers)($this->now);
+
+    expect(($this->state)($fine)['summary'])->toBe('Grade B: 5 of 6 in place, missing HSTS')
+        ->and(json_decode(($this->state)($fine)['details'], true)['files'])->toBe(['checked' => ['/assets/site.css', '/assets/app.js'], 'missing' => []])
+        ->and(($this->state)($cached)['summary'])->toBe('Grade B: 5 of 6 in place, missing HSTS, X-Content-Type-Options is missing on scripts and styles')
+        ->and(json_decode(($this->state)($cached)['details'], true)['files'])->toBe(['checked' => ['/cached/site.css', '/cached/app.js'], 'missing' => ['/cached/site.css', '/cached/app.js']]);
+});
+
+test('nosniff leaving the scripts and styles alerts once, after a second look', function () {
+    $id = add_site($this->db, ['url' => 'http://127.0.0.1:8794/with-files']);
+    ($this->headers)($this->now);
+    process_alerts($this->db, $this->config, $this->now);
+
+    // A cache rule for the files, with a header of its own, drops nosniff from them
+    ($this->moveTo)($id, 'http://127.0.0.1:8794/cached-files');
+    $later = $this->now + 6 * 3600;
+    ($this->headers)($later);
+    process_alerts($this->db, $this->config, $later);
+    expect(($this->texts)())->toBe([]);
+
+    ($this->headers)($later + 15 * 60);
+    process_alerts($this->db, $this->config, $later + 15 * 60);
+    $texts = ($this->texts)();
+    expect($texts)->toHaveCount(1)
+        ->and($texts[0])->toContain('127.0.0.1:8794/cached-files: security headers got worse*')
+        ->and($texts[0])->toContain('> X-Content-Type-Options on scripts and styles was removed: /cached/site.css and /cached/app.js')
+        ->and($texts[0])->toContain('in nginx, a location with its own add_header');
+
+    $events = $this->db->query("SELECT message FROM events WHERE check_name = 'headers' ORDER BY id")->fetchAll(PDO::FETCH_COLUMN);
+    expect($events)->toBe(['First check: grade B: 5 of 6 in place, missing HSTS', 'X-Content-Type-Options removed from scripts and styles (grade still B)']);
+});
+
+test('first seeing scripts and styles without nosniff is recorded, not alerted', function () {
+    $id = add_site($this->db, ['url' => 'http://127.0.0.1:8794']);
+    ($this->headers)($this->now);
+    process_alerts($this->db, $this->config, $this->now);
+
+    ($this->moveTo)($id, 'http://127.0.0.1:8794/cached-files');
+    $later = $this->now + 6 * 3600;
+    ($this->headers)($later);
+    ($this->headers)($later + 15 * 60);
+    process_alerts($this->db, $this->config, $later + 15 * 60);
+
+    expect(($this->texts)())->toBe([])
+        ->and($this->db->query("SELECT message FROM events WHERE check_name = 'headers' ORDER BY id DESC")->fetchColumn())->toBe('X-Content-Type-Options not on scripts and styles (grade still B)');
+});
+
+test('php vaka check looks at the scripts and styles too', function () {
+    $r = vaka(['check', 'http://127.0.0.1:8794/cached-files'], cli_env());
+    expect($r['out'])->toContain('Security headers: grade B: 5 of 6 in place, missing HSTS, X-Content-Type-Options is missing on scripts and styles', $r['out'] . $r['err']);
+});
