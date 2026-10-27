@@ -222,3 +222,16 @@ function next_uptime_slot(int $siteId, int $intervalMinutes, int $now): int
     $next += ((($siteId % $interval) - $next) % $interval + $interval) % $interval;
     return $next * 60;
 }
+
+/**
+ * Whether a failure could be the whole server's, so the other sites on it
+ * are checked in the same run (and a server that is down is one alert).
+ * Not when the domain does not resolve (no server was asked) or the page
+ * answered without its keyword (the server answered); anything else may be
+ * the server's: no answer, refused, a broken gateway, a firewall that
+ * blocks Vaka, the same certificate trouble on every site.
+ */
+function server_failure(array $result): bool
+{
+    return !in_array($result['problem'], ['dns', 'keyword'], true);
+}
