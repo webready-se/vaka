@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.1.0] - 2026-10-27
+
 ### Added
 
 - Configuration from an optional `.env` file, with OS environment variables taking precedence. On a Forge zero-downtime deploy it is read from the site root, where Forge keeps it.
@@ -56,3 +58,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - A visual identity and a redesign. The mark is a watching owl on a Webready-teal tile; the browser tab turns to an alarmed owl with a count while a site is down. The dashboard opens with a night-blue panel that says how everything is ("All quiet." or "2 sites are down"), with the numbers that matter. What needs attention is one compact row per problem (what, why, and for how long) that opens for the advice and the actions, with snoozed outages folded into one row at the end and a lone outage opened by itself; every site shows its last 30 days as bars, and the site detail opens as a drawer with uptime, response times, history and settings. Figtree is self-hosted (no CDN), `/` jumps to the filter, and it all works on a phone. See `docs/brand.md`.
 - `scripts/seed-demo.php` builds a demo database with fake sites; `scripts/smoke.mjs` drives the dashboard in headless Chrome and fails on JavaScript errors, CSP violations and markup from the data.
 - Every release comes as a zip with only the files Vaka needs to run, and its docs: download, unpack, run.
+
+[Unreleased]: https://github.com/webready-se/vaka/compare/v0.1.0...HEAD
+[0.1.0]: https://github.com/webready-se/vaka/releases/tag/v0.1.0
