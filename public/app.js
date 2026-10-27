@@ -824,6 +824,7 @@
       ['Exposed files', site.exposed ? site.exposed.summary : 'Not checked yet']
     ];
     if (site.keyword) settings.splice(2, 0, ['Looks for the text', '"' + site.keyword + '"']);
+    if (site.name) settings.unshift(['Name', site.name]);
     var editable = Boolean(state.data.setup);
     d.maintenance.forEach(function (w) {
       var text = w.when + (w.label ? ' (' + w.label + ')' : '') + (w.for === 'group' ? ', for the group' : '') + (w.active ? ', now' : '');
@@ -833,7 +834,8 @@
     append(node, h('div', { class: 'drawer-inner is-' + kind }, [
       h('div', { class: 'drawer-head' }, [
         h('div', { class: 'medallion' }, icon(kind === 'quiet' ? 'quiet' : site.status)),
-        h('div', {}, [h('h2', { id: 'detail-title' }, site.label), h('p', {}, since)]),
+        // The address leads, the name goes with it, as in the site list
+        h('div', {}, [h('h2', { id: 'detail-title' }, site.label), h('p', {}, site.name ? site.name + ' · ' + since : since)]),
         h('button', { type: 'button', class: 'close-button', 'data-action': 'close', 'aria-label': 'Close' }, icon('close'))
       ]),
       site.summary ? h('p', { class: 'incident-summary' }, site.summary) : null,
@@ -1016,18 +1018,20 @@
     form.values = body;
     if (form.id) body = Object.assign({ id: form.id }, body);
     var submit = formNode.querySelector('[type="submit"]');
-    submit.disabled = true;
+    var done = busy(submit, form.id ? 'Saving…' : 'Adding…');
     return api('/?api=site-save', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify(body)
     }).then(function (result) {
-      toast(form.id ? (result.changes.length ? 'Saved ' + result.site.label : 'Nothing changed') : 'Added ' + result.site.label + ': the first check runs within a minute');
+      toast(form.id ? (result.changes.length ? 'Saved ' + siteTitle(result.site) : 'Nothing changed') : 'Added ' + siteTitle(result.site) + ': the first check runs within a minute');
       state.form = null;
-      return load().then(function () { return openDetail(result.site.id); });
+      // The site first, the list alongside: the detail need not wait for the whole overview
+      load();
+      return openDetail(result.site.id);
     }).catch(function (error) {
       if (error.message === 'Logged out') return;
-      submit.disabled = false;
+      done();
       if (!error.body || !error.body.errors) return toast(error.message);
       form.errors = error.body.errors;
       renderSiteForm();
@@ -1192,7 +1196,7 @@
     form.values = body;
     if (form.id) body = Object.assign({ id: form.id }, body);
     var submit = formNode.querySelector('[type="submit"]');
-    submit.disabled = true;
+    var done = busy(submit, form.id ? 'Saving…' : 'Adding…');
     return api('/?api=group-save', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
@@ -1203,7 +1207,7 @@
       return load();
     }).catch(function (error) {
       if (error.message === 'Logged out') return;
-      submit.disabled = false;
+      done();
       if (!error.body || !error.body.errors) return toast(error.message);
       form.errors = error.body.errors;
       renderGroupForm();
@@ -1624,6 +1628,22 @@
   // =================================================================
   // Actions
   // =================================================================
+
+  /** A site by its name and address when it has a name ("Shop (shop.example)"), else by its address. */
+  function siteTitle(site) {
+    return site.name ? site.name + ' (' + site.label + ')' : site.label;
+  }
+
+  /** A button that says what it is doing until the answer comes; returns how to put it back. */
+  function busy(button, text) {
+    var idle = button.textContent;
+    button.disabled = true;
+    button.textContent = text;
+    return function () {
+      button.disabled = false;
+      button.textContent = idle;
+    };
+  }
 
   function toast(message) {
     var node = regions.toast;
