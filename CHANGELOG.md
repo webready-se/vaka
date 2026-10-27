@@ -16,6 +16,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - A site's name shows in its detail, under the address and in the settings, and the message after adding or saving a site names it ("Added Shop (shop.example)"). The button says "Adding…" or "Saving…" while a site or group is saved, and a new site's detail opens without waiting for the whole overview to reload.
 
+### Fixed
+
+- Logged out of the dashboard now and then, about once an hour: the hourly new session id deleted the old session at once, so a request already on its way with the old id (the dashboard often sends two at once) found no session, and its new, empty session's cookie replaced the good one. The old id now leads to the new one for a minute, and counts for nothing after that.
+- Session files nobody uses any more are removed by the daily clean-up: PHP's own is off on many servers (Debian and Ubuntu leave it to a cron job that only knows PHP's default directory), so `data/sessions/` only grew.
+
 ## [0.1.0] - 2026-10-27
 
 ### Added

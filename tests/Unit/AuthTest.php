@@ -94,6 +94,18 @@ test('cleanup trims the login log after 30 days', function () {
     expect((int) $db->query('SELECT COUNT(*) FROM audit_log')->fetchColumn())->toBe(1);
 });
 
+test('cleanup removes session files older than a session lasts, which many servers never do', function () {
+    $dir = temp_dir();
+    $db = get_db("{$dir}/vaka.sqlite");
+    $now = strtotime('2026-10-25T12:00:00Z');
+    mkdir("{$dir}/sessions");
+    touch("{$dir}/sessions/sess_old", $now - 31 * 86400);
+    touch("{$dir}/sessions/sess_fresh", $now - 3600);
+    cleanup($db, test_config(['db_path' => "{$dir}/vaka.sqlite", 'session_lifetime' => 30 * 86400]), $now);
+    expect(file_exists("{$dir}/sessions/sess_old"))->toBeFalse()
+        ->and(file_exists("{$dir}/sessions/sess_fresh"))->toBeTrue();
+});
+
 // =====================================================================
 // Uptime percentage, weighted by time
 // =====================================================================
