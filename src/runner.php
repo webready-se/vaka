@@ -137,9 +137,9 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array $win
             : ['status' => $site['state_status'], 'fail_count' => $site['state_fail_count'], 'changed_at' => $site['state_changed_at'], 'details' => json_decode($site['state_details'], true) ?: []];
         $next = next_uptime_state($state, $result, $config['down_after_failures'], $checkedAt);
 
-        // A failing site is checked again on the next run, a healthy one after its interval
-        $wait = $next['state']['fail_count'] > 0 ? 60 : site_interval($site, $config) * 60;
-        save_check_state($db, $site['id'], 'uptime', $next['state'], $checkedAt, utc_now($now + $wait));
+        // A failing site is checked again on the next run, a healthy one in its own minute of its interval
+        $nextAt = $next['state']['fail_count'] > 0 ? $now + 60 : next_uptime_slot($site['id'], site_interval($site, $config), $now);
+        save_check_state($db, $site['id'], 'uptime', $next['state'], $checkedAt, utc_now($nextAt));
         // A recovery ends a snooze
         if ($next['state']['status'] === 'ok' && $next['state']['fail_count'] === 0 && $site['snoozed_until'] !== null) {
             $db->prepare("UPDATE check_state SET snoozed_until = NULL WHERE site_id = ? AND check_name = 'uptime'")->execute([$site['id']]);

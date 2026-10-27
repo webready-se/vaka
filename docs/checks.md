@@ -13,6 +13,8 @@ Every 5 minutes (`UPTIME_INTERVAL`, or a site's own `--interval`), Vaka asks for
 
 A run from cron starts checking 15 seconds into the minute (`RUN_AT_SECOND`). Most servers start their own scheduled jobs at the top of every minute, and for a few seconds they answer several times slower than at any other moment: measured then, response times would show that burst, not what visitors get.
 
+Each site has a minute of its own within its interval, so the checks are spread over it: with 50 sites every 5 minutes, about ten are asked each minute instead of all fifty at once. Asking them together hit a server with all its sites at the same moment, and made those minutes' response times look slower than the sites are.
+
 Every check stores the response time and the IP address the site answered on, kept for `SAMPLES_RETENTION_DAYS`. Uptime percentages are weighted by time: a site that was down for 14 minutes in a day was up 99.02% of it, however often it was checked meanwhile.
 
 What a failure means, and what the dashboard suggests:

@@ -207,3 +207,18 @@ function human_duration(int $seconds): string
     $days = intdiv($hours, 24);
     return plural($days, 'day', 'days') . ($hours % 24 ? ' ' . ($hours % 24) . ' h' : '');
 }
+
+/**
+ * When a healthy site is checked next: at the start of its own minute of the
+ * interval (its id modulo the interval in minutes), at most one interval
+ * away. Sites added together used to come due in the same minute for good,
+ * so a busy minute asked every site at once: a server was hit with all its
+ * sites together, and their response times looked slower than they are.
+ */
+function next_uptime_slot(int $siteId, int $intervalMinutes, int $now): int
+{
+    $interval = max(1, $intervalMinutes);
+    $next = intdiv($now, 60) + 1;
+    $next += ((($siteId % $interval) - $next) % $interval + $interval) % $interval;
+    return $next * 60;
+}
