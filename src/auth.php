@@ -207,11 +207,51 @@ function start_session(array $config): void
     ]);
     session_start();
 
-    // A new session id every hour makes a stolen one short-lived
-    if (!empty($_SESSION['user']) && time() - ($_SESSION['rotated_at'] ?? 0) > 3600) {
-        session_regenerate_id(true);
-        $_SESSION['rotated_at'] = time();
+    // An id just replaced by the hourly new one (below) leads to it for a
+    // minute, for a request that was already on its way with it: two sent at
+    // once, or a slow network. Deleting the old session at once logged such a
+    // request out, and with strict mode its empty session's cookie then
+    // replaced the good one, so the whole browser was logged out.
+    if (isset($_SESSION['replaced_at'])) {
+        if (time() - (int) $_SESSION['replaced_at'] > SESSION_REPLACED_GRACE_SECONDS) {
+            // Too late: an old id still in use could be a stolen one
+            session_destroy();
+            session_id(session_create_id());
+            session_start();
+            return;
+        }
+        $next = (string) $_SESSION['replaced_by'];
+        session_write_close();
+        session_id($next);
+        // Strict mode: if the new session is gone (logged out since), this is an empty one
+        session_start();
+        return;
     }
+
+    // A new session id every hour makes a stolen one short-lived
+    if (!empty($_SESSION['user']) && time() - ($_SESSION['rotated_at'] ?? 0) > 3600) rotate_session();
+}
+
+/** How long a replaced session id still leads to the new one. */
+const SESSION_REPLACED_GRACE_SECONDS = 60;
+
+/**
+ * Move the session to a new id, keeping the old one for a minute as a
+ * pointer to it, without the user (as the PHP manual advises for
+ * session_regenerate_id() with requests in flight).
+ */
+function rotate_session(): void
+{
+    $data = $_SESSION;
+    $next = session_create_id();
+    $_SESSION = ['replaced_at' => time(), 'replaced_by' => $next];
+    session_write_close();
+    // The new id is our own, not one a visitor sent, so strict mode may accept it
+    ini_set('session.use_strict_mode', '0');
+    session_id($next);
+    session_start();
+    ini_set('session.use_strict_mode', '1');
+    $_SESSION = ['rotated_at' => time()] + $data;
 }
 
 function is_https(array $server): bool

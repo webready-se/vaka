@@ -97,6 +97,56 @@ test('logging in sets a strict session cookie and opens the dashboard', function
         ->and($page['body'])->toContain('<meta name="csrf-token" content="');
 });
 
+/** The session id in a cookie jar, and the session's file on the test server. */
+function session_cookie(string $jar): string
+{
+    foreach (file($jar, FILE_IGNORE_NEW_LINES) as $line) {
+        $fields = explode("\t", $line);
+        if (count($fields) === 7 && $fields[5] === 'vaka') return $fields[6];
+    }
+    return '';
+}
+
+function session_file(string $id): string
+{
+    return $GLOBALS['web_dir'] . "/sessions/sess_{$id}";
+}
+
+/** Log in and make the hourly new session id due; returns the jar and a copy of it that keeps the old id. */
+function due_for_new_id(Closure $login): array
+{
+    $jar = $login('admin', 'admin password')['jar'];
+    $old = session_cookie($jar);
+    file_put_contents(session_file($old), preg_replace('/rotated_at\|i:\d+;/', 'rotated_at|i:0;', file_get_contents(session_file($old))));
+    $stale = tempnam(sys_get_temp_dir(), 'vaka-jar-');
+    copy($jar, $stale);
+    return [$jar, $stale, $old];
+}
+
+test('a request still on the session id that was just replaced stays logged in, on the new id', function () {
+    [$jar, $stale, $old] = due_for_new_id($this->login);
+
+    // Two requests sent together: the first gets the new id, the second was already on its way with the old one
+    expect(http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['status'])->toBe(200);
+    $new = session_cookie($jar);
+    expect($new)->not->toBe($old)->and($new)->not->toBe('');
+
+    expect(http_request('GET', WEB . '/?api=overview', ['jar' => $stale])['status'])->toBe(200)
+        ->and(session_cookie($stale))->toBe($new)
+        ->and(http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['status'])->toBe(200);
+});
+
+test('a session id replaced more than a minute ago no longer logs in', function () {
+    [$jar, $stale, $old] = due_for_new_id($this->login);
+    http_request('GET', WEB . '/?api=overview', ['jar' => $jar]);
+
+    // A minute later the old id counts for nothing: one still in use could be a stolen one
+    file_put_contents(session_file($old), preg_replace('/replaced_at\|i:\d+;/', 'replaced_at|i:' . (time() - 120) . ';', file_get_contents(session_file($old))));
+    expect(http_request('GET', WEB . '/?api=overview', ['jar' => $stale])['status'])->toBe(401)
+        ->and(file_exists(session_file($old)))->toBeFalse()
+        ->and(http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['status'])->toBe(200);
+});
+
 test('a wrong password or a missing CSRF token does not log in', function () {
     $wrong = ($this->login)('admin', 'not the password');
     expect($wrong['response']['status'])->toBe(200)

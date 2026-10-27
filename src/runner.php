@@ -490,6 +490,12 @@ function cleanup(PDO $db, array $config, int $now): void
     if (get_meta($db, 'last_cleanup_on') === $today) return;
     $db->prepare('DELETE FROM samples WHERE checked_at < ?')->execute([utc_now($now - $config['samples_retention_days'] * 86400)]);
     $db->prepare('DELETE FROM audit_log WHERE created_at < ?')->execute([utc_now($now - 30 * 86400)]);
+    // Sessions no one has used for as long as one lasts: PHP's own clean-up is
+    // off on many servers (Debian and Ubuntu leave it to a cron job that only
+    // knows PHP's default directory), and a replaced id leaves a small file
+    foreach (glob(dirname($config['db_path']) . '/sessions/sess_*') ?: [] as $file) {
+        if (filemtime($file) < $now - $config['session_lifetime']) unlink($file);
+    }
     set_meta($db, 'last_cleanup_on', $today);
 }
 

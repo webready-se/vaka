@@ -235,7 +235,7 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 4. The slower work runs after, until `RUN_BUDGET_SECONDS` (40) since the run started: SSL handshakes one by one, then domain lookups one by one, then mail DNS one domain at a time, then security headers in parallel batches of 20 sites, then exposed files in batches of five. Whatever is left stays due for the next run. SSL skips sites that do not answer at all (uptime down by timeout, DNS, refused or connect), but not sites down because of their certificate; headers and exposed files skip every site that is down.
 5. Store results and new states; a change writes an event.
 6. Reconcile alerts, apply silences and policies, bundle per destination and server, send. Send the daily digest when it is due.
-7. Trim old samples and audit log rows (once a day), then store `last_run_at`.
+7. Trim old samples, audit log rows and unused session files (once a day), then store `last_run_at`.
 8. Ping `HEARTBEAT_URL` if set (short timeout; a failed ping never fails the run).
 
 Checks take their inputs as arguments (resolver functions, base URLs, clocks), so tests can feed fixtures instead of the network.
