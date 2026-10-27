@@ -7,7 +7,8 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | Setting | Default | What it does |
 |---------|---------|--------------|
 | `APP_URL` | (empty) | Vaka's own address, for links in alerts and the User-Agent |
-| `TIMEZONE` | `Europe/Stockholm` | Local time for the CLI, alerts, maintenance windows and the daily summary. Stored times are UTC |
+| `TIMEZONE` | the server's (php.ini, UTC on most servers) | Local time for the dashboard, the CLI, alerts, maintenance windows and the daily summary, such as `Europe/Stockholm`. Stored times are UTC. A name PHP does not know keeps the server's, and the dashboard and every command say so, with what was probably meant |
+| `TIME_FORMAT` | `24h` | Clock times as `24h` (14:05) or `12h` (2:05 PM), in the dashboard, the CLI and alerts. Times you type (maintenance windows, `DIGEST_TIME`) stay `HH:MM` |
 | `DB_PATH` | `data/vaka.sqlite` | The database. A relative path is relative to Vaka's folder (on Forge zero-downtime deploys, to the site's folder) |
 | `USERS_FILE` | `users.json` | Dashboard users and their password hashes |
 | `SESSION_LIFETIME` | `2592000` | Seconds a login lasts (30 days) |

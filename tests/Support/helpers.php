@@ -18,7 +18,8 @@ function temp_dir(): string
 function load_config(array $env = []): array
 {
     $code = 'echo json_encode(require $argv[1]);';
-    $env += ['VAKA_ENV_FILE' => '/dev/null', 'PATH' => getenv('PATH')];
+    // A zone that is not UTC, so a time read in the wrong zone shows
+    $env += ['VAKA_ENV_FILE' => '/dev/null', 'TIMEZONE' => 'Europe/Stockholm', 'PATH' => getenv('PATH')];
     $proc = proc_open([PHP_BINARY, '-r', $code, __DIR__ . '/../../config.php'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, $env);
     $out = stream_get_contents($pipes[1]);
     $err = stream_get_contents($pipes[2]);
@@ -122,6 +123,7 @@ function vaka(array $args, array $env = [], ?string $stdin = null, array $ini = 
     $dir ??= temp_dir();
     $env += [
         'VAKA_ENV_FILE' => '/dev/null',
+        'TIMEZONE' => 'Europe/Stockholm',
         'RUN_AT_SECOND' => '0',
         'DB_PATH' => $dir . '/vaka.sqlite',
         'USERS_FILE' => $dir . '/users.json',
@@ -175,7 +177,7 @@ function start_web(int $port, array $env): mixed
         [0 => ['file', '/dev/null', 'r'], 1 => ['file', '/dev/null', 'w'], 2 => ['file', '/dev/null', 'w']],
         $pipes,
         null,
-        $env + ['VAKA_ENV_FILE' => '/dev/null', 'PHP_CLI_SERVER_WORKERS' => '4', 'PATH' => getenv('PATH')],
+        $env + ['VAKA_ENV_FILE' => '/dev/null', 'TIMEZONE' => 'Europe/Stockholm', 'PHP_CLI_SERVER_WORKERS' => '4', 'PATH' => getenv('PATH')],
     );
     set_error_handler(fn () => true);
     try {

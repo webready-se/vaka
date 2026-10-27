@@ -17,6 +17,8 @@ require __DIR__ . '/src/commands/users.php';
 require __DIR__ . '/src/commands/share.php';
 $config = require __DIR__ . '/config.php';
 date_default_timezone_set($config['timezone']);
+// A wrong setting is told on every command, and never stops one
+foreach ($config['config_problems'] as $problem) fwrite(STDERR, "Warning: {$problem}\n");
 
 [$args, $opts] = parse_args(array_slice($argv, 1));
 $command = $args[0] ?? 'help';

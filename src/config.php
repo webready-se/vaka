@@ -107,3 +107,51 @@ function int_list(string $value): array
     rsort($ints);
     return $ints;
 }
+
+/**
+ * The time zone from TIMEZONE. Unset is the server's ($server, php.ini's),
+ * and so is a name PHP does not know, with a problem that says so and what
+ * was probably meant: a typo must never stop the checks.
+ *
+ * @return array{zone: string, problem: string}
+ */
+function timezone_setting(string $value, string $server): array
+{
+    $value = trim($value);
+    $zones = DateTimeZone::listIdentifiers(DateTimeZone::ALL_WITH_BC);
+    if ($value === '' || in_array($value, $zones, true)) return ['zone' => $value === '' ? $server : $value, 'problem' => ''];
+
+    $guess = null;
+    $best = 4;
+    foreach ($zones as $zone) {
+        $distance = levenshtein(strtolower($value), strtolower($zone));
+        if ($distance < $best) [$guess, $best] = [$zone, $distance];
+    }
+    return ['zone' => $server, 'problem' => "TIMEZONE \"{$value}\" is not a time zone, so Vaka uses the server's, {$server}. "
+        . ($guess !== null ? "Did you mean {$guess}?" : 'Use a name such as Europe/Stockholm.')];
+}
+
+/**
+ * The clock format from TIME_FORMAT: 24h (14:05, the default) or 12h
+ * (2:05 PM), the names clock settings usually have.
+ *
+ * @return array{format: string, problem: string}
+ */
+function time_format_setting(string $value): array
+{
+    $value = strtolower(trim($value));
+    if ($value === '' || $value === '24h' || $value === '12h') return ['format' => $value === '12h' ? '12h' : '24h', 'problem' => ''];
+    return ['format' => '24h', 'problem' => "TIME_FORMAT \"{$value}\" is neither 24h nor 12h, so Vaka uses 24h."];
+}
+
+/** A time of day in TIME_FORMAT: "14:05" or "2:05 PM". */
+function clock_text(DateTimeInterface $time, string $format): string
+{
+    return $time->format($format === '12h' ? 'g:i A' : 'H:i');
+}
+
+/** A stored "HH:MM" (a maintenance window's start or end) in TIME_FORMAT. */
+function hhmm_text(string $hhmm, string $format): string
+{
+    return clock_text(new DateTimeImmutable("2000-01-01 {$hhmm}"), $format);
+}

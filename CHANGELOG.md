@@ -11,15 +11,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - Security headers: the first stylesheet and the first script a page loads from the site's own server (its host, or a host under it such as `static.shop.example`) are checked for `X-Content-Type-Options: nosniff` too. When the page has it and they do not (typically a web server rule for those files with a header of its own, such as an nginx `location` with `add_header Cache-Control`), X-Content-Type-Options counts as weak, so an A becomes a B, and the site detail names the files and where the line goes. It alerts when `nosniff` disappears from them; the first check of the files is a starting point and never alerts. `php vaka check` shows it too.
 - The Nginx example in `docs/install.md` adds `nosniff` to the files Nginx serves itself, so Vaka still grades itself A.
+- `TIME_FORMAT=12h` shows clock times as 2:05 PM instead of 14:05 (24h stays the default), in the dashboard, the CLI and alerts, as in Puls.
+- The footer names Vaka's time zone when it shows another time than the reader's clock ("the last at 20:58, Stockholm time", or "UTC"), so an install still on its server's UTC gets noticed.
 
 ### Changed
 
 - A site's name shows in its detail, under the address and in the settings, and the message after adding or saving a site names it ("Added Shop (shop.example)"). The button says "Adding…" or "Saving…" while a site or group is saved, and a new site's detail opens without waiting for the whole overview to reload.
+- `TIMEZONE` unset now means the server's time zone (php.ini, UTC on most servers), as in Puls and Snoka; it used to be Europe/Stockholm. **Set `TIMEZONE=Europe/Stockholm` in `.env` to keep Swedish time**: maintenance windows and the daily summary follow it.
 
 ### Fixed
 
 - Logged out of the dashboard now and then, about once an hour: the hourly new session id deleted the old session at once, so a request already on its way with the old id (the dashboard often sends two at once) found no session, and its new, empty session's cookie replaced the good one. The old id now leads to the new one for a minute, and counts for nothing after that.
 - Session files nobody uses any more are removed by the daily clean-up: PHP's own is off on many servers (Debian and Ubuntu leave it to a cron job that only knows PHP's default directory), so `data/sessions/` only grew.
+- A `TIMEZONE` that PHP does not know (a typo such as `Europe/Stokholm`) stopped every run with an error, so nothing was checked. Vaka now keeps the server's zone, and the dashboard and every command say what is wrong and what was probably meant.
 
 ## [0.1.0] - 2026-10-27
 

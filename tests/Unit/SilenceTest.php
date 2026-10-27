@@ -79,6 +79,13 @@ test('describe_window says when, in plain words and local time', function () {
         ->toBe('once, 1 Nov 22:00 to 2 Nov 02:00');
 });
 
+test('describe_window tells the time in 12h when TIME_FORMAT says so', function () {
+    expect(describe_window(recurring('1,2,3,4,5,6,7', '00:00', '07:00'), 'Europe/Stockholm', '12h'))->toBe('every day 12:00 AM to 7:00 AM')
+        ->and(describe_window(recurring('1,2,3,4,5', '22:00', '02:00'), 'Europe/Stockholm', '12h'))->toBe('weekdays 10:00 PM to 2:00 AM')
+        ->and(describe_window(['days' => '', 'start_time' => null, 'end_time' => null, 'starts_at' => '2026-11-01T21:00:00Z', 'ends_at' => '2026-11-02T01:00:00Z'], 'Europe/Stockholm', '12h'))
+        ->toBe('once, 1 Nov 10:00 PM to 2 Nov 2:00 AM');
+});
+
 test('maintenance_fields builds a recurring window, every day unless told otherwise', function () {
     expect(maintenance_fields(['at' => '00:00-07:00', 'label' => 'Nightly imports'], 'Europe/Stockholm'))
         ->toBe(['label' => 'Nightly imports', 'days' => '1,2,3,4,5,6,7', 'start_time' => '00:00', 'end_time' => '07:00', 'starts_at' => null, 'ends_at' => null])

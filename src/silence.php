@@ -110,12 +110,12 @@ function window_active(array $window, int $now, string $timezone): bool
         || (in_array($yesterday, $days, true) && $time < $window['end_time']);
 }
 
-/** "every day 00:00-07:00", "weekdays 22:00-02:00", "once, 1 Nov 22:00 to 2 Nov 02:00" */
-function describe_window(array $window, string $timezone): string
+/** "every day 00:00-07:00", "weekdays 22:00-02:00", "once, 1 Nov 22:00 to 2 Nov 02:00" (12h: "every day 12:00 AM to 7:00 AM") */
+function describe_window(array $window, string $timezone, string $timeFormat = '24h'): string
 {
     if ($window['starts_at'] !== null) {
         $tz = new DateTimeZone($timezone);
-        $format = fn (string $utc) => (new DateTimeImmutable($utc))->setTimezone($tz)->format('j M H:i');
+        $format = fn (string $utc) => ($local = (new DateTimeImmutable($utc))->setTimezone($tz))->format('j M ') . clock_text($local, $timeFormat);
         return 'once, ' . $format($window['starts_at']) . ' to ' . $format($window['ends_at']);
     }
     $days = match ($window['days']) {
@@ -124,6 +124,7 @@ function describe_window(array $window, string $timezone): string
         '6,7' => 'weekends',
         default => implode(', ', array_map(fn ($day) => ucfirst(array_search((int) $day, WEEKDAYS, true)), explode(',', $window['days']))),
     };
+    if ($timeFormat === '12h') return "{$days} " . hhmm_text($window['start_time'], $timeFormat) . ' to ' . hhmm_text($window['end_time'], $timeFormat);
     return "{$days} {$window['start_time']}-{$window['end_time']}";
 }
 

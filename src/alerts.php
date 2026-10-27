@@ -766,10 +766,10 @@ function site_reasons(array $notices, string $list): array
  * The daily summary for a digest group: what is still down, then every
  * change since the last summary, in local time.
  */
-function digest_text(string $group, array $events, array $stillDown, string $timezone): array
+function digest_text(string $group, array $events, array $stillDown, string $timezone, string $timeFormat = '24h'): array
 {
     $tz = new DateTimeZone($timezone);
-    $time = fn (string $utc) => (new DateTimeImmutable($utc))->setTimezone($tz)->format('H:i');
+    $time = fn (string $utc) => clock_text((new DateTimeImmutable($utc))->setTimezone($tz), $timeFormat);
     $outages = count(array_filter($events, fn ($event) => $event['status'] === 'fail' && ($event['check_name'] ?? 'uptime') === 'uptime'));
 
     $parts = [$outages ? plural($outages, 'outage', 'outages') : 'no outages'];
@@ -812,7 +812,7 @@ function send_digests(PDO $db, array $config, int $now): array
         $down = sort_sites($down->fetchAll(), false);
         if (!$events && !$down) continue;
 
-        $item = ['kind' => 'digest', 'text' => digest_text($group['name'], $events, $down, $config['timezone']), 'sites' => []];
+        $item = ['kind' => 'digest', 'text' => digest_text($group['name'], $events, $down, $config['timezone'], $config['time_format']), 'sites' => []];
         foreach (alert_destinations($group, $config) as $destination) {
             $ok = deliver($destination, ['destination' => $destination, 'items' => [$item]], $config, $now);
             $results[] = ['destination' => describe_destination($destination), 'headlines' => [$item['text']['headline']], 'ok' => $ok];

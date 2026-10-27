@@ -557,10 +557,13 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
             'checks' => array_map(fn ($key, $label) => ['key' => $key, 'label' => $label], array_keys(CHECK_LABELS), CHECK_LABELS),
             'interval' => $config['uptime_interval'],
             'digest_time' => $config['digest_time'],
+            // A setting Vaka could not use (TIMEZONE, TIME_FORMAT), in words
+            'problems' => $config['config_problems'] ?? [],
         ] : null,
         'last_incident' => $lastIncident,
         'generated_at' => utc_now($now),
         'timezone' => $config['timezone'],
+        'time_format' => $config['time_format'] ?? '24h',
         'last_run_at' => $lastRun,
         'run_ok' => $lastRun !== null && $now - strtotime($lastRun) <= STALE_RUN_SECONDS,
         'totals' => $totals,
@@ -603,18 +606,18 @@ function api_site(PDO $db, array $config, array $row, int $now): array
         ],
         'samples' => $samples,
         'events' => $events->fetchAll(),
-        'maintenance' => site_maintenance($windows, $row, $config['timezone'], $now),
+        'maintenance' => site_maintenance($windows, $row, $config['timezone'], $now, $config['time_format']),
     ];
 }
 
 /** The maintenance windows that cover a site (its own and its group's), in words. */
-function site_maintenance(array $windows, array $row, string $timezone, int $now): array
+function site_maintenance(array $windows, array $row, string $timezone, int $now, string $timeFormat = '24h'): array
 {
     $mine = array_filter($windows, fn ($w) => $w['site_id'] === $row['id'] || ($w['group_id'] !== null && $w['group_id'] === $row['group_id']));
     return array_values(array_map(fn ($w) => [
         'id' => $w['id'],
         'for' => $w['group_id'] !== null ? 'group' : 'site',
-        'when' => describe_window($w, $timezone),
+        'when' => describe_window($w, $timezone, $timeFormat),
         'label' => $w['label'],
         'active' => window_active($w, $now, $timezone),
     ], $mine));
@@ -744,7 +747,7 @@ function read_api_site(PDO $db, array $config, array $row, int $hours, int $now)
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
         'samples' => array_map(fn ($s) => ['checked_at' => $s['checked_at'], 'status_code' => (int) $s['status_code'], 'ms' => (int) $s['ms'], 'ok' => (bool) $s['ok']], $samples->fetchAll()),
         'events' => array_map(fn ($e) => ['check' => $e['check_name']] + array_diff_key($e, ['check_name' => true]), $events->fetchAll()),
-        'maintenance' => site_maintenance($windows, $row, $config['timezone'], $now),
+        'maintenance' => site_maintenance($windows, $row, $config['timezone'], $now, $config['time_format']),
     ];
 }
 
