@@ -104,7 +104,7 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [x] Scan the whole git history (not only the last commit) for real names, domains, IPs and webhook URLs (done 2026-10-27: the history was rewritten with example names and moved to a new repository; the old one, with its PR texts, stays private and archived)
 - [ ] Turn on private vulnerability reporting (Settings > Security, or `gh api -X PUT repos/webready-se/vaka/private-vulnerability-reporting`): SECURITY.md links to `../../security/advisories/new`, which only works then
 - [ ] Upload `docs/screenshots/social-preview.png` as the social preview (Settings > General); GitHub accepts it only on a public repository
-- [ ] Vaka's own mark in the footer credit, linked to the repository, once it is public (design kit docs/layout.md); Snoka and Hamstra join when they are released
+- [x] Vaka's own mark in the footer credit, linked to the repository, once it is public (design kit docs/layout.md); Snoka and Hamstra join when they are released
 
 ## Ideas
 

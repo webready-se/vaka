@@ -9,8 +9,8 @@ test('the footer credit links Webready and the released tools only, each mark li
     $credit = footer_credit(['footer_credit' => true]);
     expect($credit)->toContain('Made by <a href="https://webready.se">Webready</a> in Sweden')
         ->and($credit)->toContain('<a href="https://github.com/webready-se/puls"><svg class="credit-mark" role="img" aria-label="Puls"')
-        ->and(substr_count($credit, 'class="credit-mark"'))->toBe(1)
-        ->and($credit)->not->toContain('aria-label="Vaka"')
+        ->and($credit)->toContain('<a href="https://github.com/webready-se/vaka"><svg class="credit-mark" role="img" aria-label="Vaka"')
+        ->and(substr_count($credit, 'class="credit-mark"'))->toBe(2)
         ->and($credit)->not->toContain('aria-label="Snoka"')
         ->and($credit)->not->toContain('aria-label="Hamstra"')
         ->and(footer_credit(['footer_credit' => false]))->toBe('');
