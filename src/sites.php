@@ -146,6 +146,35 @@ function display_domain(string $domain): string
     return display_url('https://' . $domain);
 }
 
+/**
+ * Whether a site's host is in DNS: true or false, or null when Vaka does not
+ * ask, for an IP address, localhost and the names kept for examples and
+ * tests (.example, .test, .localhost, example.com, .net, .org). .invalid
+ * never resolves (RFC 6761), so it is false without asking. Through the
+ * system's resolver first, so a name in /etc/hosts counts.
+ */
+function host_resolves(string $host, ?callable $lookup = null): ?bool
+{
+    $host = strtolower(rtrim(trim($host, '[]'), '.'));
+    if ($host === '' || $host === 'localhost' || filter_var($host, FILTER_VALIDATE_IP) !== false) return null;
+    $tld = substr((string) strrchr(".{$host}", '.'), 1);
+    if ($tld === 'invalid') return false;
+    if (in_array($tld, ['example', 'test', 'localhost'], true) || preg_match('/(^|\.)example\.(com|net|org)$/', $host)) return null;
+    $lookup ??= fn (string $name): bool => gethostbynamel($name) !== false || (bool) dns_lookup($name, DNS_AAAA);
+    return $lookup($host);
+}
+
+/** "shop.exampel does not resolve: ..." for an address whose host is not in DNS (a typo, most often), else null. */
+function unresolved_note(string $url, ?callable $lookup = null): ?string
+{
+    try {
+        $host = (string) parse_url(normalize_url($url), PHP_URL_HOST);
+    } catch (InvalidArgumentException) {
+        return null;
+    }
+    return host_resolves($host, $lookup) === false ? display_domain($host) . ' does not resolve: no DNS record says where it is.' : null;
+}
+
 /** Number of characters (not bytes) in a UTF-8 string, without needing mbstring. */
 function text_length(string $text): int
 {

@@ -1026,7 +1026,8 @@
         checks,
         paused,
         h('div', { class: 'actions' }, [
-          h('button', { type: 'submit', class: 'button is-primary' }, form.id ? 'Save changes' : 'Add site'),
+          // After "does not resolve": the same address again means it is meant
+          h('button', { type: 'submit', class: 'button is-primary' }, form.unresolvedUrl ? (form.id ? 'Save anyway' : 'Add anyway') : (form.id ? 'Save changes' : 'Add site')),
           h('button', { type: 'button', class: 'button', 'data-action': 'form-cancel' }, 'Cancel')
         ]),
         remove
@@ -1047,6 +1048,7 @@
     var form = state.form;
     var body = formValues(formNode);
     form.values = body;
+    if (form.unresolvedUrl && body.url === form.unresolvedUrl) body = Object.assign({ unresolved_ok: true }, body);
     if (form.id) body = Object.assign({ id: form.id }, body);
     var submit = formNode.querySelector('[type="submit"]');
     var done = busy(submit, form.id ? 'Saving…' : 'Adding…');
@@ -1065,6 +1067,7 @@
       done();
       if (!error.body || !error.body.errors) return toast(error.message);
       form.errors = error.body.errors;
+      form.unresolvedUrl = error.body.unresolved ? body.url : null;
       renderSiteForm();
       var invalid = regions.detail.querySelector('[aria-invalid="true"]');
       if (invalid) invalid.focus();
