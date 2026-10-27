@@ -355,7 +355,7 @@ function handle_api(array $config, array $user, string $endpoint, string $method
             respond_json(200, ['removed' => remove_site_form($db, (int) $id, $user['name'], client_ip($_SERVER, $config['trusted_proxies']), $now)]);
         }
         $saved = save_site_form($db, $config, $input, $id, $user['name'], $now);
-        if ($saved['errors']) respond_json(422, ['error' => reset($saved['errors']), 'errors' => $saved['errors']]);
+        if ($saved['errors']) respond_json(422, ['error' => reset($saved['errors']), 'errors' => $saved['errors'], 'unresolved' => $saved['unresolved'] ?? false]);
         $row = overview_rows($db, 's.id = ' . (int) $saved['id'])[0];
         respond_json(200, ['site' => site_summary($db, $config, $row, server_labels($db), load_windows($db, $now), [], $now), 'changes' => $saved['changes']]);
     }

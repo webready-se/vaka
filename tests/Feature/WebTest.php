@@ -372,6 +372,14 @@ test('a user who sees every site can add, change and remove a site, and each cha
     $id = $r['json']['site']['id'];
     expect($post('site-save', ['url' => 'https://shop.example/'])['json']['errors']['url'])->toBe('https://shop.example is already watched.');
 
+    // An address that is not in DNS waits for a yes: a typo is caught before it alerts
+    $typo = $post('site-save', ['url' => 'shop.invalid', 'checks' => CHECKS]);
+    expect($typo['status'])->toBe(422)
+        ->and($typo['json']['unresolved'])->toBeTrue()
+        ->and($typo['json']['errors']['url'])->toStartWith('shop.invalid does not resolve: no DNS record says where it is.')
+        ->and(($meant = $post('site-save', ['url' => 'shop.invalid', 'checks' => CHECKS, 'unresolved_ok' => true]))['status'])->toBe(200);
+    $post('site-remove', ['id' => $meant['json']['site']['id']]);
+
     $r = $post('site-save', ['id' => $id, 'url' => 'shop.example', 'group' => '', 'keyword' => '', 'interval' => '2', 'paused' => true, 'checks' => CHECKS]);
     expect($r['status'])->toBe(200)
         ->and($r['json']['changes'])->toBe(['no group', 'no longer looks for a text', 'checked every 2 min', 'paused', 'Mail DNS turned on'])
@@ -385,7 +393,7 @@ test('a user who sees every site can add, change and remove a site, and each cha
     expect($r['status'])->toBe(200)
         ->and($r['json'])->toBe(['removed' => 'shop.example'])
         ->and($count())->toBe(0)
-        ->and($this->db->query("SELECT action FROM audit_log WHERE username = 'admin' AND action LIKE 'site_removed%'")->fetchColumn())->toBe('site_removed https://shop.example');
+        ->and($this->db->query("SELECT action FROM audit_log WHERE username = 'admin' AND action LIKE 'site_removed%' ORDER BY id DESC")->fetchColumn())->toBe('site_removed https://shop.example');
 });
 
 test('only users who see every site may change sites, and only with the CSRF token', function () {

@@ -98,7 +98,8 @@ function test_config(array $overrides = []): array
     static $base;
     $base ??= load_config();
     // No real DNS in tests: the mail DNS check finds no records unless a test gives it some
-    return $overrides + $base + ['dns_resolve' => fn (string $name, int $type) => []];
+    // ...and every address resolves, unless a test says otherwise
+    return $overrides + $base + ['dns_resolve' => fn (string $name, int $type) => [], 'host_lookup' => fn (string $host): bool => true];
 }
 
 /**

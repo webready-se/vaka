@@ -275,6 +275,14 @@ async function main() {
         expect(/Enter the address/.test(q('#f-url-error').textContent) && q('#f-url').getAttribute('aria-invalid') === 'true', 'an empty address is explained under its field');
         expect(document.activeElement === q('#f-url'), 'the field with the error gets the focus');
       }
+      // A typo in the address: not saved, said under the field, and the button offers to add it anyway
+      q('#f-url').value = 'shop.invalid';
+      q('[data-form="site"]').requestSubmit();
+      if (await waitFor(() => /does not resolve/.test(q('#f-url-error')?.textContent || ''), 'the form to say the address does not resolve')) {
+        expect(/^shop\.invalid does not resolve: no DNS record says where it is\. Check the spelling/.test(q('#f-url-error').textContent), 'an address that is not in DNS is explained under its field');
+        expect(q('[data-form="site"] [type="submit"]')?.textContent === 'Add anyway', 'the button offers to add it anyway');
+        expect(!all('.site-row').some((r) => /shop\.invalid/.test(r.textContent)), 'the address that does not resolve was not added');
+      }
       q('#f-url').value = 'new.example';
       q('#f-name').value = 'Front <i>door</i>';
       q('#f-keyword').value = '<b>Welcome</b>';
