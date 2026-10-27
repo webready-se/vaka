@@ -134,9 +134,10 @@ tests/fixtures/certs/    Test-only CA and certificates (valid, wrong name, self-
 tests/fixtures/tls-server.php  Minimal TLS server for the SSL check tests
 tests/fixtures/rdap/     RDAP bootstrap file and domain answers (served by sites/rdap), .se WHOIS answers; reserved names only
 tests/fixtures/whois-server.php  Minimal WHOIS server for the domain check tests
-.github/                 CI (PHP 8.3-8.5) and Dependabot (Actions + Pest only)
+.github/                 CI (PHP 8.3-8.5), the release workflow (a v* tag: tests, scripts/build-release.sh, a check that the zip runs, a GitHub release with the zip and the CHANGELOG section) and Dependabot (Actions + Pest only)
 scripts/seed-demo.php    Demo database with fake sites, groups, servers, history and samples (`--hostile` adds markup-laden names for the smoke test)
 scripts/smoke.mjs        Dashboard smoke test: headless Chrome over DevTools protocol, no npm deps; `--screenshots=<dir>` saves login, light, dark, detail, phone, and the first visit (no users, no sites)
+scripts/build-release.sh Release zip with the runtime files only, from git (never the working tree); refuses when VAKA_VERSION or the CHANGELOG section does not match
 scripts/readme-media.mjs README screenshots and the social preview in docs/screenshots/, from the seeded demo (no hostile names), each cut to a dashboard element
 scripts/hooks/pre-push   Git hook: stops real names in pushed branch and tag names and new commits, then runs Pest
 scripts/hooks/pre-commit, commit-msg, real-names  Git hooks: stop real names (from .private/real-names.txt) in added lines and commit messages
@@ -317,6 +318,8 @@ Cron in production:
 ```cron
 * * * * * php /path/to/vaka run >> /dev/null 2>&1
 ```
+
+Releasing: a PR sets `VAKA_VERSION` in `src/bootstrap.php` and renames `[Unreleased]` in `CHANGELOG.md` to `[x.y.z] - YYYY-MM-DD` (with a new empty `[Unreleased]`). Once it is merged, tag `main` as `vx.y.z` and push the tag: the release workflow builds the zip, checks that it runs and publishes the release. `scripts/build-release.sh x.y.z` builds the same zip locally, in `build/`.
 
 ## Testing
 
