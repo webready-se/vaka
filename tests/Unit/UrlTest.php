@@ -49,3 +49,32 @@ test('site_host gives the host without www', function () {
     expect(site_host('https://www.shop.example/path'))->toBe('shop.example')
         ->and(site_host('http://localhost:8089'))->toBe('localhost');
 });
+
+test('host_resolves asks DNS about real names only, and knows .invalid never resolves', function () {
+    $asked = [];
+    $lookup = function (string $host) use (&$asked): bool {
+        $asked[] = $host;
+        return $host === 'shop.se';
+    };
+    expect(host_resolves('shop.se', $lookup))->toBeTrue()
+        ->and(host_resolves('shop.sese', $lookup))->toBeFalse()
+        ->and(host_resolves('SHOP.SE.', $lookup))->toBeTrue()
+        // RFC 6761: never in DNS, so no need to ask
+        ->and(host_resolves('shop.invalid', $lookup))->toBeFalse()
+        // Names for examples and tests, addresses and this computer: not asked about
+        ->and(host_resolves('shop.example', $lookup))->toBeNull()
+        ->and(host_resolves('www.example.com', $lookup))->toBeNull()
+        ->and(host_resolves('app.test', $lookup))->toBeNull()
+        ->and(host_resolves('localhost', $lookup))->toBeNull()
+        ->and(host_resolves('127.0.0.1', $lookup))->toBeNull()
+        ->and(host_resolves('[::1]', $lookup))->toBeNull();
+    expect($asked)->toBe(['shop.se', 'shop.sese', 'shop.se']);
+});
+
+test('unresolved_note names the host as people write it', function () {
+    $nowhere = fn (string $host): bool => false;
+    expect(unresolved_note('https://shop.exampel/start', $nowhere))->toBe('shop.exampel does not resolve: no DNS record says where it is.')
+        ->and(unresolved_note('xn--rksmrgs-5wao1o.se', $nowhere))->toBe('räksmörgås.se does not resolve: no DNS record says where it is.')
+        ->and(unresolved_note('https://shop.example', $nowhere))->toBeNull()
+        ->and(unresolved_note('not an address', $nowhere))->toBeNull();
+});

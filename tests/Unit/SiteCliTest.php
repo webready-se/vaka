@@ -214,3 +214,11 @@ test('site:add without arguments asks for what it needs', function () {
         ->and($r['out'])->toContain('URL')
         ->and($r['out'])->toContain('Added https://shop.example');
 });
+
+test('site:add from a script adds an address that does not resolve, and says so', function () {
+    $env = cli_env();
+    $r = vaka(['site:add', 'https://shop.invalid', '--group=none'], $env);
+    expect($r['exit'])->toBe(0, $r['out'] . $r['err'])
+        ->and($r['err'])->toContain('Warning: shop.invalid does not resolve: no DNS record says where it is. Added anyway: check the spelling.')
+        ->and(vaka(['site:list'], $env)['out'])->toContain('shop.invalid');
+});

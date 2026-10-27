@@ -165,3 +165,22 @@ test('save_server_form names a server and can move every site on it to a group',
         ->and(save_server_form($this->db, ['ip' => '203.0.113.10', 'label' => str_repeat('x', 61)], 'admin', $this->now)['errors'])->toHaveKey('label')
         ->and(save_server_form($this->db, ['ip' => '203.0.113.10', 'label' => '', 'group' => 'Nobody'], 'admin', $this->now)['errors'])->toHaveKey('group');
 });
+
+test('a new address that does not resolve is saved only once it is confirmed', function () {
+    $config = test_config(['host_lookup' => fn (string $host): bool => false]);
+    $form = ['url' => 'https://shop.exampel', 'group' => 'Customers', 'checks' => CHECKS];
+
+    $refused = save_site_form($this->db, $config, $form, null, 'admin', $this->now);
+    expect($refused['errors'])->toBe(['url' => 'shop.exampel does not resolve: no DNS record says where it is. Check the spelling, or choose "Add anyway" if its DNS is on its way.'])
+        ->and($refused['unresolved'])->toBeTrue()
+        ->and(list_sites($this->db))->toBe([]);
+
+    $added = save_site_form($this->db, $config, $form + ['unresolved_ok' => true], null, 'admin', $this->now);
+    expect($added['errors'])->toBe([])
+        ->and(list_sites($this->db))->toHaveCount(1);
+
+    // A change that keeps the address is not held up by it; a new address is looked at again
+    expect(save_site_form($this->db, $config, ['name' => 'The shop'] + $form, $added['id'], 'admin', $this->now)['errors'])->toBe([])
+        ->and(save_site_form($this->db, $config, ['url' => 'https://www.shop.exampel'] + $form, $added['id'], 'admin', $this->now)['errors']['url'])
+        ->toBe('www.shop.exampel does not resolve: no DNS record says where it is. Check the spelling, or choose "Save anyway" if its DNS is on its way.');
+});

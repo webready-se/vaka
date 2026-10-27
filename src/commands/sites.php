@@ -97,11 +97,15 @@ function cmd_site_add(array $config, array $args, array $opts): void
         $fields = ask_site_fields($db, $config);
     }
 
+    // An address that is not in DNS is a typo, most often: asked at a terminal, told from a script
+    $note = unresolved_note((string) $fields['url'], $config['host_lookup'] ?? null);
+    if ($note !== null && stream_isatty(STDIN) && !confirm("{$note} Add it anyway?")) fail('Not added. Check the address, then try again.');
     try {
         $site = site_with_group($db, add_site($db, $fields));
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage() . '.');
     }
+    if ($note !== null && !stream_isatty(STDIN)) fwrite(STDERR, "Warning: {$note} Added anyway: check the spelling.\n");
     $where = $site['group_name'] !== null ? " to {$site['group_name']}" : '';
     if ($site['paused']) {
         echo "Added {$site['url']}{$where}, paused: Vaka does not check it until you run `php vaka site:edit " . display_url($site['url']) . " --resume`.\n";
@@ -134,11 +138,22 @@ function cmd_site_edit(array $config, array $args, array $opts): void
     }
     if (!$fields) $fields = ask_site_fields($db, $config, $site);
 
+    $note = null;
+    if (isset($fields['url'])) {
+        try {
+            $moved = normalize_url((string) $fields['url']) !== $site['url'];
+        } catch (InvalidArgumentException) {
+            $moved = false;
+        }
+        $note = $moved ? unresolved_note((string) $fields['url'], $config['host_lookup'] ?? null) : null;
+        if ($note !== null && stream_isatty(STDIN) && !confirm("{$note} Change it anyway?")) fail('Not changed. Check the address, then try again.');
+    }
     try {
         update_site($db, $site['id'], $fields);
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage() . '.');
     }
+    if ($note !== null && !stream_isatty(STDIN)) fwrite(STDERR, "Warning: {$note} Changed anyway: check the spelling.\n");
     $site = site_with_group($db, $site['id']);
     echo 'Updated ' . readable_url($site['url']) . ': ' . describe_site($site, $config) . ".\n";
 }

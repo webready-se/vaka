@@ -79,6 +79,14 @@ function save_site_form(PDO $db, array $config, array $form, ?int $id, string $u
     $checked = site_form_input($db, $form, $id ?? 0);
     if ($checked['errors']) return ['id' => $id, 'changes' => [], 'errors' => $checked['errors']];
 
+    // A new address that is not in DNS is a typo, most often: say so before saving, unless confirmed
+    $current = $id === null ? null : find_site($db, (string) $id)['url'];
+    if (empty($form['unresolved_ok']) && normalize_url($checked['input']['url']) !== $current
+        && ($note = unresolved_note($checked['input']['url'], $config['host_lookup'] ?? null)) !== null) {
+        $anyway = $id === null ? 'Add anyway' : 'Save anyway';
+        return ['id' => $id, 'changes' => [], 'errors' => ['url' => "{$note} Check the spelling, or choose \"{$anyway}\" if its DNS is on its way."], 'unresolved' => true];
+    }
+
     if ($id === null) {
         $id = add_site($db, $checked['input']);
         add_event($db, $id, 'settings', ['status' => 'changed', 'previous' => '', 'message' => "Added by {$user}"], utc_now($now));

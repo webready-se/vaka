@@ -13,6 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - The Nginx example in `docs/install.md` adds `nosniff` to the files Nginx serves itself, so Vaka still grades itself A.
 - `TIME_FORMAT=12h` shows clock times as 2:05 PM instead of 14:05 (24h stays the default), in the dashboard, the CLI and alerts, as in Puls.
 - The footer names Vaka's time zone when it shows another time than the reader's clock ("the last at 20:58, Stockholm time", or "UTC"), so an install still on its server's UTC gets noticed.
+- A new or changed address whose domain is not in DNS (a typo, most often) is not saved until it is confirmed: the dashboard says so under the field and offers "Add anyway" (or "Save anyway"); `site:add` and `site:edit` ask at a terminal, and from a script add it with a warning. Names kept for examples and tests, IP addresses and localhost are not looked up.
 
 ### Changed
 
