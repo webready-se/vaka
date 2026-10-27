@@ -7,10 +7,17 @@
 root="${VAKA_ROOT:-$(git rev-parse --show-toplevel 2>/dev/null)}"
 list="$root/.private/real-names.txt"
 [ -f "$list" ] || exit 0
+# å, ä and ö are one character (NFC) or a letter and a combining mark (NFD,
+# as macOS sometimes writes them), and grep -F compares bytes: both sides go
+# to NFC, so either spelling matches. Perl's Unicode::Normalize is in core
+# Perl (macOS, Linux, Git for Windows); without Perl, the text goes as it is.
+nfc() {
+    if command -v perl >/dev/null 2>&1; then perl -MUnicode::Normalize -CSD -pe '$_ = NFC($_)'; else cat; fi
+}
 patterns=$(mktemp)
 trap 'rm -f "$patterns"' EXIT
 # An empty line would match everything: keep only names
-grep -v -e '^#' -e '^[[:space:]]*$' "$list" > "$patterns"
+grep -v -e '^#' -e '^[[:space:]]*$' "$list" | nfc > "$patterns"
 [ -s "$patterns" ] || exit 0
-grep -n -i -F -f "$patterns"
+nfc | grep -n -i -F -f "$patterns"
 exit 0
