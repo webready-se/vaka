@@ -273,9 +273,14 @@ async function main() {
         expect(document.activeElement === q('#f-url'), 'the field with the error gets the focus');
       }
       q('#f-url').value = 'new.example';
+      q('#f-name').value = 'Front <i>door</i>';
       q('#f-keyword').value = '<b>Welcome</b>';
       q('[data-form="site"]').requestSubmit();
+      expect(q('[data-form="site"] [type="submit"]')?.textContent === 'Adding…', 'the button says it is adding, right away');
       if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'new.example', 'the new site to open after saving')) {
+        expect(q('.toast')?.textContent === 'Added Front <i>door</i> (new.example): the first check runs within a minute', 'the message after adding names the site by its name and address, as text');
+        expect(/^Front <i>door<\/i> · /.test(q('dialog.drawer .drawer-head p')?.textContent || ''), 'the detail shows the name under the address');
+        expect(all('dialog.drawer dt').some((dt) => dt.textContent === 'Name' && dt.nextElementSibling?.textContent === 'Front <i>door</i>'), 'the settings list the name');
         expect(all('.site-row').some((r) => /new\.example/.test(r.textContent)), 'the new site is in the list');
         expect(all('dialog.drawer .timeline li').some((li) => /Added by smoke/.test(li.textContent)), 'the history says who added it');
         q('[data-action="edit-site"]').click();
