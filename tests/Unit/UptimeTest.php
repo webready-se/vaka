@@ -196,3 +196,16 @@ test('healthy sites are checked in a minute of their own, spread over the interv
         ->and(next_uptime_slot(7, 1, $now))->toBe(strtotime('2026-10-25T12:01:00Z'))
         ->and(gmdate('H:i', next_uptime_slot(30, 60, $now)))->toBe('12:30');
 });
+
+test('only a failure that could be the server\'s has the other sites on it checked at once', function () {
+    $failed = fn (string $problem, int $status = 0) => ['ok' => false, 'problem' => $problem, 'status_code' => $status];
+    // The server was never asked, or answered as it should: the site's own trouble
+    expect(server_failure($failed('dns')))->toBeFalse()
+        ->and(server_failure($failed('keyword', 200)))->toBeFalse()
+        // Anything else could be the whole server: no answer, refused, a broken gateway, a firewall that blocks Vaka
+        ->and(server_failure($failed('timeout')))->toBeTrue()
+        ->and(server_failure($failed('refused')))->toBeTrue()
+        ->and(server_failure($failed('http', 502)))->toBeTrue()
+        ->and(server_failure($failed('http', 403)))->toBeTrue()
+        ->and(server_failure($failed('certificate')))->toBeTrue();
+});

@@ -16,6 +16,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- When a site starts failing, the other sites on its server are no longer checked at once if the failure is the site's own: its domain does not resolve, or the page answered without its keyword. Anything that could be the server's still checks them, so a server that is down is still one alert.
 - Uptime checks are spread over the interval: each site is checked in a minute of its own (its id modulo the interval). Sites added together used to come due in the same minute for good; in one install 30 of 47 sites were asked at once, and that minute's median response time reached 1.9 s against 0.4 s in the others. A site's first check after this change can come up to one interval sooner.
 - A site's name shows in its detail, under the address and in the settings, and the message after adding or saving a site names it ("Added Shop (shop.example)"). The button says "Adding…" or "Saving…" while a site or group is saved, and a new site's detail opens without waiting for the whole overview to reload.
 - `TIMEZONE` unset now means the server's time zone (php.ini, UTC on most servers), as in Puls and Snoka; it used to be Europe/Stockholm. **Set `TIMEZONE=Europe/Stockholm` in `.env` to keep Swedish time**: maintenance windows and the daily summary follow it.

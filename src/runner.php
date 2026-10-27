@@ -119,7 +119,8 @@ function run_uptime(PDO $db, array $config, int $now): array
 
 /**
  * Check $sites in parallel, store the results and add them to $summary.
- * Returns the sites that failed for the first time in a row.
+ * Returns the sites that failed for the first time in a row, in a way that
+ * could be their server's (see server_failure()).
  */
 function check_uptime(PDO $db, array $config, array $sites, int $now, array $windows, array &$summary): array
 {
@@ -149,7 +150,8 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array $win
         $site['ip'] = $result['ip'] !== '' ? $result['ip'] : $site['ip'];
         $site['cdn'] = $result['cdn'];
         $where->execute([$site['ip'], $site['cdn'], $site['id']]);
-        if ($next['state']['fail_count'] === 1) $failing[] = $site;
+        // The first failure in a row, and one that could be the server's: its other sites are checked too
+        if ($next['state']['fail_count'] === 1 && server_failure($result)) $failing[] = $site;
 
         if ($next['event']) {
             add_event($db, $site['id'], 'uptime', $next['event'], $checkedAt, active_silence($site, $windows, $now, $config['timezone']));
