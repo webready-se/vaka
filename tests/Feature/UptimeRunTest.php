@@ -89,8 +89,9 @@ test('a site is checked again only when its interval has passed, in a minute of 
 
 test('a site that does not answer in time fails without holding up the run', function () {
     add_site($this->db, ['url' => 'http://127.0.0.1:8791/?sleep=3']);
+    // The uptime phase only: the slower checks after it (headers, exposed files) wait out their own timeouts too
     $started = microtime(true);
-    run($this->db, ['uptime_timeout' => 1] + $this->config, $this->now);
+    run_uptime($this->db, ['uptime_timeout' => 1] + $this->config, $this->now);
 
     expect(microtime(true) - $started)->toBeLessThan(2.5)
         ->and(($this->state)('http://127.0.0.1:8791/?sleep=3')['summary'])->toBe('First check failed, checking again: no answer within 1 s');
