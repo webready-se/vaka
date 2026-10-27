@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- Security headers: the first stylesheet and the first script a page loads from its own host are checked for `X-Content-Type-Options: nosniff` too. When the page has it and they do not (typically a web server rule for those files with a header of its own, such as an nginx `location` with `add_header Cache-Control`), X-Content-Type-Options counts as weak, so an A becomes a B, and the site detail names the files and where the line goes. It alerts when `nosniff` disappears from them; the first check of the files is a starting point and never alerts. `php vaka check` shows it too.
+- Security headers: the first stylesheet and the first script a page loads from the site's own server (its host, or a host under it such as `static.shop.example`) are checked for `X-Content-Type-Options: nosniff` too. When the page has it and they do not (typically a web server rule for those files with a header of its own, such as an nginx `location` with `add_header Cache-Control`), X-Content-Type-Options counts as weak, so an A becomes a B, and the site detail names the files and where the line goes. It alerts when `nosniff` disappears from them; the first check of the files is a starting point and never alerts. `php vaka check` shows it too.
 - The Nginx example in `docs/install.md` adds `nosniff` to the files Nginx serves itself, so Vaka still grades itself A.
 
 ### Changed

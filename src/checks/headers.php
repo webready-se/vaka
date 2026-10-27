@@ -157,8 +157,8 @@ function shown_levels(array $levels): array
 
 /**
  * The files a page loads that are checked for nosniff: its first stylesheet
- * and its first script on the page's own host and port (a file elsewhere,
- * on a CDN, is someone else's server). Absolute URLs.
+ * and its first script on the site's own server (see own_host(); a file on
+ * a CDN is someone else's). Absolute URLs.
  *
  * @return list<string>
  */
@@ -178,7 +178,7 @@ function page_files(string $html, string $pageUrl): array
         }
         if ($found[$kind] !== null) continue;
         $url = resolve_url($ref, $pageUrl);
-        if ($url !== null && url_host($url) === url_host($pageUrl)) $found[$kind] = $url;
+        if ($url !== null && own_host($url, $pageUrl)) $found[$kind] = $url;
     }
     return array_values(array_filter($found));
 }
@@ -219,7 +219,7 @@ function resolve_url(string $ref, string $base): ?string
     return $origin . implode('/', $segments) . ($query !== null ? "?{$query}" : '');
 }
 
-/** A URL's host and port, lowercase: what makes two URLs the same server here. */
+/** A URL's host and port, lowercase. */
 function url_host(string $url): string
 {
     $parts = parse_url($url);
@@ -227,22 +227,43 @@ function url_host(string $url): string
 }
 
 /**
+ * Whether a file is on the site's own server: the page's host and port, or
+ * a host under the page's (without www.), such as static.shop.example for
+ * shop.example or www.shop.example. Never wider than the page's own tree,
+ * so no list of public suffixes is needed; a sibling (static. for a page on
+ * app.) and anything by IP count only on the very same host.
+ */
+function own_host(string $url, string $pageUrl): bool
+{
+    if (url_host($url) === url_host($pageUrl)) return true;
+    $file = parse_url($url);
+    $page = parse_url($pageUrl);
+    if (($file['port'] ?? null) !== ($page['port'] ?? null)) return false;
+    $base = (string) preg_replace('/^www\./', '', strtolower($page['host'] ?? ''));
+    if ($base === '' || filter_var($base, FILTER_VALIDATE_IP) !== false) return false;
+    $host = strtolower($file['host'] ?? '');
+    return $host === $base || str_ends_with($host, '.' . $base);
+}
+
+/**
  * Whether the files a page loads say nosniff too, from their responses (by
  * the URL asked for): the paths checked, and those without it. Only a file
  * that answered 200 on the same host with something other than a page
  * counts: a missing file can end up at the site's own error or fallback
- * page, with the app's headers. Null when no file could tell.
+ * page, with the app's headers. A file is named by its path, with its host
+ * when that is not the page's ($pageUrl). Null when no file could tell.
  *
  * @return ?array{checked: list<string>, missing: list<string>}
  */
-function files_nosniff(array $responses): ?array
+function files_nosniff(array $responses, string $pageUrl = ''): ?array
 {
     $checked = $missing = [];
     foreach ($responses as $url => $response) {
         if ($response['errno'] || $response['status'] !== 200 || url_host($response['url']) !== url_host($url)) continue;
         $type = strtolower(trim(explode(';', $response['headers']['content-type'][0] ?? '')[0]));
         if ($type === 'text/html') continue;
-        $path = (string) preg_replace('/^(.{119}).+$/us', '$1…', (string) parse_url($url, PHP_URL_PATH));
+        $name = ($pageUrl !== '' && url_host($url) !== url_host($pageUrl) ? url_host($url) : '') . parse_url($url, PHP_URL_PATH);
+        $path = (string) preg_replace('/^(.{119}).+$/us', '$1…', $name);
         $checked[] = $path;
         if (header_level('nosniff', $response['headers'], false)['level'] !== 'good') $missing[] = $path;
     }
@@ -270,7 +291,9 @@ function fetch_files_nosniff(array $pages, array $config): array
     // In the page's order (stylesheet, then script), not the order the answers came in
     $byPage = [];
     foreach ($urls as $id => $url) $byPage[explode("\n", (string) $id, 2)[0]][$url] = $responses[$id];
-    return array_map('files_nosniff', $byPage);
+    $results = [];
+    foreach ($byPage as $key => $files) $results[$key] = files_nosniff($files, $pages[$key]['url']);
+    return $results;
 }
 
 /**

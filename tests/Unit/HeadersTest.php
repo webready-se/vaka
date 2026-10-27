@@ -225,6 +225,21 @@ test('the files checked are the first stylesheet and the first script on the pag
         ->and(page_files('<h1>No files</h1>', 'https://shop.example/'))->toBe([]);
 });
 
+test('a host under the page\'s own counts as the site\'s server, a sibling or a CDN does not', function () {
+    $static = '<link rel="stylesheet" href="https://static.shop.example/css/site.css"><script src="https://cdn.example/app.js"></script><script src="https://static.shop.example/js/app.js"></script>';
+    expect(page_files($static, 'https://shop.example/'))->toBe(['https://static.shop.example/css/site.css', 'https://static.shop.example/js/app.js'])
+        ->and(page_files($static, 'https://www.shop.example/'))->toBe(['https://static.shop.example/css/site.css', 'https://static.shop.example/js/app.js'])
+        ->and(page_files('<script src="https://www.shop.example/app.js"></script>', 'https://shop.example/'))->toBe(['https://www.shop.example/app.js'])
+        // A sibling of the page's host, another port, or an address by IP: not known to be the same server
+        ->and(page_files($static, 'https://app.shop.example/'))->toBe([])
+        ->and(page_files('<script src="https://static.shop.example:8443/app.js"></script>', 'https://shop.example/'))->toBe([])
+        ->and(page_files('<script src="http://static.192.0.2.10/app.js"></script>', 'http://192.0.2.10/'))->toBe([]);
+
+    // A file elsewhere than the page's host is named with its host
+    expect(files_nosniff(['https://static.shop.example/js/app.js' => answered(['Content-Type' => 'text/javascript'], 'https://static.shop.example/js/app.js')], 'https://shop.example/'))
+        ->toBe(['checked' => ['static.shop.example/js/app.js'], 'missing' => ['static.shop.example/js/app.js']]);
+});
+
 test('files_nosniff names the files without nosniff, and leaves out what says nothing about them', function () {
     $file = fn (string $url, array $headers = [], int $status = 200, string $type = 'text/css', ?string $final = null) => answered(['Content-Type' => $type] + $headers, $final ?? $url, $status);
     expect(files_nosniff([
