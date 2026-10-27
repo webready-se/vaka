@@ -318,3 +318,12 @@ test('the daily summary lists what happened and what is still down', function ()
             '02:40 shop.example: up again after 28 min: answered 200 OK in 240 ms',
         ]);
 });
+
+test('the daily summary tells the time in 12h when TIME_FORMAT says so', function () {
+    $events = [['url' => 'https://shop.example', 'status' => 'fail', 'message' => 'Down: no answer within 10 s', 'created_at' => '2026-10-25T13:12:00Z']];
+    $stillDown = [['url' => 'https://blog.example', 'summary' => 'The site answered 503 Service Unavailable', 'changed_at' => '2026-10-25T05:00:00Z']];
+    expect(digest_text('Customers', $events, $stillDown, 'Europe/Stockholm', '12h')['details'])->toBe([
+        'Still down: blog.example since 6:00 AM: the site answered 503 Service Unavailable',
+        '2:12 PM shop.example: down: no answer within 10 s',
+    ]);
+});

@@ -115,5 +115,38 @@ test('config.php has defaults for every setting', function () {
         ->and($config['domain_alert_days'])->toBe([30, 14, 7, 1])
         ->and($config['remind_every_hours'])->toBe(4)
         ->and($config['digest_time'])->toBe('08:00')
-        ->and($config['trusted_proxies'])->toBe([]);
+        ->and($config['trusted_proxies'])->toBe([])
+        ->and($config['time_format'])->toBe('24h');
+});
+
+test('TIMEZONE: unset is the server\'s, and a name PHP does not know keeps the server\'s with a hint, so a typo never stops the checks', function () {
+    expect(timezone_setting('', 'UTC'))->toBe(['zone' => 'UTC', 'problem' => ''])
+        ->and(timezone_setting(' Europe/Stockholm ', 'UTC'))->toBe(['zone' => 'Europe/Stockholm', 'problem' => ''])
+        ->and(timezone_setting('Europe/Stokholm', 'UTC'))->toBe(['zone' => 'UTC', 'problem' => 'TIMEZONE "Europe/Stokholm" is not a time zone, so Vaka uses the server\'s, UTC. Did you mean Europe/Stockholm?'])
+        ->and(timezone_setting('+02:00', 'America/New_York'))->toBe(['zone' => 'America/New_York', 'problem' => 'TIMEZONE "+02:00" is not a time zone, so Vaka uses the server\'s, America/New_York. Use a name such as Europe/Stockholm.']);
+});
+
+test('TIME_FORMAT is 24h unless it says 12h', function () {
+    expect(time_format_setting(''))->toBe(['format' => '24h', 'problem' => ''])
+        ->and(time_format_setting('12H'))->toBe(['format' => '12h', 'problem' => ''])
+        ->and(time_format_setting('24h'))->toBe(['format' => '24h', 'problem' => ''])
+        ->and(time_format_setting('12'))->toBe(['format' => '24h', 'problem' => 'TIME_FORMAT "12" is neither 24h nor 12h, so Vaka uses 24h.']);
+});
+
+test('config.php gathers what is wrong with the time settings, and the server\'s zone stands in', function () {
+    $config = load_config(['TIMEZONE' => 'Mars/Olympus', 'TIME_FORMAT' => 'am/pm']);
+    expect($config['timezone'])->toBe(date_default_timezone_get())
+        ->and($config['time_format'])->toBe('24h')
+        ->and($config['config_problems'])->toHaveCount(2)
+        ->and(load_config()['config_problems'])->toBe([]);
+});
+
+test('clock times follow TIME_FORMAT', function () {
+    $at = fn (string $time) => new DateTimeImmutable("2026-10-27 {$time}");
+    expect(clock_text($at('14:05'), '24h'))->toBe('14:05')
+        ->and(clock_text($at('14:05'), '12h'))->toBe('2:05 PM')
+        ->and(clock_text($at('00:30'), '12h'))->toBe('12:30 AM')
+        ->and(clock_text($at('12:00'), '12h'))->toBe('12:00 PM')
+        ->and(hhmm_text('07:00', '12h'))->toBe('7:00 AM')
+        ->and(hhmm_text('07:00', '24h'))->toBe('07:00');
 });

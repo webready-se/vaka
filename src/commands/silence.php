@@ -56,7 +56,7 @@ function cmd_maintenance_add(array $config, array $args, array $opts): void
         fail($e->getMessage() . '.');
     }
     add_maintenance($db, $siteId, $groupId, $fields);
-    echo "Maintenance window added for {$name}: " . describe_window($fields, $config['timezone']) . " ({$config['timezone']}).\n";
+    echo "Maintenance window added for {$name}: " . describe_window($fields, $config['timezone'], $config['time_format']) . " ({$config['timezone']}).\n";
     echo "Checks keep running. An outage that starts and ends inside the window is not alerted; a site still down when it ends is.\n";
 }
 
@@ -73,7 +73,7 @@ function cmd_maintenance_list(array $config, array $args, array $opts): void
     print_table(['#', 'For', 'When', 'Label', ''], array_map(fn ($window) => [
         $window['id'],
         window_target($window),
-        describe_window($window, $config['timezone']),
+        describe_window($window, $config['timezone'], $config['time_format']),
         $window['label'],
         window_active($window, $now, $config['timezone']) ? 'active now' : (($window['ends_at'] ?? '9') <= utc_now($now) ? 'over' : ''),
     ], $windows));
@@ -86,12 +86,12 @@ function cmd_maintenance_remove(array $config, array $args, array $opts): void
     $db = get_db($config['db_path']);
     $windows = array_column(list_maintenance($db), null, 'id');
     if (!$windows) fail('There are no maintenance windows to remove.');
-    $id = $args[1] ?? choose('Which window?', array_map(fn (array $window) => window_target($window) . ', ' . describe_window($window, $config['timezone']), $windows));
+    $id = $args[1] ?? choose('Which window?', array_map(fn (array $window) => window_target($window) . ', ' . describe_window($window, $config['timezone'], $config['time_format']), $windows));
     $window = ctype_digit((string) $id) ? ($windows[(int) $id] ?? null) : null;
     if (!$window) fail("There is no maintenance window {$id}. See `php vaka maintenance:list`.");
 
     remove_maintenance($db, $window['id']);
-    echo 'Removed the maintenance window for ' . window_target($window) . ' (' . describe_window($window, $config['timezone']) . ").\n";
+    echo 'Removed the maintenance window for ' . window_target($window) . ' (' . describe_window($window, $config['timezone'], $config['time_format']) . ").\n";
 }
 
 /**
@@ -157,7 +157,7 @@ function cmd_snooze(array $config, array $args, array $opts): void
 
     $what = $isServer ? plural(count($failing), 'site', 'sites') . " on {$name}" : $name;
     $it = $isServer ? 'they are' : 'it is';
-    echo "Snoozed {$what} for " . human_duration($seconds) . ' (until ' . local_time(utc_now($now + $seconds), $now) . ").\n";
+    echo "Snoozed {$what} for " . human_duration($seconds) . ' (until ' . local_time(utc_now($now + $seconds), $now, $config['time_format']) . ").\n";
     echo "Vaka alerts again if {$it} still down then; a recovery ends the snooze.\n";
 }
 
@@ -171,7 +171,7 @@ function cmd_unsnooze(array $config, array $args, array $opts): void
         $snoozedNow->execute([utc_now()]);
         $options = [];
         foreach (sort_sites($snoozedNow->fetchAll(), false) as $site) {
-            $options[$site['url']] = display_url($site['url']) . ' (until ' . local_time($site['snoozed_until'], time()) . ')';
+            $options[$site['url']] = display_url($site['url']) . ' (until ' . local_time($site['snoozed_until'], time(), $config['time_format']) . ')';
         }
         if (!$options) {
             echo "Nothing is snoozed right now.\n";

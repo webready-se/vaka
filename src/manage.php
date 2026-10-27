@@ -226,7 +226,7 @@ function group_form_values(PDO $db, array $group, array $config = []): array
         'webhook' => mask_secret($group['webhook_url']),
         'email' => $group['email'],
         'sites' => (int) $db->query('SELECT COUNT(*) FROM sites WHERE group_id = ' . (int) $group['id'])->fetchColumn(),
-        'maintenance' => array_map(fn ($w) => ['id' => $w['id'], 'when' => describe_window($w, $config['timezone'] ?? 'UTC'), 'label' => $w['label']], $windows),
+        'maintenance' => array_map(fn ($w) => ['id' => $w['id'], 'when' => describe_window($w, $config['timezone'] ?? 'UTC', $config['time_format'] ?? '24h'), 'label' => $w['label']], $windows),
     ];
 }
 
@@ -277,7 +277,7 @@ function add_maintenance_form(PDO $db, array $config, array $form, ?int $siteId,
 {
     $fields = maintenance_form_fields($form, $config['timezone']);
     $id = add_maintenance($db, $siteId, $groupId, $fields);
-    $when = describe_window($fields, $config['timezone']);
+    $when = describe_window($fields, $config['timezone'], $config['time_format']);
     $for = $groupId !== null ? ' for group ' . get_group($db, $groupId)['name'] : '';
     target_history($db, $siteId, $groupId, "Maintenance window added by {$user}{$for}: {$when}" . ($fields['label'] !== '' ? " ({$fields['label']})" : ''), $now);
     return ['id' => $id, 'when' => $when];
@@ -288,7 +288,7 @@ function remove_maintenance_form(PDO $db, array $config, int $id, string $user, 
 {
     $window = array_values(array_filter(list_maintenance($db), fn ($w) => $w['id'] === $id))[0] ?? null;
     if (!$window) return null;
-    $when = describe_window($window, $config['timezone']);
+    $when = describe_window($window, $config['timezone'], $config['time_format']);
     $for = $window['group_id'] !== null ? " for group {$window['group_name']}" : '';
     target_history($db, $window['site_id'], $window['group_id'], "Maintenance window removed by {$user}{$for}: {$when}", $now);
     remove_maintenance($db, $id);

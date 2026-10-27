@@ -10,7 +10,14 @@ $env = fn (string $key, string $default = '') => (string) ($_ENV[$key] ?? $defau
 return [
     'app_url' => rtrim($env('APP_URL'), '/'),
 
-    'timezone' => $env('TIMEZONE', 'Europe/Stockholm'),
+    // Unset: the server's (php.ini). An unknown name keeps the server's too, and says so (config_problems)
+    'timezone' => ($timezone = timezone_setting($env('TIMEZONE'), date_default_timezone_get()))['zone'],
+
+    // 24h (14:05) or 12h (2:05 PM)
+    'time_format' => ($timeFormat = time_format_setting($env('TIME_FORMAT')))['format'],
+
+    // What is wrong with the settings above, for the CLI and the dashboard to show
+    'config_problems' => array_values(array_filter([$timezone['problem'], $timeFormat['problem']])),
 
     'db_path' => resolve_path($env('DB_PATH', 'data/vaka.sqlite'), __DIR__),
 

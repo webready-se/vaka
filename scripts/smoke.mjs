@@ -18,6 +18,7 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const PHP_PORT = 8789;
 const EMPTY_PORT = 8786;
 const NO_USERS_PORT = 8787;
+const TWELVE_PORT = 8784;
 const CDP_PORT = 9334;
 const shotsArg = process.argv.find((a) => a.startsWith('--screenshots='));
 const shotsDir = shotsArg ? resolve(shotsArg.slice('--screenshots='.length)) : null;
@@ -141,6 +142,8 @@ async function main() {
 
   await send('Page.enable');
   await send('Runtime.enable');
+  // The browser in Vaka's zone, which is not UTC, so a time read in the wrong zone shows (and CI's UTC never hides it)
+  await send('Emulation.setTimezoneOverride', { timezoneId: 'Europe/Stockholm' });
   await send('Log.enable');
   // A violation report the page cannot hide: CDP-added scripts are not subject to the CSP
   await send('Page.addScriptToEvaluateOnNewDocument', {
@@ -438,7 +441,30 @@ async function main() {
   await sleep(600);
   await screenshot('phone-detail');
 
-  // 7. The very first visit: before the first user, then with no sites and cron not running yet
+  // 7. Times: a reader in another time zone is told whose clock the times are on, and TIME_FORMAT=12h shows AM and PM
+  await send('Emulation.clearDeviceMetricsOverride');
+  const footer = async (url) => {
+    wait = loaded();
+    await send('Page.navigate', { url });
+    await wait;
+    return evaluate(async () => {
+      for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
+      return document.querySelector('[data-foot]')?.textContent || '';
+    });
+  };
+  await send('Emulation.setTimezoneOverride', { timezoneId: 'America/New_York' });
+  const away = await footer(`${base}/`);
+  if (!/the last at \d\d:\d\d, Stockholm time$/.test(away)) fails.push(`a reader in another time zone is told the times are Stockholm time (got "${away}")`);
+  await send('Emulation.setTimezoneOverride', { timezoneId: 'Europe/Stockholm' });
+  // The same database and session on a second server, set to 12h, with a typo in TIMEZONE (the server's zone stands in)
+  children.push(spawn('php', ['-S', `127.0.0.1:${TWELVE_PORT}`, '-t', join(root, 'public')], { env: { ...env, TIME_FORMAT: '12h', TIMEZONE: 'Europe/Stokholm' }, stdio: 'ignore' }));
+  await waitForHttp(`http://127.0.0.1:${TWELVE_PORT}/?login`);
+  const twelve = await footer(`http://127.0.0.1:${TWELVE_PORT}/`);
+  if (!/the last at \d{1,2}:\d\d (AM|PM)(, [\w ]+)?$/.test(twelve)) fails.push(`TIME_FORMAT=12h shows the time with AM or PM (got "${twelve}")`);
+  const typo = await evaluate(() => document.querySelector('.banner')?.textContent || '');
+  if (!/A setting in \.env needs fixing\. TIMEZONE "Europe\/Stokholm" is not a time zone.*Did you mean Europe\/Stockholm\?/.test(typo)) fails.push(`a typo in TIMEZONE is shown, with what was meant (got "${typo}")`);
+
+  // 8. The very first visit: before the first user, then with no sites and cron not running yet
   await send('Emulation.clearDeviceMetricsOverride');
   const emptyEnv = { ...env, DB_PATH: join(tmp, 'empty.sqlite') };
   children.push(spawn('php', ['-S', `127.0.0.1:${EMPTY_PORT}`, '-t', join(root, 'public')], { env: emptyEnv, stdio: 'ignore' }));

@@ -83,7 +83,7 @@ config.php               Configuration: loads .env, resolves paths (Forge zero-d
 .env.example             Environment template (checked in)
 .env                     Optional environment config (gitignored)
 src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines functions only, no side effects
-src/config.php           parse_env(), load_env(), resolve_path(), int_list()
+src/config.php           parse_env(), load_env(), resolve_path(), int_list(); timezone_setting() and time_format_setting() (TIMEZONE and TIME_FORMAT as in Puls: unset is the server's zone, a wrong value never stops a run and is shown), clock_text()
 src/db.php               get_db(), enable_wal(), migrations(), run_migrations()
 src/cli.php              parse_args(), allow_options(), prompt(), ask(), confirm(), choose(), print_table(), fail()
 src/sites.php            CHECKS, POLICIES, normalize_url(), groups and sites (validation, storage, plain-words descriptions)

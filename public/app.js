@@ -180,11 +180,21 @@
     return parts;
   }
 
+  /**
+   * A time of day as TIME_FORMAT says: "14:05", or "2:05 PM". Written out
+   * rather than left to Intl, which follows the browser's language (not the
+   * reader's region) and in some browsers puts a narrow space before PM.
+   */
+  function hourMinute(hour, minute) {
+    if (state.timeFormat !== '12h') return ('0' + hour).slice(-2) + ':' + minute;
+    return (hour % 12 || 12) + ':' + minute + (hour < 12 ? ' AM' : ' PM');
+  }
+
   /** "14:02" today, "24 Oct 14:02" before that, in the server's time zone. */
   function clock(iso) {
     var p = dateParts(new Date(iso));
     var today = dateParts(new Date());
-    var time = p.hour + ':' + p.minute;
+    var time = hourMinute(Number(p.hour), p.minute);
     return p.day === today.day && p.month === today.month && p.year === today.year ? time : p.day + ' ' + p.month + ' ' + time;
   }
 
@@ -232,6 +242,7 @@
     return api('/?api=overview').then(function (data) {
       state.data = data;
       state.timezone = data.timezone;
+      state.timeFormat = data.time_format;
       state.failed = false;
       render();
     }).catch(function (error) {
@@ -309,7 +320,23 @@
     node.className = 'run-pill' + (state.data.run_ok ? ' is-ok' : state.data.totals.sites === 0 ? '' : ' is-stale');
     // The footer's own half: the tool, its version, where the results come from and how fresh they are
     var foot = document.querySelector('[data-foot]');
-    foot.textContent = 'Vaka ' + foot.getAttribute('data-version') + ' · ' + (last ? 'checks run every minute, the last at ' + clock(last) : 'not checked yet');
+    foot.textContent = 'Vaka ' + foot.getAttribute('data-version') + ' · ' + (last ? 'checks run every minute, the last at ' + clock(last) + zoneNote() : 'not checked yet');
+  }
+
+  /**
+   * ", Stockholm time" (or ", UTC") when Vaka's time zone shows another time
+   * than the reader's clock, so the times on the page are not taken for the
+   * reader's own: an install still on its server's UTC gets noticed.
+   */
+  function zoneNote() {
+    var tz = state.timezone;
+    if (!tz) return '';
+    var now = new Date();
+    var at = function (zone) {
+      return new Intl.DateTimeFormat('en-GB', { timeZone: zone, day: 'numeric', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).format(now);
+    };
+    if (at(tz) === at(undefined)) return '';
+    return ', ' + (tz.indexOf('/') < 0 || tz.indexOf('Etc/') === 0 ? tz.replace('Etc/', '') : tz.split('/').pop().replace(/_/g, ' ') + ' time');
   }
 
   function renderBanner() {
@@ -320,6 +347,10 @@
       return;
     }
     var data = state.data;
+    // A setting Vaka could not use, for whoever can fix it (even before the first site)
+    (data && data.setup && data.setup.problems || []).forEach(function (problem) {
+      append(node, h('div', { class: 'banner', role: 'alert' }, [icon('failing'), h('span', {}, [h('strong', {}, 'A setting in .env needs fixing. '), problem])]));
+    });
     if (!data || data.totals.sites === 0) return;
     if (!data.last_run_at) {
       append(node, h('div', { class: 'banner', role: 'alert' }, [icon('pending'), h('span', {}, [

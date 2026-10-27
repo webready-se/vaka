@@ -7,11 +7,12 @@ function ago(string $utc, int $now): string
     return $seconds < 60 ? 'just now' : human_duration($seconds) . ' ago';
 }
 
-/** A stored UTC time in TIMEZONE: "14:02" today, "24 Oct 14:02" before that. */
-function local_time(string $utc, int $now): string
+/** A stored UTC time in TIMEZONE: "14:02" today, "24 Oct 14:02" before that (or "2:02 PM" in 12h). */
+function local_time(string $utc, int $now, string $timeFormat = '24h'): string
 {
     $time = strtotime($utc);
-    return date('Y-m-d', $time) === date('Y-m-d', $now) ? date('H:i', $time) : date('j M H:i', $time);
+    $clock = clock_text((new DateTimeImmutable('@' . $time))->setTimezone(new DateTimeZone(date_default_timezone_get())), $timeFormat);
+    return date('Y-m-d', $time) === date('Y-m-d', $now) ? $clock : date('j M ', $time) . $clock;
 }
 
 function cmd_run(array $config, array $args, array $opts): void
@@ -128,13 +129,13 @@ function cmd_status(array $config, array $args, array $opts): void
         [$word, $detail] = match (true) {
             (bool) $site['paused'] => ['paused', ''],
             $site['status'] === null || ($site['status'] === 'pending' && !$site['fail_count']) => ['not checked yet', ''],
-            $site['status'] === 'fail' => ['DOWN', 'since ' . local_time($site['changed_at'], $now) . ' (' . human_duration($now - strtotime($site['changed_at'])) . '): ' . lcfirst($site['summary'])],
+            $site['status'] === 'fail' => ['DOWN', 'since ' . local_time($site['changed_at'], $now, $config['time_format']) . ' (' . human_duration($now - strtotime($site['changed_at'])) . '): ' . lcfirst($site['summary'])],
             $site['fail_count'] > 0 => ['failing', lcfirst($site['summary'])],
             default => ['up', (json_decode($site['details'], true)['ms'] ?? '?') . ' ms, checked ' . ago($site['checked_at'], $now)],
         };
         $counts[$word === 'DOWN' ? 'down' : $word]++;
         $quiet = active_silence($site, $windows, $now, $config['timezone']);
-        if ($quiet === 'snooze') $detail .= '; snoozed until ' . local_time($site['snoozed_until'], $now);
+        if ($quiet === 'snooze') $detail .= '; snoozed until ' . local_time($site['snoozed_until'], $now, $config['time_format']);
         if ($quiet === 'maintenance') $detail = trim($detail . '; in a maintenance window', '; ');
         if (in_array($site['ssl_status'], ['warn', 'fail'], true)) $detail = trim($detail . '; ' . lcfirst($site['ssl_summary']), '; ');
         if (in_array($site['exposed_status'], ['warn', 'fail'], true)) $detail = trim($detail . '; ' . lcfirst($site['exposed_summary']), '; ');

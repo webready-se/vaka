@@ -29,6 +29,8 @@ php vaka run                  # check it once by hand
 
 Or `git clone https://github.com/webready-se/vaka.git` to follow `main` (it also has the tests and the demo scripts).
 
+Set `TIMEZONE` in `.env` to your own, such as `TIMEZONE=Europe/Stockholm`: unset, Vaka uses the server's, which is usually UTC, and the dashboard's footer says so when that is not the time where you are.
+
 `data/` (the database) and `users.json` are created on first use and stay out of git. Keep them outside the document root: only `public/` may be served.
 
 Open the dashboard. Before the first user exists, it says how to create one. Without sites, it shows the first steps, with this server's own cron line, and ticks them off as cron starts running and alerts get somewhere to go.
