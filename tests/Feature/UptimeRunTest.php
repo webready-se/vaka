@@ -31,7 +31,8 @@ test('a site that answers is up, with its response time and IP recorded', functi
     expect($summary['checked'])->toBe(1)
         ->and($state['status'])->toBe('ok')
         ->and($state['summary'])->toStartWith('Answered 200 OK in ')
-        ->and($state['next_at'])->toBe(utc_now($this->now + 5 * 60))
+        // In its own minute of the interval (site 1: one past the hour's fives), then every five minutes
+        ->and($state['next_at'])->toBe(utc_now(next_uptime_slot(1, 5, $this->now)))
         ->and(find_site($this->db, 'http://127.0.0.1:8791')['ip'])->toBe('127.0.0.1')
         ->and(($this->events)())->toHaveCount(1);
 
@@ -73,14 +74,17 @@ test('a missing keyword is down, and fixing it is up again', function () {
         ]);
 });
 
-test('a site is checked again only when its interval has passed', function () {
+test('a site is checked again only when its interval has passed, in a minute of its own', function () {
     add_site($this->db, ['url' => 'http://127.0.0.1:8791']);
     add_site($this->db, ['url' => 'http://127.0.0.1:8791/fast', 'interval' => '1']);
 
+    // 12:00 both; the five-minute one then moves to its own minute (site 1: 12:01, 12:06, ...)
     expect(run($this->db, $this->config, $this->now)['checked'])->toBe(2)
         ->and(run($this->db, $this->config, $this->now + 30)['checked'])->toBe(0)
-        ->and(run($this->db, $this->config, $this->now + 60)['checked'])->toBe(1)
-        ->and(run($this->db, $this->config, $this->now + 300)['checked'])->toBe(2);
+        ->and(run($this->db, $this->config, $this->now + 60)['checked'])->toBe(2)
+        ->and(run($this->db, $this->config, $this->now + 120)['checked'])->toBe(1)
+        ->and(run($this->db, $this->config, $this->now + 300)['checked'])->toBe(1)
+        ->and(run($this->db, $this->config, $this->now + 360)['checked'])->toBe(2);
 });
 
 test('a site that does not answer in time fails without holding up the run', function () {

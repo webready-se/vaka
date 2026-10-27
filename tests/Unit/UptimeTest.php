@@ -180,3 +180,19 @@ test('human_duration rounds to what a person would say', function () {
         ->and(human_duration(2 * 3600 + 10 * 60))->toBe('2 h 10 min')
         ->and(human_duration(3 * 86400 + 3600))->toBe('3 days 1 h');
 });
+
+test('healthy sites are checked in a minute of their own, spread over the interval', function () {
+    $now = strtotime('2026-10-25T12:00:15Z');
+    $minute = fn (int $at) => (int) gmdate('i', $at);
+
+    // Sites added together no longer all come due in the same minute
+    $minutes = array_map(fn (int $id) => $minute(next_uptime_slot($id, 5, $now)), range(1, 10));
+    expect($minutes)->toBe([1, 2, 3, 4, 5, 1, 2, 3, 4, 5]);
+
+    // Then exactly one interval apart, at the start of the minute, before the run at :15 sees it
+    $first = next_uptime_slot(3, 5, $now);
+    expect(gmdate('H:i:s', $first))->toBe('12:03:00')
+        ->and(gmdate('H:i:s', next_uptime_slot(3, 5, $first + 15)))->toBe('12:08:00')
+        ->and(next_uptime_slot(7, 1, $now))->toBe(strtotime('2026-10-25T12:01:00Z'))
+        ->and(gmdate('H:i', next_uptime_slot(30, 60, $now)))->toBe('12:30');
+});
