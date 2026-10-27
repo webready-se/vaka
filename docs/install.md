@@ -90,6 +90,7 @@ server {
 
     location / {
         try_files $uri /index.php$is_args$args;
+        add_header X-Content-Type-Options "nosniff" always;
     }
 
     location ~ \.php$ {
@@ -100,7 +101,7 @@ server {
 }
 ```
 
-Vaka sends its own security headers (a strict Content Security Policy among them); do not add a second, looser one in Nginx.
+Vaka sends its own security headers (a strict Content Security Policy among them); do not add a second, looser one in Nginx. The one line above is for the files Nginx serves itself, the dashboard's script, styles and fonts, so they say `nosniff` too (Vaka checks that on the sites it watches, and on itself). On Apache, the same is `Header set X-Content-Type-Options "nosniff"` for `public/`.
 
 Behind a reverse proxy or load balancer, set `TRUSTED_PROXIES` so the login lockout sees each visitor's real address. See [Configuration](configuration.md).
 

@@ -86,7 +86,8 @@ function cmd_check(array $config, array $args, array $opts): void
         echo '  Mail DNS: ' . lcfirst(evaluate_mail_dns($mail, lookup_mail_dns($mail, $config['dns_resolve'] ?? 'dns_lookup'))['summary']) . "\n";
     }
     if ($result['ok']) {
-        echo '  Security headers: ' . lcfirst(evaluate_headers($response, $config['uptime_timeout'])['summary']) . "\n";
+        $files = fetch_files_nosniff(['page' => $response], $config)['page'] ?? null;
+        echo '  Security headers: ' . lcfirst(evaluate_headers($response, $config['uptime_timeout'], $files)['summary']) . "\n";
         echo '  Exposed files: ' . lcfirst(check_exposed(['check' => $url], $config)['check']['summary']) . "\n";
     }
     if (!$result['ok']) exit(1);

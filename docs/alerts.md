@@ -49,7 +49,14 @@ A grade on its own never alerts (see [Checks](checks.md#security-headers)). Vaka
 > HSTS is weaker: it lasts only 30 days; six months or more is advised
 > If that was not on purpose, look at the last deploy, the web server or the CDN settings.
 
-A change has to show up twice, 15 minutes apart, before it counts. Improvements are recorded in the site's history without a message. Like exposed files, these alerts are not delayed by the `delayed` policy.
+When `nosniff` disappears from the scripts and styles the page loads (see [Checks](checks.md#security-headers)), the alert names the files and says where the line usually went missing:
+
+> ⚠️ **shop.example: security headers got worse**
+> X-Content-Type-Options on scripts and styles was removed: /build/site.css and /build/app.js
+> A web server rule for those files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header): add X-Content-Type-Options: nosniff to that rule too.
+> If that was not on purpose, look at the last deploy, the web server or the CDN settings.
+
+The first time Vaka checks the files, what it finds is a starting point, not a change. A change has to show up twice, 15 minutes apart, before it counts. Improvements are recorded in the site's history without a message. Like exposed files, these alerts are not delayed by the `delayed` policy.
 
 ## Mail DNS
 

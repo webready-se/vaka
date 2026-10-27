@@ -169,8 +169,8 @@ test('headers_notice alerts only when a protection gets worse', function () {
     $worse = headers_notice($state, null);
     expect($worse)->toMatchArray(['action' => 'send', 'kind' => 'headers_worse', 'from' => 'A', 'to' => 'B'])
         ->and($worse['worse'])->toBe([
-            ['label' => 'HSTS', 'change' => 'removed', 'note' => ''],
-            ['label' => 'CSP', 'change' => 'weaker', 'note' => "it allows inline scripts ('unsafe-inline')"],
+            ['key' => 'hsts', 'label' => 'HSTS', 'change' => 'removed', 'note' => ''],
+            ['key' => 'csp', 'label' => 'CSP', 'change' => 'weaker', 'note' => "it allows inline scripts ('unsafe-inline')"],
         ]);
 
     $better = headers_notice(headers_state(['good', 'good', 'good', 'good', 'good', 'good'], json_encode(array_combine(array_keys(SECURITY_HEADERS), ['missing', 'good', 'good', 'good', 'good', 'good']))), null);
@@ -198,4 +198,144 @@ test('a header alert reads plainly', function () {
         'details' => ['HSTS was removed', "CSP is weaker: it allows inline scripts ('unsafe-inline')", 'If that was not on purpose, look at the last deploy, the web server or the CDN settings.'],
     ])
         ->and(alert_emoji('headers_worse'))->toBe(':warning:');
+});
+
+test('the files checked are the first stylesheet and the first script on the page\'s own host', function () {
+    $html = <<<'HTML'
+        <!doctype html><html><head>
+        <link rel="preconnect" href="https://fonts.example">
+        <link rel="icon" href="/favicon.ico">
+        <link href='https://cdn.example/lib.css' rel=stylesheet>
+        <link rel="alternate stylesheet" href="/contrast.css">
+        <LINK REL="Stylesheet" HREF="/build/assets/site-4f2a.css?v=2&amp;x=1#top">
+        <link rel="stylesheet" href="/second.css">
+        <script>inline()</script>
+        <script type="application/ld+json">{"@type": "Organization"}</script>
+        <script src="data:text/javascript,1"></script>
+        <script src="//shop.example/js/app.js" defer></script>
+        <script src="/later.js"></script>
+        </head></html>
+        HTML;
+    expect(page_files($html, 'https://shop.example/'))->toBe(['https://shop.example/build/assets/site-4f2a.css?v=2&x=1', 'https://shop.example/js/app.js'])
+        ->and(page_files('<link rel="stylesheet" href="../theme/site.css"><script src="assets/app.js"></script>', 'https://shop.example/blog/post'))
+            ->toBe(['https://shop.example/theme/site.css', 'https://shop.example/blog/assets/app.js'])
+        ->and(page_files('<script src="/app.js"></script>', 'http://127.0.0.1:8794/shop'))->toBe(['http://127.0.0.1:8794/app.js'])
+        // Another host, or another port on the same host, is another server
+        ->and(page_files('<script src="https://www.shop.example/app.js"></script><script src="http://127.0.0.1:5173/app.js"></script>', 'http://127.0.0.1:8794/'))->toBe([])
+        ->and(page_files('<h1>No files</h1>', 'https://shop.example/'))->toBe([]);
+});
+
+test('files_nosniff names the files without nosniff, and leaves out what says nothing about them', function () {
+    $file = fn (string $url, array $headers = [], int $status = 200, string $type = 'text/css', ?string $final = null) => answered(['Content-Type' => $type] + $headers, $final ?? $url, $status);
+    expect(files_nosniff([
+        'https://shop.example/build/site.css?v=2' => $file('https://shop.example/build/site.css?v=2'),
+        'https://shop.example/js/app.js' => $file('https://shop.example/js/app.js', ['X-Content-Type-Options' => 'nosniff'], 200, 'text/javascript'),
+    ]))->toBe(['checked' => ['/build/site.css', '/js/app.js'], 'missing' => ['/build/site.css']]);
+
+    // A missing file, a page from a fallback route, a redirect to another host and no answer
+    expect(files_nosniff([
+        'https://shop.example/gone.css' => $file('https://shop.example/gone.css', [], 404, 'text/html'),
+        'https://shop.example/app.js' => $file('https://shop.example/app.js', [], 200, 'text/html; charset=utf-8'),
+        'https://shop.example/lib.js' => $file('https://shop.example/lib.js', [], 200, 'text/javascript', 'https://cdn.example/lib.js'),
+        'https://shop.example/slow.js' => answered([], 'https://shop.example/slow.js', 0, CURLE_OPERATION_TIMEDOUT),
+    ]))->toBeNull();
+});
+
+test('X-Content-Type-Options is weak when the page has it but its scripts and styles do not', function () {
+    $page = answered(STRONG_HEADERS + ['X-Frame-Options' => 'DENY']);
+    $lacking = evaluate_headers($page, 10, ['checked' => ['/build/site.css', '/js/app.js'], 'missing' => ['/build/site.css']]);
+    expect($lacking['status'])->toBe('ok')
+        ->and($lacking['summary'])->toBe('Grade B: all 6 in place, X-Content-Type-Options is missing on scripts and styles')
+        ->and($lacking['details']['grade'])->toBe('B')
+        ->and($lacking['details']['headers']['nosniff'])->toBe(['level' => 'good', 'note' => ''])
+        ->and($lacking['details']['files'])->toBe(['checked' => ['/build/site.css', '/js/app.js'], 'missing' => ['/build/site.css']]);
+
+    $fine = evaluate_headers($page, 10, ['checked' => ['/build/site.css'], 'missing' => []]);
+    expect($fine['summary'])->toBe('Grade A: all 6 in place')
+        ->and($fine['details']['grade'])->toBe('A');
+
+    // Below an A the grade stays, and the summary still says it
+    expect(evaluate_headers(answered(['X-Frame-Options' => 'SAMEORIGIN', 'X-Content-Type-Options' => 'nosniff']), 10, ['checked' => ['/a.css'], 'missing' => ['/a.css']])['summary'])
+        ->toBe('Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy, X-Content-Type-Options is missing on scripts and styles');
+
+    // Without nosniff on the page itself, the files add nothing
+    $bare = evaluate_headers(answered([]), 10, ['checked' => ['/a.css'], 'missing' => ['/a.css']]);
+    expect($bare['summary'])->toBe('Grade F: none of the 6 in place')
+        ->and($bare['details'])->not->toHaveKey('files');
+});
+
+test('the files are their own part of a change, so first seeing them is not a protection getting worse', function () {
+    $page = answered(STRONG_HEADERS + ['X-Frame-Options' => 'DENY']);
+    $good = ['checked' => ['/site.css', '/app.js'], 'missing' => []];
+    $lacking = ['checked' => ['/site.css', '/app.js'], 'missing' => ['/site.css', '/app.js']];
+    $twice = function (array $before, array $result): array {
+        $seen = confirm_headers($before, $result);
+        expect($seen['wait'])->toBe(HEADERS_CONFIRM_SECONDS);
+        return confirm_headers($seen['details'], $result);
+    };
+
+    // Graded before the files were checked
+    $old = confirm_headers(null, evaluate_headers($page, 10))['details'];
+    expect($old['confirmed'])->not->toHaveKey('nosniff_files');
+
+    $fine = $twice($old, evaluate_headers($page, 10, $good));
+    expect($fine['change'])->toBeNull()
+        ->and($fine['details']['confirmed']['nosniff_files'])->toBe('good');
+
+    $first = $twice($old, evaluate_headers($page, 10, $lacking));
+    expect($first['change'])->toBe('Grade A to B: X-Content-Type-Options not on scripts and styles');
+
+    $lost = $twice($fine['details'], evaluate_headers($page, 10, $lacking));
+    expect($lost['change'])->toBe('Grade A to B: X-Content-Type-Options removed from scripts and styles');
+
+    $back = $twice($lost['details'], evaluate_headers($page, 10, $good));
+    expect($back['change'])->toBe('Grade B to A: X-Content-Type-Options added to scripts and styles');
+
+    // Gone from the page too: one change, and the files are no longer asked about
+    $gone = $twice($fine['details'], evaluate_headers(answered(['X-Content-Type-Options' => 'none'] + STRONG_HEADERS + ['X-Frame-Options' => 'DENY']), 10, null));
+    expect($gone['change'])->toBe('Grade A to B: X-Content-Type-Options removed');
+});
+
+test('headers_notice: nosniff leaving the scripts and styles alerts, first seeing it missing does not', function () {
+    $levels = array_combine(array_keys(SECURITY_HEADERS), ['good', 'good', 'good', 'good', 'good', 'good']);
+    $state = fn (string $files, string $told) => [
+        'status' => 'ok', 'alerted_status' => 'ok', 'alerted_snapshot' => $told,
+        'details' => ['headers' => array_map(fn ($level) => ['level' => $level, 'note' => ''], $levels), 'files' => ['checked' => ['/site.css', '/app.js'], 'missing' => $files === 'missing' ? ['/site.css', '/app.js'] : []], 'confirmed' => $levels + ['nosniff_files' => $files]],
+    ];
+
+    $first = headers_notice($state('missing', json_encode($levels)), null);
+    expect($first['action'])->toBe('mark')
+        ->and(json_decode($first['snapshot'], true)['nosniff_files'])->toBe('missing');
+
+    $lost = headers_notice($state('missing', json_encode($levels + ['nosniff_files' => 'good'])), null);
+    expect($lost)->toMatchArray(['action' => 'send', 'kind' => 'headers_worse', 'from' => 'A', 'to' => 'B'])
+        ->and($lost['worse'])->toBe([['key' => 'nosniff_files', 'label' => 'X-Content-Type-Options on scripts and styles', 'change' => 'removed', 'note' => '/site.css and /app.js']]);
+
+    expect(headers_notice($state('good', json_encode($levels + ['nosniff_files' => 'missing'])), null)['action'])->toBe('mark');
+});
+
+test('the site detail says which files lack nosniff and where the line goes', function () {
+    $page = answered(STRONG_HEADERS + ['X-Frame-Options' => 'DENY']);
+    $nosniff = fn (?array $files) => array_values(array_filter(header_items(evaluate_headers($page, 10, $files)['details']), fn ($item) => $item['key'] === 'nosniff'))[0];
+
+    expect($nosniff(['checked' => ['/build/site.css', '/js/app.js'], 'missing' => ['/build/site.css', '/js/app.js']]))->toMatchArray([
+        'level' => 'weak',
+        'note' => 'not on the scripts and styles the page loads: /build/site.css and /js/app.js',
+        'fix' => 'X-Content-Type-Options: nosniff',
+        'tip' => 'A web server rule for these files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Add the line to that rule too.',
+    ])
+        ->and($nosniff(['checked' => ['/build/site.css'], 'missing' => []]))->toMatchArray(['level' => 'good', 'note' => 'also on the scripts and styles the page loads'])
+        ->and($nosniff(null))->toMatchArray(['level' => 'good', 'note' => '']);
+});
+
+test('a header alert for the scripts and styles says where to look', function () {
+    $item = bundle_notices([notice([
+        'kind' => 'headers_worse', 'check' => 'headers', 'from' => 'A', 'to' => 'B', 'server_key' => null, 'server' => null,
+        'worse' => [['key' => 'nosniff_files', 'label' => 'X-Content-Type-Options on scripts and styles', 'change' => 'removed', 'note' => '/site.css and /app.js']],
+    ])], [])[0]['items'][0];
+    expect(alert_text($item)['details'])->toBe([
+        'X-Content-Type-Options on scripts and styles was removed: /site.css and /app.js',
+        'A web server rule for those files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header): add X-Content-Type-Options: nosniff to that rule too.',
+        'If that was not on purpose, look at the last deploy, the web server or the CDN settings.',
+    ]);
 });

@@ -62,7 +62,7 @@ Run Vaka on a different server than the sites it watches: if that server goes do
 - **SSL certificates**, the way a browser sees them: a warning at 14, 7 and 1 days before they expire, and when they turn invalid.
 - **Domain expiry** through RDAP, the registries' own structured data, and WHOIS for .se and .nu.
 - **Exposed files** like `.env`, `.git/`, database dumps and backup zips, matched on their content, so a site that answers 200 for everything does not cry wolf.
-- **Security headers** graded A to F, with what each one does and the line to add.
+- **Security headers** graded A to F, with what each one does and the line to add, and `nosniff` checked on the scripts and styles too, where a cache rule often drops it.
 - **Mail DNS:** MX, SPF and DMARC, with the record to add when one is missing, and an alert when they change.
 
 Everything is also in a [read API](docs/api.md), as JSON or CSV, with a read-only token per site or group: for your own reports, for a customer, or for the AI assistant in a site's own project.

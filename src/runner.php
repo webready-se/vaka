@@ -442,8 +442,9 @@ function run_headers(PDO $db, array $config, int $now, float $deadline): array
             break;
         }
         $responses = fetch_many(array_column($batch, 'url', 'id'), $config['uptime_timeout'], user_agent($config), 20, $config['ssl_ca_file']);
+        $files = fetch_files_nosniff($responses, $config);
         foreach ($batch as $site) {
-            $result = evaluate_headers($responses[$site['id']], $config['uptime_timeout']);
+            $result = evaluate_headers($responses[$site['id']], $config['uptime_timeout'], $files[$site['id']] ?? null);
             $before = $site['state_status'] === null ? null : (json_decode((string) $site['state_details'], true) ?: []);
             $next = confirm_headers($before, $result);
             save_check_state($db, $site['id'], 'headers', [
