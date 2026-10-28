@@ -108,6 +108,7 @@ src/share.php            Read tokens (vaka_ and 64 hex): create_share_token() (o
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
+src/report.php           The read API as Markdown for an AI assistant (&format=md): read_api_markdown_site(), read_api_markdown_list(); md_attention() and md_improvements() (what to do, worst first), md_code() (text from a site in a one-line code span)
 src/stats.php            down_periods(), overlap_seconds(), planned_periods() (downtime inside a maintenance window is planned: left out of uptime), uptime_percent(), site_uptime(), daily_uptime() (per day: up, down_seconds, outages, planned_seconds), hourly_buckets()
 src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze; `advice` from advice_for()), read_api() with stable field names (api_site_fields(), CSV)
 src/commands/users.php   user:add, user:edit, user:remove, user:list
@@ -260,7 +261,7 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 | `POST /?api=server-save` | Yes, a user who sees every site | `{ip, label, group?}`: name a server (empty removes the name) and, with `group`, move every site on it to a group (`''` for none); in the history of its sites |
 | `POST /?api=maintenance-add` / `maintenance-remove` | Yes, a user who sees every site | Add a window for `site_id` or `group_id` (`{kind: daily\|days\|once, start, end, days, from, to, label}`, `maintenance_form_fields()`), or remove one by `id`; in the history of the sites it covers; 422 `{errors: {when\|label}}` |
 | `POST /?api=snooze` | Yes | `{site_id, for: "1h"\|"4h"\|"24h"}` or `{site_id, action: "unsnooze"}`; needs `X-CSRF-Token`; 404 when not visible |
-| `GET /?api` | Read token or session | The read API (docs/api.md): every site in the token's group (or the user's), in stable field names; `&site=`, or a token for one site without it, one site with 30 days, samples (`&hours=`, up to 720) and the last 100 events of every check; `&format=csv`. Token as `Authorization: Bearer` or `&share=`, needs no session and sets no cookie; an unknown or revoked token is a 404, an expired one a 401 that says when it expired |
+| `GET /?api` | Read token or session | The read API (docs/api.md): every site in the token's group (or the user's), in stable field names; `&site=`, or a token for one site without it, one site with 30 days, samples (`&hours=`, up to 720) and the last 100 events of every check; `&format=csv`, or `&format=md` for an AI assistant (src/report.php). Token as `Authorization: Bearer` or `&share=`, needs no session and sets no cookie; an unknown or revoked token is a 404, an expired one a 401 that says when it expired |
 
 Any other path answers 404. Restricted users (`groups` in users.json) only ever see their groups' sites, and a site they may not see is a 404, so its existence does not leak.
 
