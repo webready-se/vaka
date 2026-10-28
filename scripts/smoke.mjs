@@ -268,6 +268,7 @@ async function main() {
     all('.site-row').find((r) => /shop\.example/.test(r.textContent)).click();
     if (await waitFor(() => q('dialog.drawer[open] h2'), 'the site detail to open')) {
       expect(q('dialog.drawer h2').textContent === 'shop.example', 'the detail is for the site clicked');
+      expect(getComputedStyle(document.documentElement).overflow === 'hidden', 'the page behind the detail does not scroll');
       expect(q('dialog.drawer .chart'), 'a response time chart');
       const bars = all('dialog.drawer .days button');
       const note = q('dialog.drawer .day-note');
@@ -308,6 +309,7 @@ async function main() {
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
       expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');
+      expect(getComputedStyle(document.documentElement).overflow !== 'hidden', 'the page scrolls again once the detail is closed');
     }
 
     // Adding, changing and removing a site in the dashboard
