@@ -309,7 +309,11 @@ test('site details have the history and response times, and are hidden from user
         ->and($admin['json']['uptime']['24h'])->toBeGreaterThan(99.0)->toBeLessThan(99.2)
         ->and($admin['json']['days'])->toHaveCount(30)
         // The outage an hour ago is today, or yesterday just after midnight
-        ->and(min(array_column(array_slice($admin['json']['days'], -2), 'up')))->toBeLessThan(100.0);
+        ->and(min(array_column(array_slice($admin['json']['days'], -2), 'up')))->toBeLessThan(100.0)
+        ->and(array_sum(array_column($admin['json']['days'], 'down_seconds')))->toBe(12 * 60)
+        // One outage, on two days if midnight fell inside it
+        ->and(array_sum(array_column($admin['json']['days'], 'outages')))->toBeGreaterThanOrEqual(1)->toBeLessThanOrEqual(2)
+        ->and(array_sum(array_column($admin['json']['days'], 'planned_seconds')))->toBe(0);
 
     $overview = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
     expect($overview['groups'][0]['sites'][0]['days'])->toHaveCount(30)

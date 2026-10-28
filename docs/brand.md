@@ -25,6 +25,8 @@ Change the owl in the kit, then copy it here; never draw a Vaka-only variant.
 
 Teal: `--accent` `#0E7490` (dark `#22D3EE`) for text, links and focus; the tile `#0E7490`; the owl itself `#19ACCA`. Down red is the kit's `--down`, never Puls's coral.
 
+The 30 day bars use the kit's bar tokens, plus one of Vaka's own: a day that was down only inside a maintenance window is `--quiet` at about half strength. Maintenance and snoozes are quiet everywhere in Vaka, and planned work should read as calm, not as a smaller outage. It differs from green and amber in hue and lightness, and from "no data" in height too.
+
 ## The night panel
 
 Vaka's signature surface (the kit's "answer" at the top of the page). It stays night in both themes and says how everything is in one headline, with the numbers beside it; the line under the headline says only what the numbers do not. Its glow follows the state: teal when calm, amber when something needs a look, red when a site is down.

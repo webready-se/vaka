@@ -102,13 +102,13 @@ src/checks/exposed.php   EXPOSED_FILES, exposed_matches() (content signatures), 
 src/checks/headers.php   SECURITY_HEADERS, header_level() (good/weak/missing), headers_grade(), evaluate_headers(), confirm_headers() (a change counts after a second look), headers_notice() (regressions only); page_files(), files_nosniff(), own_host(), fetch_files_nosniff() (nosniff on the first stylesheet and script on the page's host or a host under it; `nosniff_files` is its own level, so a first look is a baseline)
 src/checks/dns.php       lookup_mail_dns() (MX, SPF, DMARC in one spelling; resolver injected), mail_domain(), evaluate_mail_dns(), dns_items(), confirm_mail_dns() (a change counts after a second look), dns_notice() (any confirmed change)
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
-src/silence.php          Maintenance windows (parse, window_active() in local time, describe), active_silence(), snooze_site()
+src/silence.php          Maintenance windows (parse, window_active() and window_periods() in local time, describe, site_windows()), active_silence(), snooze_site()
 src/manage.php           Changing sites, groups, maintenance windows and servers from the dashboard: site_form_input() and group_form_input() (an error per field, the CLI's rules; webhooks kept unless replaced or cleared), save_site_form(), save_group_form(), describe_*_changes() (history in words), remove_*_form() (kept in the audit log); CHECK_LABELS
 src/share.php            Read tokens: create_share_token() (only a SHA-256 and the first 8 characters are kept), find_share_token(), share_scope(), share_expiry()
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
-src/stats.php            downtime_seconds(), uptime_percent(), site_uptime(), hourly_buckets()
+src/stats.php            down_periods(), overlap_seconds(), planned_periods() (downtime inside a maintenance window is planned: left out of uptime), uptime_percent(), site_uptime(), daily_uptime() (per day: up, down_seconds, outages, planned_seconds), hourly_buckets()
 src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze; `advice` from advice_for()), read_api() with stable field names (api_site_fields(), CSV)
 src/commands/users.php   user:add, user:edit, user:remove, user:list
 public/index.php         Web front controller (three lines: bootstrap, config, handle_request())
@@ -205,7 +205,7 @@ A first result (baseline) never alerts. Expiry thresholds alert once per certifi
 - **Maintenance window:** one-off (from, to) or recurring (weekdays plus a time range, e.g. every night 00:00-07:00, may cross midnight), per site or per group. Incidents that start and end inside a window are never sent; the dashboard shows them in the history and as a quiet summary ("2 outages during maintenance, 14 min"). A site still down when the window ends alerts then.
 - **Snooze:** acknowledge an ongoing incident for 1 h, 4 h or 24 h. There is no open-ended snooze, so nothing is forgotten: still down when it ends means a new alert. A recovery clears it. Planned long outages use a maintenance window or pause the site. Snoozing sets `alerted_status = 'snoozed'` (when the site is down), so the end of the snooze differs from what was told and sends "still down after the snooze" (`kind = still_down`).
 - **Reminder:** a site still down `REMIND_EVERY_HOURS` (4) after it was last told gets "has been down for 4 h" (`kind = reminder`, `reminder_due()`), and `alerted_at` moves on, so the next comes 4 h later. Silences hold it back like any notice; unstable sites and the digest and silent policies get none. A snooze is how to say "I'm on it, stop reminding me".
-- While silenced, `collect_notices()` skips the check entirely; events written then carry `silenced_by`, and `recent_outages()` ignores them, so planned work never makes a site look unstable.
+- While silenced, `collect_notices()` skips the check entirely; events written then carry `silenced_by`, and `recent_outages()` ignores them, so planned work never makes a site look unstable. Downtime inside a window does not count against uptime either (`planned_periods()`, from the windows as they are now); the 30 day bars show a day down only in maintenance in the quiet colour.
 
 **Policies per group:**
 

@@ -15,7 +15,9 @@ A run from cron starts checking 15 seconds into the minute (`RUN_AT_SECOND`). Mo
 
 Each site has a minute of its own within its interval, so the checks are spread over it: with 50 sites every 5 minutes, about ten are asked each minute instead of all fifty at once. Asking them together hit a server with all its sites at the same moment, and made those minutes' response times look slower than the sites are.
 
-Every check stores the response time and the IP address the site answered on, kept for `SAMPLES_RETENTION_DAYS`. Uptime percentages are weighted by time: a site that was down for 14 minutes in a day was up 99.02% of it, however often it was checked meanwhile.
+Every check stores the response time and the IP address the site answered on, kept for `SAMPLES_RETENTION_DAYS`. Uptime percentages are weighted by time: a site that was down for 14 minutes in a day was up 99.02% of it, however often it was checked meanwhile. Downtime inside one of the site's maintenance windows is planned: it is left out of uptime and shown on its own. Only the part inside the window counts as planned, so a site still down after its window loses uptime from then on.
+
+The 30 day bars show one day each, in `TIMEZONE`: green without an outage, amber when the site was down for less than an hour in all, red for an hour or more, the quiet colour when it was down only in maintenance, grey before the first check. Hovering a bar says what happened that day; in a site's detail, the line under the bars sums up the month and tells the day under the pointer or finger.
 
 What a failure means, and what the dashboard suggests:
 
