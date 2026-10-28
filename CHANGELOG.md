@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-28
+
 ### Added
 
 - Security headers: the first stylesheet and the first script a page loads from the site's own server (its host, or a host under it such as `static.shop.example`) are checked for `X-Content-Type-Options: nosniff` too. When the page has it and they do not (typically a web server rule for those files with a header of its own, such as an nginx `location` with `add_header Cache-Control`), X-Content-Type-Options counts as weak, so an A becomes a B, and the site detail names the files and where the line goes. It alerts when `nosniff` disappears from them; the first check of the files is a starting point and never alerts. `php vaka check` shows it too.
@@ -18,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- `TIMEZONE` unset now means the server's time zone (php.ini, UTC on most servers), as in Puls and Snoka; it used to be Europe/Stockholm. **Set `TIMEZONE=Europe/Stockholm` in `.env` to keep Swedish time**: maintenance windows and the daily summary follow it.
 - Cmd+K (Ctrl+K on Windows and Linux) jumps to the filter, as in the other Webready tools, instead of "/", which needs Shift on many keyboard layouts (Shift+7 on a Swedish one). The field shows the keys for the computer it is on, and none on a touch screen.
 - The owl in the night panel sits on its bottom edge, its talons over it, under tonight's moon in the phase it has (worked out in the browser; a hover names it). On a phone it stays in the corner. The pose is the design kit's new `characters/vaka-perched.svg`.
 - A site's detail reads at a glance. After its uptime (the numbers, the 30 days and the response times), what Vaka sees is a tile per check: the server, the certificate, the domain, exposed files, the headers grade and mail, each with how it is in words ("6 days left", "Grade E", "DMARC is missing"), tinted when it needs a look. The settings are a card of their own, with Change in its head, which checks are on and off (that was not shown at all) and the maintenance windows; the history comes last. The server's settings are in its tile.
@@ -26,7 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - When a site starts failing, the other sites on its server are no longer checked at once if the failure is the site's own: its domain does not resolve, or the page answered without its keyword. Anything that could be the server's still checks them, so a server that is down is still one alert.
 - Uptime checks are spread over the interval: each site is checked in a minute of its own (its id modulo the interval). Sites added together used to come due in the same minute for good; in one install 30 of 47 sites were asked at once, and that minute's median response time reached 1.9 s against 0.4 s in the others. A site's first check after this change can come up to one interval sooner.
 - A site's name shows in its detail, under the address and in the settings, and the message after adding or saving a site names it ("Added Shop (shop.example)"). The button says "Adding…" or "Saving…" while a site or group is saved, and a new site's detail opens without waiting for the whole overview to reload.
-- `TIMEZONE` unset now means the server's time zone (php.ini, UTC on most servers), as in Puls and Snoka; it used to be Europe/Stockholm. **Set `TIMEZONE=Europe/Stockholm` in `.env` to keep Swedish time**: maintenance windows and the daily summary follow it.
 
 ### Fixed
 
@@ -88,5 +90,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `scripts/seed-demo.php` builds a demo database with fake sites; `scripts/smoke.mjs` drives the dashboard in headless Chrome and fails on JavaScript errors, CSP violations and markup from the data.
 - Every release comes as a zip with only the files Vaka needs to run, and its docs: download, unpack, run.
 
-[Unreleased]: https://github.com/webready-se/vaka/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/webready-se/vaka/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/webready-se/vaka/releases/tag/v0.2.0
 [0.1.0]: https://github.com/webready-se/vaka/releases/tag/v0.1.0

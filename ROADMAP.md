@@ -75,7 +75,7 @@ What makes Vaka worth building, since free tools already cover plain uptime, SSL
 - [x] The watch panel ("All quiet." or what needs you), compact incident rows that open for advice and actions, 30 days of uptime bars per site, the detail as a drawer, phone layout
 - [x] Day bars that say what they show: a tooltip in the list, a line under them in the detail that sums up the month and tells the day pointed at, colours by minutes down, and downtime inside a maintenance window planned (its own colour, left out of uptime)
 - [x] A detail that reads at a glance: uptime first, then a tile per check, the settings in a card of their own (with which checks are on), the history last
-- [ ] The owl perched on the night panel's edge, its claws over it, with tonight's moon above (in the kit first, then copied here; on a phone it stays in the corner)
+- [x] The owl perched on the night panel's edge, its claws over it, with tonight's moon above (in the kit first, then copied here; on a phone it stays in the corner)
 - [ ] Decide with the other Webready tools: one family look, or each tool its own character with shared rules
 
 ## Milestone 3: More checks
