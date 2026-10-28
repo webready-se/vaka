@@ -35,6 +35,7 @@ test('find_share_token: a valid token and what it may read, never an unknown, re
         ->and(find_share_token($this->db, $expiring, $this->now + 3599))->not->toBeNull()
         ->and(find_share_token($this->db, $expiring, $this->now + 3600))->toBeNull()
         ->and(find_share_token($this->db, str_repeat('a', 64), $this->now))->toBeNull()
+        ->and(find_share_token($this->db, create_share_token($this->db, $this->site, null, '', null, $this->now)['token'], $this->now + 10 * 365 * 86400))->not->toBeNull()
         ->and(find_share_token($this->db, 'vaka_' . str_repeat('a', 64), $this->now))->toBeNull()
         ->and(find_share_token($this->db, 'not a token', $this->now))->toBeNull();
 
@@ -57,21 +58,10 @@ test('share_token_expired_on: when a known token stopped working; nothing for a 
 
     expect(share_token_expired_on($this->db, $expired, $this->now))->toBe(utc_now($this->now - 1))
         ->and(share_token_expired_on($this->db, $valid, $this->now))->toBeNull()
+        ->and(share_token_expired_on($this->db, create_share_token($this->db, $this->site, null, '', null, $this->now)['token'], $this->now))->toBeNull()
         ->and(share_token_expired_on($this->db, $revoked['token'], $this->now))->toBeNull()
         ->and(share_token_expired_on($this->db, 'vaka_' . str_repeat('0', 64), $this->now))->toBeNull()
         ->and(share_token_expired_on($this->db, 'nonsense', $this->now))->toBeNull();
-});
-
-test('the upgrade gives a token without a last day 90 days from then', function () {
-    $file = temp_dir() . '/old.sqlite';
-    $db = new PDO('sqlite:' . $file);
-    run_migrations($db, array_filter(migrations(), fn ($version) => $version <= 8, ARRAY_FILTER_USE_KEY));
-    $db->exec("INSERT INTO share_tokens (token_hash, prefix, label, created_at) VALUES ('a', 'aaaaaaaa', '', '2026-10-01T00:00:00Z'), ('b', 'bbbbbbbb', '', '2026-10-01T00:00:00Z')");
-    $db->exec("UPDATE share_tokens SET expires_at = '2026-12-31T23:00:00Z' WHERE token_hash = 'b'");
-
-    run_migrations($db);
-    expect($db->query("SELECT token_hash, expires_at FROM share_tokens ORDER BY token_hash")->fetchAll(PDO::FETCH_KEY_PAIR))
-        ->toBe(['a' => gmdate('Y-m-d', time() + 91 * 86400) . 'T00:00:00Z', 'b' => '2026-12-31T23:00:00Z']);
 });
 
 test('a token remembers when it was last used, at most once a minute', function () {
@@ -170,20 +160,22 @@ test('share:revoke takes the start of a token with or without vaka_, or the whol
     expect(vaka(['share:list'], $env)['out'])->toContain('No read tokens');
 });
 
-test('share:create works for 90 days unless told otherwise, and always has a last day', function () {
+test('share:create works for 90 days unless told otherwise; never is a choice of its own', function () {
     $env = cli_env();
     vaka(['site:add', 'https://shop.example'], $env);
 
     $r = vaka(['share:create', 'shop.example', '--label='], $env);
     expect($r['exit'])->toBe(0, $r['err'])
-        ->and($r['out'])->toContain('Last day it works, YYYY-MM-DD (Enter: ')
+        ->and($r['out'])->toContain('Last day it works, YYYY-MM-DD or never (Enter: ')
         ->and($r['out'])->toContain('in 90 days)')
         ->and($r['out'])->toMatch('/Read token for shop\.example, valid through \d{1,2} \w{3} \d{4}\./');
-
     expect(vaka(['share:create', 'shop.example', '--label=', '--expires='], $env)['out'])->toMatch('/valid through \d{1,2} \w{3} \d{4}\./');
-    $r = vaka(['share:create', 'shop.example', '--label=', '--expires=never'], $env);
-    expect($r['exit'])->toBe(1)
-        ->and($r['err'])->toContain('A read token always has a last day');
+
+    $r = vaka(['share:create', 'shop.example', '--label=Never', '--expires=never'], $env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->toContain('Read token for shop.example (Never), never expires.')
+        ->and($r['out'])->not->toContain('Last day it works');
+    expect(vaka(['share:list'], $env)['out'])->toMatch('/Never\s+vaka_[a-f0-9]{8}…\s+never\s/');
 });
 
 test('share:create for a site, without APP_URL, says where to set it', function () {

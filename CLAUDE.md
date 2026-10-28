@@ -173,7 +173,7 @@ samples      site_id, checked_at, status_code, ms, ok, ip        (uptime only, t
 audit_log    id, username, action, ip, created_at               (login lockout, trimmed after 30 days)
 meta         key, value                                          (last_run_at, last_cleanup_on, last_digest_on, last_digest_at)
 share_tokens id, token_hash, prefix, site_id | group_id, label, expires_at, last_used_at, created_at
-             (read tokens: SHA-256 of the token and its start, vaka_ and 8 characters, only; always a last day; go with their site or group)
+             (read tokens: SHA-256 of the token and its start, vaka_ and 8 characters, only; 90 days unless another last day or never is chosen; go with their site or group)
 ```
 
 Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are stored in UTC (ISO 8601); the dashboard shows local time.
@@ -298,7 +298,7 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka alert:test [<group>]` | Send a test alert to a group's destinations (no group: the defaults in .env) |
 | `php vaka server:list` | Servers (by IP or hand-set name) and their sites; CDN sites counted apart |
 | `php vaka user:add [<name>]` / `user:edit` / `user:remove` / `user:list` | Manage dashboard users |
-| `php vaka share:create [<group\|site>] [--label=] [--expires=YYYY-MM-DD]` / `share:list` / `share:revoke [<#>]` | Read tokens for the read API (`vaka_` and 64 hex): always a last day (90 days unless `--expires` gives another), shown once, stored hashed |
+| `php vaka share:create [<group\|site>] [--label=] [--expires=YYYY-MM-DD\|never]` / `share:list` / `share:revoke [<#>]` | Read tokens for the read API (`vaka_` and 64 hex): 90 days unless `--expires` gives another last day or `never`, shown once, stored hashed |
 
 ## Development
 

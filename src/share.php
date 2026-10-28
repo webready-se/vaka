@@ -2,8 +2,9 @@
 
 /**
  * Read tokens for the API (docs/api.md): one per site or group, read-only,
- * always with a last day. The token is shown once when it is made; Vaka keeps
- * only its SHA-256 and its first characters, to tell tokens apart.
+ * working for 90 days unless another last day, or never, is chosen. The
+ * token is shown once when it is made; Vaka keeps only its SHA-256 and its
+ * first characters, to tell tokens apart.
  */
 
 /** The start of every new token, so a person or a secret scanner can tell a token is Vaka's. */
@@ -28,11 +29,11 @@ function is_share_token(string $token): bool
 
 /**
  * A new read token for a site or a group: vaka_ and 64 hex characters.
- * $expiresAt is UTC, see share_expiry().
+ * $expiresAt is UTC (see share_expiry()), or null for one that never expires.
  *
  * @return array{id: int, token: string}
  */
-function create_share_token(PDO $db, ?int $siteId, ?int $groupId, string $label, string $expiresAt, int $now): array
+function create_share_token(PDO $db, ?int $siteId, ?int $groupId, string $label, ?string $expiresAt, int $now): array
 {
     $token = SHARE_TOKEN_PREFIX . bin2hex(random_bytes(32));
     $db->prepare('INSERT INTO share_tokens (token_hash, prefix, site_id, group_id, label, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
@@ -54,7 +55,7 @@ function find_share_token(PDO $db, string $token, int $now): ?array
         WHERE t.token_hash = ?');
     $stmt->execute([share_token_hash($token)]);
     $row = $stmt->fetch();
-    if (!$row || (string) $row['expires_at'] <= utc_now($now)) return null;
+    if (!$row || ($row['expires_at'] !== null && $row['expires_at'] <= utc_now($now))) return null;
 
     if ($row['last_used_at'] === null || $row['last_used_at'] <= utc_now($now - 60)) {
         $db->prepare('UPDATE share_tokens SET last_used_at = ? WHERE id = ?')->execute([utc_now($now), $row['id']]);
@@ -71,9 +72,10 @@ function share_token_expired_on(PDO $db, string $token, int $now): ?string
     return $stmt->fetchColumn() ?: null;
 }
 
-/** "31 Dec 2026", the last day a token works. */
-function share_expires_words(string $expiresAt, string $timezone): string
+/** "31 Dec 2026", the last day a token works, or "never". */
+function share_expires_words(?string $expiresAt, string $timezone): string
 {
+    if ($expiresAt === null) return 'never';
     return (new DateTimeImmutable('@' . (strtotime($expiresAt) - 1)))->setTimezone(new DateTimeZone($timezone))->format('j M Y');
 }
 

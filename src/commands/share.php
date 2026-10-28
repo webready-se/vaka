@@ -1,13 +1,15 @@
 <?php
 
 /**
- * The UTC expiry for what a person typed: a YYYY-MM-DD, or nothing for
- * SHARE_DEFAULT_DAYS from today; else a failure that says what to type.
+ * The UTC expiry for what a person typed: a YYYY-MM-DD, nothing for
+ * SHARE_DEFAULT_DAYS from today, or "never" (null); else a failure that says
+ * what to type. Never is a choice of its own, so a forgotten token stops
+ * working unless someone decided it should not.
  */
-function share_expiry_or_fail(string $date, array $config): string
+function share_expiry_or_fail(string $date, array $config): ?string
 {
     $date = trim($date);
-    if (strtolower($date) === 'never') fail('A read token always has a last day, so a forgotten one stops working on its own. Give the day as YYYY-MM-DD, or leave --expires out for ' . SHARE_DEFAULT_DAYS . ' days.');
+    if (strtolower($date) === 'never') return null;
     try {
         return share_expiry($date !== '' ? $date : share_default_day($config['timezone'], time()), $config['timezone'], time());
     } catch (InvalidArgumentException $e) {
@@ -25,7 +27,7 @@ function cmd_share_create(array $config, array $args, array $opts): void
     $label = isset($opts['label']) ? ($opts['label'] === true ? '' : $opts['label']) : ask_optional('Label, e.g. AI assistant or the customer it is for');
     if (!isset($opts['expires'])) {
         $default = share_default_day($config['timezone'], time());
-        $expiresAt = share_expiry_or_fail(prompt('Last day it works, YYYY-MM-DD (Enter: ' . $default . ', in ' . SHARE_DEFAULT_DAYS . ' days): '), $config);
+        $expiresAt = share_expiry_or_fail(prompt('Last day it works, YYYY-MM-DD or never (Enter: ' . $default . ', in ' . SHARE_DEFAULT_DAYS . ' days): '), $config);
     }
 
     try {
@@ -38,7 +40,7 @@ function cmd_share_create(array $config, array $args, array $opts): void
 
     // The token is printed once, in the lines to copy, and read back from .env
     // after that, so an AI assistant that runs the command never sees it
-    echo "Read token for {$name}" . ($label !== '' ? " ({$label})" : '') . ', valid through ' . share_expires_words($expiresAt, $config['timezone']) . ".\n\n";
+    echo "Read token for {$name}" . ($label !== '' ? " ({$label})" : '') . ', ' . ($expiresAt === null ? 'never expires' : 'valid through ' . share_expires_words($expiresAt, $config['timezone'])) . ".\n\n";
     echo "Put these two lines in the .env of the project that reads it, such as the site's own; never in CLAUDE.md or another file that is committed:\n\n";
     echo "  VAKA_URL={$base}\n";
     echo "  VAKA_SHARE_TOKEN={$token}\n\n";
@@ -67,7 +69,7 @@ function cmd_share_list(array $config, array $args, array $opts): void
         share_target($token),
         $token['label'],
         $token['prefix'] . '…',
-        share_expires_words($token['expires_at'], $config['timezone']) . ($token['expires_at'] <= utc_now($now) ? ' (expired)' : ''),
+        share_expires_words($token['expires_at'], $config['timezone']) . ($token['expires_at'] !== null && $token['expires_at'] <= utc_now($now) ? ' (expired)' : ''),
         $token['last_used_at'] === null ? 'never' : ago($token['last_used_at'], $now),
         (new DateTimeImmutable($token['created_at']))->setTimezone(new DateTimeZone($config['timezone']))->format('j M Y'),
     ], $tokens));
