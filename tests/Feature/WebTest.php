@@ -556,7 +556,7 @@ test('an unknown or revoked share token is a 404, an expired one says when it ex
         ->and(http_request('GET', WEB . '/?api')['status'])->toBe(401);
 });
 
-test('one site in detail: every check\'s history and response times, and CSV for spreadsheets', function () {
+test('one site in detail: every check\'s history and response times, and CSV for spreadsheets; a site token needs no &site=', function () {
     $shop = add_site($this->db, ['url' => 'https://shop.example']);
     $now = time();
     add_event($this->db, $shop, 'uptime', ['status' => 'ok', 'previous' => 'pending', 'message' => 'First check: answered 200 OK in 210 ms'], utc_now($now - 7200));
@@ -583,9 +583,10 @@ test('one site in detail: every check\'s history and response times, and CSV for
     expect($csv['headers']['content-type'])->toBe('text/csv; charset=utf-8')
         ->and(explode("\n", trim($csv['body'])))->toBe(['checked_at,status_code,ms,ok', utc_now($now - 600) . ',200,230,1', utc_now($now - 300) . ',503,120,0']);
 
-    $list = http_request('GET', WEB . '/?api&format=csv&share=' . $token);
-    expect(explode("\n", trim($list['body']))[0])->toBe('url,group,status,since,response_ms,uptime_24h,uptime_7d,uptime_30d,ssl_days_left,domain_days_left,headers_grade,exposed,mail_dns')
-        ->and(explode("\n", trim($list['body']))[1])->toStartWith('https://shop.example,,up,');
+    // A token for one site has nothing else to list, so it answers with its site in detail
+    $own = http_request('GET', WEB . '/?api&share=' . $token)['json'];
+    expect(array_diff_key($own, ['generated_at' => 1]))->toBe(array_diff_key($r['json'], ['generated_at' => 1]))
+        ->and(http_request('GET', WEB . '/?api&format=csv&share=' . $token)['body'])->toBe($csv['body']);
 });
 
 test('a logged-in user reads the same API for the sites they may see', function () {

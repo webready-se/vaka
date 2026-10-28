@@ -185,7 +185,7 @@ test('share:create for a site, without APP_URL, says where to set it', function 
     expect($r['exit'])->toBe(0, $r['err'])
         ->and($r['out'])->toContain('Read token for shop.example, valid through 31 Dec 2099.')
         ->and($r['out'])->toContain('VAKA_URL=https://your-vaka.example')
-        ->and($r['out'])->toContain('"$VAKA_URL/?api&site=shop.example"')
+        ->and($r['out'])->toContain('"$VAKA_URL/?api")')
         ->and($r['out'])->toContain("Set APP_URL in Vaka's .env");
 });
 

@@ -643,7 +643,8 @@ function share_token_from_request(array $get, array $server): string
 
 /**
  * Answer the read API for the sites in $scope (see share_scope()): every
- * site, or one in detail with ?site=, as JSON, or CSV with &format=csv.
+ * site, or one in detail with ?site= (a site token's own without it), as
+ * JSON, or CSV with &format=csv.
  */
 function read_api(array $config, array $scope, string $method, int $now): never
 {
@@ -660,9 +661,11 @@ function read_api(array $config, array $scope, string $method, int $now): never
         'run_ok' => $lastRun !== null && $now - strtotime($lastRun) <= STALE_RUN_SECONDS,
     ];
 
-    if (is_string($_GET['site'] ?? null)) {
-        $site = find_site($db, $_GET['site']);
-        $row = $site ? (overview_rows($db, 's.id = ' . (int) $site['id'] . ' AND ' . $scope['where'])[0] ?? null) : null;
+    // A token for one site has nothing else to list, so it answers with its site in detail
+    $wanted = is_string($_GET['site'] ?? null) ? $_GET['site'] : null;
+    if ($wanted !== null || isset($scope['site_id'])) {
+        $siteId = $wanted !== null ? (find_site($db, $wanted)['id'] ?? null) : $scope['site_id'];
+        $row = $siteId !== null ? (overview_rows($db, 's.id = ' . (int) $siteId . ' AND ' . $scope['where'])[0] ?? null) : null;
         if (!$row) respond_json(404, ['error' => 'No such site']);
         $detail = read_api_site($db, $config, $row, max(1, min(720, (int) ($_GET['hours'] ?? 24))), $now);
         if ($csv) respond_csv(['checked_at', 'status_code', 'ms', 'ok'], array_map(fn ($s) => [$s['checked_at'], $s['status_code'], $s['ms'], (int) $s['ok']], $detail['samples']));
