@@ -266,7 +266,7 @@ test('mail DNS shows in words on the overview, and record by record in the site 
     expect(array_column($detail['site']['dns']['items'], 'level', 'key'))->toBe(['mx' => 'good', 'spf' => 'good', 'dmarc' => 'missing'])
         ->and($detail['site']['dns']['items'][0]['records'])->toBe(['10 mx1.mail.example']);
 
-    $token = create_share_token($this->db, $shop, null, '', null, $now)['token'];
+    $token = create_share_token($this->db, $shop, null, '', utc_now($now + 86400), $now)['token'];
     $api = http_request('GET', WEB . '/?api&site=shop.example&share=' . $token)['json'];
     expect($api['site']['dns'])->toMatchArray(['status' => 'warn', 'domain' => 'shop.example'])
         ->and(array_keys($api['site']['dns']['items'][2]))->toBe(['key', 'label', 'level', 'records', 'note', 'what', 'fix_label', 'fix', 'tip']);
@@ -510,7 +510,7 @@ test('the read API answers a share token with the sites in its scope, in stable 
     save_check_state($this->db, $shop, 'uptime', ['status' => 'fail', 'summary' => 'No answer within 10 s', 'details' => ['problem' => 'timeout', 'status_code' => 0], 'fail_count' => 2, 'changed_at' => utc_now($now - 600)], utc_now($now - 30), utc_now($now + 30));
     save_check_state($this->db, $shop, 'ssl', ['status' => 'warn', 'summary' => 'The certificate expires in 6 days (31 Oct 2026)', 'details' => ['days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z', 'problem' => 'expiring'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
     set_meta($this->db, 'last_run_at', utc_now($now - 30));
-    $token = create_share_token($this->db, null, $customers, 'AI assistant', null, $now)['token'];
+    $token = create_share_token($this->db, null, $customers, 'AI assistant', utc_now($now + 86400), $now)['token'];
 
     $r = http_request('GET', WEB . '/?api&share=' . $token);
     expect($r['status'])->toBe(200)
@@ -531,21 +531,25 @@ test('the read API answers a share token with the sites in its scope, in stable 
         ->and(array_column($r['json']['sites'], 'label'))->toBe(['shop.example']);
 });
 
-test('an unknown, revoked or expired share token is a 404, and a token reads nothing outside its scope', function () {
+test('an unknown or revoked share token is a 404, an expired one says when it expired, and a token reads nothing outside its scope', function () {
     $customers = add_group($this->db, ['name' => 'Customers']);
     add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
     add_site($this->db, ['url' => 'https://blog.example']);
     $now = time();
-    $expired = create_share_token($this->db, null, $customers, '', utc_now($now - 1), $now - 86400)['token'];
-    $revoked = create_share_token($this->db, null, $customers, '', null, $now);
+    $expired = create_share_token($this->db, null, $customers, '', '2026-01-26T23:00:00Z', strtotime('2025-10-28T12:00:00Z'))['token'];
+    $revoked = create_share_token($this->db, null, $customers, '', utc_now($now + 86400), $now);
     revoke_share_token($this->db, $revoked['id']);
-    $token = create_share_token($this->db, null, $customers, '', null, $now)['token'];
+    $token = create_share_token($this->db, null, $customers, '', utc_now($now + 86400), $now)['token'];
 
-    foreach ([str_repeat('0', 64), $expired, $revoked['token'], 'nonsense'] as $bad) {
+    foreach (['vaka_' . str_repeat('0', 64), str_repeat('0', 64), $revoked['token'], 'nonsense'] as $bad) {
         $r = http_request('GET', WEB . '/?api&share=' . $bad);
         expect($r['status'])->toBe(404)
-            ->and($r['json'])->toBe(['error' => 'No such read token: it may have been revoked or have expired']);
+            ->and($r['json'])->toBe(['error' => 'No such read token: it may have been revoked']);
     }
+    $r = http_request('GET', WEB . '/?api&share=' . $expired);
+    expect($r['status'])->toBe(401)
+        ->and($r['json']['error'])->toMatch('/^This read token expired on 2[67] Jan 2026\. Create a new one with `php vaka share:create`\.$/');
+
     expect(http_request('GET', WEB . '/?api&site=blog.example&share=' . $token)['status'])->toBe(404)
         ->and(http_request('GET', WEB . '/?api=overview&share=' . $token)['status'])->toBe(401)
         ->and(http_request('POST', WEB . '/?api&share=' . $token)['status'])->toBe(405)
@@ -559,7 +563,7 @@ test('one site in detail: every check\'s history and response times, and CSV for
     add_event($this->db, $shop, 'ssl', ['status' => 'warn', 'previous' => 'ok', 'message' => 'The certificate expires in 14 days'], utc_now($now - 3600));
     $this->db->exec("INSERT INTO samples (site_id, checked_at, status_code, ms, ok) VALUES ({$shop}, '" . utc_now($now - 600) . "', 200, 230, 1), ({$shop}, '" . utc_now($now - 300) . "', 503, 120, 0), ({$shop}, '" . utc_now($now - 2 * 86400) . "', 200, 250, 1)");
     save_check_state($this->db, $shop, 'uptime', ['status' => 'ok', 'summary' => 'Answered 200 OK in 230 ms', 'details' => ['ms' => 230], 'fail_count' => 0, 'changed_at' => utc_now($now - 7200)], utc_now($now - 60), utc_now($now + 240));
-    $token = create_share_token($this->db, $shop, null, '', null, $now)['token'];
+    $token = create_share_token($this->db, $shop, null, '', utc_now($now + 86400), $now)['token'];
 
     $r = http_request('GET', WEB . '/?api&site=shop.example&share=' . $token);
     expect($r['status'])->toBe(200)

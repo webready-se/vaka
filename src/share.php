@@ -2,27 +2,40 @@
 
 /**
  * Read tokens for the API (docs/api.md): one per site or group, read-only,
- * optionally expiring. The token is shown once when it is made; Vaka keeps
- * only its SHA-256 and its first characters, to tell tokens apart.
+ * working for 90 days unless another last day, or never, is chosen. The
+ * token is shown once when it is made; Vaka keeps only its SHA-256 and its
+ * first characters, to tell tokens apart.
  */
 
-/** Characters of a token kept as is, to recognise it in share:list. */
-const SHARE_PREFIX_LENGTH = 8;
+/** The start of every new token, so a person or a secret scanner can tell a token is Vaka's. */
+const SHARE_TOKEN_PREFIX = 'vaka_';
+
+/** Characters of a token kept as is, to recognise it in share:list: vaka_ and eight more. */
+const SHARE_PREFIX_LENGTH = 13;
+
+/** Days a new token works when nothing else is chosen. */
+const SHARE_DEFAULT_DAYS = 90;
 
 function share_token_hash(string $token): string
 {
     return hash('sha256', $token);
 }
 
+/** Whether $token looks like a whole read token. Tokens made before the vaka_ prefix have none, and still work. */
+function is_share_token(string $token): bool
+{
+    return (bool) preg_match('/^(' . preg_quote(SHARE_TOKEN_PREFIX, '/') . ')?[a-f0-9]{64}$/', $token);
+}
+
 /**
- * A new read token for a site or a group. $expiresAt is UTC (see
- * share_expiry()) or null for a token that never expires.
+ * A new read token for a site or a group: vaka_ and 64 hex characters.
+ * $expiresAt is UTC (see share_expiry()), or null for one that never expires.
  *
  * @return array{id: int, token: string}
  */
 function create_share_token(PDO $db, ?int $siteId, ?int $groupId, string $label, ?string $expiresAt, int $now): array
 {
-    $token = bin2hex(random_bytes(32));
+    $token = SHARE_TOKEN_PREFIX . bin2hex(random_bytes(32));
     $db->prepare('INSERT INTO share_tokens (token_hash, prefix, site_id, group_id, label, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
         ->execute([share_token_hash($token), substr($token, 0, SHARE_PREFIX_LENGTH), $siteId, $groupId, clean_text($label, 100, 'label'), $expiresAt, utc_now($now)]);
     return ['id' => (int) $db->lastInsertId(), 'token' => $token];
@@ -35,7 +48,7 @@ function create_share_token(PDO $db, ?int $siteId, ?int $groupId, string $label,
  */
 function find_share_token(PDO $db, string $token, int $now): ?array
 {
-    if (!preg_match('/^[a-f0-9]{64}$/', $token)) return null;
+    if (!is_share_token($token)) return null;
     $stmt = $db->prepare('SELECT t.*, s.url AS site_url, g.name AS group_name FROM share_tokens t
         LEFT JOIN sites s ON s.id = t.site_id
         LEFT JOIN groups g ON g.id = t.group_id
@@ -48,6 +61,22 @@ function find_share_token(PDO $db, string $token, int $now): ?array
         $db->prepare('UPDATE share_tokens SET last_used_at = ? WHERE id = ?')->execute([utc_now($now), $row['id']]);
     }
     return $row;
+}
+
+/** When a token Vaka knows stopped working (UTC), or null for one that works, or that it does not know. */
+function share_token_expired_on(PDO $db, string $token, int $now): ?string
+{
+    if (!is_share_token($token)) return null;
+    $stmt = $db->prepare('SELECT expires_at FROM share_tokens WHERE token_hash = ? AND expires_at <= ?');
+    $stmt->execute([share_token_hash($token), utc_now($now)]);
+    return $stmt->fetchColumn() ?: null;
+}
+
+/** "31 Dec 2026", the last day a token works, or "never". */
+function share_expires_words(?string $expiresAt, string $timezone): string
+{
+    if ($expiresAt === null) return 'never';
+    return (new DateTimeImmutable('@' . (strtotime($expiresAt) - 1)))->setTimezone(new DateTimeZone($timezone))->format('j M Y');
 }
 
 /** Every token, newest first, with its site or group. */
@@ -81,6 +110,12 @@ function share_scope(array $token): array
     return $token['group_id'] !== null
         ? ['type' => 'group', 'name' => $token['group_name'], 'where' => 's.group_id = ' . (int) $token['group_id']]
         : ['type' => 'site', 'name' => display_url((string) $token['site_url']), 'where' => 's.id = ' . (int) $token['site_id']];
+}
+
+/** The last day (YYYY-MM-DD, local time) a token made now works, unless something else is chosen. */
+function share_default_day(string $timezone, int $now): string
+{
+    return (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone($timezone))->modify('+' . SHARE_DEFAULT_DAYS . ' days')->format('Y-m-d');
 }
 
 /**

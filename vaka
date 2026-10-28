@@ -121,7 +121,7 @@ function print_help(): void
 
     Read API (for other tools and AI assistants; see docs/api.md)
       share:create <group|site>  A read token for a group's or a site's data
-                           --label=<what it is for> --expires=YYYY-MM-DD
+                           --label=<what it is for> --expires=YYYY-MM-DD|never (default: in 90 days)
       share:list           Every read token: what it reads, when it was last used
       share:revoke <#>     Revoke a read token (its number, or the start of it)
 

@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- Read tokens start with `vaka_`, so you can tell one that ended up in git at a glance, and so can a secret scanner given the pattern `vaka_[a-f0-9]{64}`. Tokens made before keep working, and `share:revoke` takes a token's start with or without `vaka_`.
+- An expired read token gets `401` with the day it expired and how to make a new one, instead of a `404`, so a script that stops working says why. An unknown or revoked token is still a `404`.
+
+### Changed
+
+- A new read token works for 90 days unless `--expires` gives another last day, so a forgotten one stops working on its own. `share:create` asks with the day filled in (Enter takes it); a token that never expires is still there, as `--expires=never` (or typing `never`), a choice of its own instead of the default. Tokens made before keep what they had.
+- `share:create` shows the token once, in the two lines for the project's `.env`, then how to check that git ignores the file, a warning against the `PUBLIC_`, `VITE_` and `NEXT_PUBLIC_` prefixes (they put a variable in the code sent to browsers), and a curl command that loads the token from `.env`, so an AI assistant that runs it never sees the token. `docs/api.md` says the same.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added

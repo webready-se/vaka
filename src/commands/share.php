@@ -1,21 +1,20 @@
 <?php
 
-/** The UTC expiry for a YYYY-MM-DD typed by a person, null for none, or a failure that says what to type. */
+/**
+ * The UTC expiry for what a person typed: a YYYY-MM-DD, nothing for
+ * SHARE_DEFAULT_DAYS from today, or "never" (null); else a failure that says
+ * what to type. Never is a choice of its own, so a forgotten token stops
+ * working unless someone decided it should not.
+ */
 function share_expiry_or_fail(string $date, array $config): ?string
 {
-    if (trim($date) === '') return null;
+    $date = trim($date);
+    if (strtolower($date) === 'never') return null;
     try {
-        return share_expiry($date, $config['timezone'], time());
+        return share_expiry($date !== '' ? $date : share_default_day($config['timezone'], time()), $config['timezone'], time());
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage() . '.');
     }
-}
-
-/** "31 Dec 2026", the last day a token works, or "never". */
-function share_expires_words(?string $expiresAt, string $timezone): string
-{
-    if ($expiresAt === null) return 'never';
-    return (new DateTimeImmutable('@' . (strtotime($expiresAt) - 1)))->setTimezone(new DateTimeZone($timezone))->format('j M Y');
 }
 
 function cmd_share_create(array $config, array $args, array $opts): void
@@ -24,9 +23,12 @@ function cmd_share_create(array $config, array $args, array $opts): void
     $db = get_db($config['db_path']);
     [$siteId, $groupId, $name] = group_or_site($db, $args[1] ?? pick_group_or_site($db));
     // A date given as an option is checked before anything is asked
-    $expiresAt = isset($opts['expires']) ? share_expiry_or_fail($opts['expires'] === true ? '' : $opts['expires'], $config) : null;
+    $expiresAt = isset($opts['expires']) ? share_expiry_or_fail($opts['expires'] === true ? '' : $opts['expires'], $config) : '';
     $label = isset($opts['label']) ? ($opts['label'] === true ? '' : $opts['label']) : ask_optional('Label, e.g. AI assistant or the customer it is for');
-    if (!isset($opts['expires'])) $expiresAt = share_expiry_or_fail(ask_optional('Last day it works, YYYY-MM-DD', '', false, 'Enter: it never expires'), $config);
+    if (!isset($opts['expires'])) {
+        $default = share_default_day($config['timezone'], time());
+        $expiresAt = share_expiry_or_fail(prompt('Last day it works, YYYY-MM-DD or never (Enter: ' . $default . ', in ' . SHARE_DEFAULT_DAYS . ' days): '), $config);
+    }
 
     try {
         $created = create_share_token($db, $siteId, $groupId, $label, $expiresAt, time());
@@ -35,20 +37,22 @@ function cmd_share_create(array $config, array $args, array $opts): void
     }
     $token = $created['token'];
     $base = $config['app_url'] !== '' ? $config['app_url'] : 'https://your-vaka.example';
-    $expiry = $expiresAt === null ? 'never expires' : 'valid through ' . share_expires_words($expiresAt, $config['timezone']);
 
-    echo "Read token for {$name}" . ($label !== '' ? " ({$label})" : '') . ", {$expiry}:\n\n";
-    echo "  {$token}\n\n";
-    echo "It is shown only once: Vaka keeps a fingerprint of it, not the token. Lost it? Create a new one and revoke this one.\n\n";
-    echo "Read it with:\n";
+    // The token is printed once, in the lines to copy, and read back from .env
+    // after that, so an AI assistant that runs the command never sees it
+    echo "Read token for {$name}" . ($label !== '' ? " ({$label})" : '') . ', ' . ($expiresAt === null ? 'never expires' : 'valid through ' . share_expires_words($expiresAt, $config['timezone'])) . ".\n\n";
+    echo "Put these two lines in the .env of the project that reads it, such as the site's own; never in CLAUDE.md or another file that is committed:\n\n";
+    echo "  VAKA_URL={$base}\n";
+    echo "  VAKA_SHARE_TOKEN={$token}\n\n";
+    if ($config['app_url'] === '') echo "(Set APP_URL in Vaka's .env to see Vaka's own address here.)\n\n";
+    echo "Check that git ignores the file: `git check-ignore .env` answers .env when it does.\n";
+    echo "Keep the names as they are: a PUBLIC_, VITE_ or NEXT_PUBLIC_ prefix puts the token in the code sent to visitors' browsers.\n\n";
+    echo "Read it from that project (the token stays in .env, so an AI assistant never sees it):\n\n";
     // A site token reads its one site in detail; a group token the list
     $query = $siteId !== null ? '?api&site=' . rawurlencode($name) : '?api';
-    echo "  curl -s -H \"Authorization: Bearer {$token}\" \"{$base}/{$query}\"\n";
-    if ($config['app_url'] === '') echo "  (Set APP_URL in .env to see Vaka's own address here.)\n";
-    echo "\nFor an AI assistant in the site's own project, put these in its .env (never in CLAUDE.md or other files that are committed):\n";
-    echo "  VAKA_URL={$base}\n";
-    echo "  VAKA_SHARE_TOKEN={$token}\n";
-    echo "\nThe fields are described in docs/api.md. Revoke the token with `php vaka share:revoke " . substr($token, 0, SHARE_PREFIX_LENGTH) . "`.\n";
+    echo "  (set -a; . ./.env; curl -s -H \"Authorization: Bearer \$VAKA_SHARE_TOKEN\" \"\$VAKA_URL/{$query}\")\n\n";
+    echo "It is shown only once: Vaka keeps a fingerprint of it, not the token. Lost it? Create a new one and revoke this one.\n";
+    echo "The fields are described in docs/api.md. Revoke it with `php vaka share:revoke " . substr($token, 0, SHARE_PREFIX_LENGTH) . "`.\n";
 }
 
 function cmd_share_list(array $config, array $args, array $opts): void
@@ -83,9 +87,12 @@ function cmd_share_revoke(array $config, array $args, array $opts): void
     if (ctype_digit($ref) && isset($tokens[(int) $ref])) {
         $token = $tokens[(int) $ref];
     } else {
-        // The start of the token, as share:list shows it, or the whole token
+        // The start of the token, as share:list shows it (vaka_ may be left out), or the whole token
         $ref = strtolower(rtrim($ref, '.…'));
-        $matches = array_values(array_filter($tokens, fn (array $token) => strlen($ref) === 64 ? hash_equals($token['token_hash'], share_token_hash($ref)) : ($ref !== '' && str_starts_with($token['prefix'], $ref))));
+        $bare = fn (string $start) => str_starts_with($start, SHARE_TOKEN_PREFIX) ? substr($start, strlen(SHARE_TOKEN_PREFIX)) : $start;
+        $matches = array_values(array_filter($tokens, fn (array $token) => is_share_token($ref)
+            ? hash_equals($token['token_hash'], share_token_hash($ref))
+            : $bare($ref) !== '' && str_starts_with($bare($token['prefix']), $bare($ref))));
         if (count($matches) > 1) fail("More than one read token starts with \"{$ref}\". Use its number from `php vaka share:list`.");
         $token = $matches[0] ?? fail("No read token starts with \"{$ref}\". See `php vaka share:list`.");
     }

@@ -104,7 +104,7 @@ src/checks/dns.php       lookup_mail_dns() (MX, SPF, DMARC in one spelling; reso
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat
 src/silence.php          Maintenance windows (parse, window_active() and window_periods() in local time, describe, site_windows()), active_silence(), snooze_site()
 src/manage.php           Changing sites, groups, maintenance windows and servers from the dashboard: site_form_input() and group_form_input() (an error per field, the CLI's rules; webhooks kept unless replaced or cleared), save_site_form(), save_group_form(), describe_*_changes() (history in words), remove_*_form() (kept in the audit log); CHECK_LABELS
-src/share.php            Read tokens: create_share_token() (only a SHA-256 and the first 8 characters are kept), find_share_token(), share_scope(), share_expiry()
+src/share.php            Read tokens (vaka_ and 64 hex): create_share_token() (only a SHA-256 and the start are kept), find_share_token(), share_token_expired_on() (an expired token says so), share_scope(), share_expiry(), share_default_day() (90 days)
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
@@ -173,7 +173,7 @@ samples      site_id, checked_at, status_code, ms, ok, ip        (uptime only, t
 audit_log    id, username, action, ip, created_at               (login lockout, trimmed after 30 days)
 meta         key, value                                          (last_run_at, last_cleanup_on, last_digest_on, last_digest_at)
 share_tokens id, token_hash, prefix, site_id | group_id, label, expires_at, last_used_at, created_at
-             (read tokens: SHA-256 of the token and its first 8 characters only; go with their site or group)
+             (read tokens: SHA-256 of the token and its start, vaka_ and 8 characters, only; 90 days unless another last day or never is chosen; go with their site or group)
 ```
 
 Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are stored in UTC (ISO 8601); the dashboard shows local time.
@@ -260,7 +260,7 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 | `POST /?api=server-save` | Yes, a user who sees every site | `{ip, label, group?}`: name a server (empty removes the name) and, with `group`, move every site on it to a group (`''` for none); in the history of its sites |
 | `POST /?api=maintenance-add` / `maintenance-remove` | Yes, a user who sees every site | Add a window for `site_id` or `group_id` (`{kind: daily\|days\|once, start, end, days, from, to, label}`, `maintenance_form_fields()`), or remove one by `id`; in the history of the sites it covers; 422 `{errors: {when\|label}}` |
 | `POST /?api=snooze` | Yes | `{site_id, for: "1h"\|"4h"\|"24h"}` or `{site_id, action: "unsnooze"}`; needs `X-CSRF-Token`; 404 when not visible |
-| `GET /?api` | Read token or session | The read API (docs/api.md): every site in the token's group or site (or the user's), in stable field names; `&site=` one site with 30 days, samples (`&hours=`, up to 720) and the last 100 events of every check; `&format=csv`. Token as `Authorization: Bearer` or `&share=`, needs no session and sets no cookie; an unknown, revoked or expired token is a 404 |
+| `GET /?api` | Read token or session | The read API (docs/api.md): every site in the token's group or site (or the user's), in stable field names; `&site=` one site with 30 days, samples (`&hours=`, up to 720) and the last 100 events of every check; `&format=csv`. Token as `Authorization: Bearer` or `&share=`, needs no session and sets no cookie; an unknown or revoked token is a 404, an expired one a 401 that says when it expired |
 
 Any other path answers 404. Restricted users (`groups` in users.json) only ever see their groups' sites, and a site they may not see is a 404, so its existence does not leak.
 
@@ -298,7 +298,7 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka alert:test [<group>]` | Send a test alert to a group's destinations (no group: the defaults in .env) |
 | `php vaka server:list` | Servers (by IP or hand-set name) and their sites; CDN sites counted apart |
 | `php vaka user:add [<name>]` / `user:edit` / `user:remove` / `user:list` | Manage dashboard users |
-| `php vaka share:create [<group\|site>] [--label=] [--expires=YYYY-MM-DD]` / `share:list` / `share:revoke [<#>]` | Read tokens for the read API: shown once, stored hashed |
+| `php vaka share:create [<group\|site>] [--label=] [--expires=YYYY-MM-DD\|never]` / `share:list` / `share:revoke [<#>]` | Read tokens for the read API (`vaka_` and 64 hex): 90 days unless `--expires` gives another last day or `never`, shown once, stored hashed |
 
 ## Development
 
