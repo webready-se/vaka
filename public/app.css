@@ -443,13 +443,22 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .status-failing { color: var(--warn); }
 .status-paused, .status-pending { color: var(--text-3); }
 
-/* Thirty days at a glance, one bar per day */
+/* Thirty days at a glance, one bar per day (dayClass() in app.js says which colour) */
 .days { display: flex; align-items: flex-end; gap: 2px; height: 26px; }
-.days i { flex: 1; height: 100%; border-radius: 2px; background: var(--up-bar); opacity: 0.75; }
-.days i.is-partial { background: var(--warn-bar); opacity: 1; }
-.days i.is-down { background: var(--down-bar); opacity: 1; }
-.days i.is-none { background: var(--none); opacity: 1; height: 40%; }
-.site-row:hover .days i { opacity: 1; }
+.days > *, .day-key i { flex: 1; height: 100%; border-radius: 2px; background: var(--up-bar); opacity: 0.75; }
+.days > .is-partial, .day-key .is-partial { background: var(--warn-bar); opacity: 1; }
+.days > .is-down, .day-key .is-down { background: var(--down-bar); opacity: 1; }
+/* Down only in maintenance: planned, so the quiet colour, softly */
+.days > .is-planned, .day-key .is-planned { background: var(--quiet); opacity: 0.55; }
+.days > .is-none, .day-key .is-none { background: var(--none); opacity: 1; height: 40%; }
+.site-row:hover .days > :not(.is-planned) { opacity: 1; }
+/* A day bar's words on hover in the site list, placed by app.js */
+.day-tip {
+  position: fixed; left: 0; top: 0; z-index: 25; max-width: min(440px, calc(100vw - 16px)); margin: 0; padding: 6px 10px;
+  border-radius: 9px; background: var(--night); color: var(--night-text); font-size: 13px; font-weight: 600; line-height: 1.35;
+  box-shadow: 0 10px 24px -12px rgb(15 23 42 / 0.6); pointer-events: none; opacity: 0; transition: opacity 0.1s;
+}
+.day-tip.is-visible { opacity: 1; }
 .no-match { padding: 22px 18px; color: var(--text-3); }
 
 /* ===================================================================
@@ -495,8 +504,16 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .fact { padding: 12px 14px; border-radius: 14px; background: var(--surface-2); }
 .fact dt { font-size: 12px; color: var(--text-3); font-weight: 600; }
 .fact dd { margin: 3px 0 0; font-size: 19px; font-weight: 750; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; }
-.days.is-large { height: 44px; gap: 3px; }
+.days.is-large { height: 44px; gap: 3px; touch-action: pan-y; }
+.days > button { padding: 0; border: 0; cursor: pointer; }
+.days > button:focus-visible { border-radius: 2px; outline-offset: 1px; }
+.days > .is-picked { opacity: 1; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-3); }
 .days-legend { display: flex; justify-content: space-between; margin: 6px 0 0; color: var(--text-3); font-size: 12px; }
+.day-note { margin: 10px 0 0; min-height: 1.45em; font-weight: 600; font-variant-numeric: tabular-nums; }
+.day-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--text-3); font-size: 12.5px; }
+.day-key li { display: flex; align-items: center; gap: 6px; }
+.day-key i { flex: none; width: 8px; height: 12px; }
+.day-key .is-none { height: 6px; }
 .chart { width: 100%; height: 170px; display: block; }
 .chart .chart-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .chart .chart-area { fill: var(--accent); opacity: 0.1; }

@@ -70,6 +70,34 @@ test('a one-off window is active from its start to its end', function () {
         ->and(window_active($once, strtotime('2026-11-02T01:00:00Z'), 'UTC'))->toBeFalse();
 });
 
+test('window_periods gives the times a recurring window covers, on its days, clipped to the period', function () {
+    // Mondays and Tuesdays 22:00 to 02:00; 2 November 2026 is a Monday
+    $window = recurring('1,2', '22:00', '02:00');
+    $from = stockholm('2026-11-02 01:00');
+    $to = stockholm('2026-11-04 23:00');
+    expect(window_periods($window, $from, $to, 'Europe/Stockholm'))->toBe([
+        // Sunday night's window is not one: Sunday is not among its days
+        [stockholm('2026-11-02 22:00'), stockholm('2026-11-03 02:00')],
+        [stockholm('2026-11-03 22:00'), stockholm('2026-11-04 02:00')],
+    ]);
+
+    // One that started the day before $from counts from $from
+    expect(window_periods($window, stockholm('2026-11-03 01:00'), stockholm('2026-11-03 12:00'), 'Europe/Stockholm'))
+        ->toBe([[stockholm('2026-11-03 01:00'), stockholm('2026-11-03 02:00')]]);
+});
+
+test('window_periods follows local time across the change to winter time, and clips a one-off window', function () {
+    // Summer time ends 25 October 2026 at 03:00, which becomes 02:00 again: that night is an hour longer
+    $night = recurring('1,2,3,4,5,6,7', '00:00', '07:00');
+    [$period] = window_periods($night, stockholm('2026-10-25 00:00'), stockholm('2026-10-25 12:00'), 'Europe/Stockholm');
+    expect($period[1] - $period[0])->toBe(8 * 3600);
+
+    $once = ['days' => '', 'start_time' => null, 'end_time' => null, 'starts_at' => '2026-11-01T21:00:00Z', 'ends_at' => '2026-11-02T01:00:00Z'];
+    expect(window_periods($once, strtotime('2026-11-01T23:00:00Z'), strtotime('2026-11-03T00:00:00Z'), 'UTC'))
+        ->toBe([[strtotime('2026-11-01T23:00:00Z'), strtotime('2026-11-02T01:00:00Z')]])
+        ->and(window_periods($once, strtotime('2026-11-02T01:00:00Z'), strtotime('2026-11-03T00:00:00Z'), 'UTC'))->toBe([]);
+});
+
 test('describe_window says when, in plain words and local time', function () {
     expect(describe_window(recurring('1,2,3,4,5,6,7', '00:00', '07:00'), 'Europe/Stockholm'))->toBe('every day 00:00-07:00')
         ->and(describe_window(recurring('1,2,3,4,5', '22:00', '02:00'), 'Europe/Stockholm'))->toBe('weekdays 22:00-02:00')

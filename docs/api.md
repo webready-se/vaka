@@ -63,7 +63,7 @@ Each site:
 | `snoozed_until` | When a snooze ends, or `null` |
 | `maintenance` | `true` while a maintenance window covers it |
 | `unstable` | `true` while it keeps going down and up (flapping) |
-| `uptime` | `{"24h", "7d", "30d"}`: percentages, rounded down to two decimals and counted from the first check, or `null` before it |
+| `uptime` | `{"24h", "7d", "30d"}`: percentages, rounded down to two decimals and counted from the first check, or `null` before it. Downtime inside the site's maintenance windows is left out (see `days`) |
 | `ssl` | `{status, summary, days_left, valid_to, advice}` for https sites, else `null`. `status` is `ok`, `warn` (expires within 14 days) or `fail` (expired or invalid) |
 | `domain` | `{status, summary, domain, label, days_left, expires, registrar, advice}`, or `null`. `domain` is the registered domain as DNS has it (`xn--` for an international name), `label` as people write it. `status` is `ok`, `warn`, `fail` (expired) or `unknown` (the registry gave no date). `registrar` is **from the registry** |
 | `exposed` | Files that should never be public: `{status, summary, found, since, advice}`, or `null`. `found` is `[{label, what, severity, url}]`; `status` is `ok`, `warn` (a file that tells versions and paths) or `fail` (secrets, code or data) |
@@ -77,7 +77,7 @@ The same `version`, `generated_at`, `timezone`, `scope`, `last_run_at` and `run_
 | Field | Shape |
 |-------|-------|
 | `site` | The site's fields above, plus `keyword` (the text that must be on the page, or `""`), `interval_minutes` and `created_at`. `headers` gains `items`: one per header, `[{key, label, level, note, what, fix, tip}]`, where `level` is `good`, `weak` or `missing`, `fix` is the line to add, and `note` may quote **the site's own header**. The `nosniff` item is `weak` when the page has it but the scripts and styles it loads do not, and its `note` then names those files (**from the site**). `dns` gains `items` too: MX, SPF and DMARC, `[{key, label, level, records, note, what, fix_label, fix, tip}]`, where `level` is `good`, `weak`, `missing` or `none` (a domain without MX), `records` are the domain's own (**from its DNS**), `fix_label` says where to add a record and `fix` is the value |
-| `days` | The last 30 days: `[{date, up}]`, `up` a percentage or `null` before the first check. `date` is local (`timezone`) |
+| `days` | The last 30 days: `[{date, up, down_seconds, outages, planned_seconds}]`. `date` is local (`timezone`); today counts up to now. `up` is a percentage; `down_seconds` the time down outside maintenance windows, in `outages` outages (one that runs past midnight counts on both days); `planned_seconds` the time down inside a window, left out of `up` and of `uptime`. All four are `null` before the first check |
 | `samples` | Response times: `[{checked_at, status_code, ms, ok}]`, oldest first |
 | `events` | The last 100 changes of every check, newest first: `[{check, status, previous, message, silenced_by, created_at}]`. `check` is `uptime`, `ssl`, `domain`, `exposed`, `headers`, `dns`, or `settings` for a change to the site made in the dashboard (the message says who and what); `status` and `previous` are a check's status (`ok`, `warn`, `fail`, `unknown`, `pending`), or `snoozed` for a snooze being set or lifted; `silenced_by` is `maintenance`, `snooze` or `""`. `message` is **from the site** |
 | `maintenance` | Windows that cover the site: `[{when, label, active}]`, `when` in words (`"every day 00:00-07:00"`) |
@@ -134,4 +134,4 @@ Revoke the token with `php vaka share:revoke <#>` when it is no longer needed.
 
 - **Checks run from Vaka's server.** Response times are what that server sees, not what visitors around the world see.
 - **Statuses are only as fresh as the last run.** Look at `run_ok` before trusting `status`.
-- **Maintenance and snoozes do not hide anything here.** The API shows the true status; `maintenance` and `snoozed_until` say why no alert went out.
+- **Maintenance and snoozes do not hide anything here.** The API shows the true status; `maintenance` and `snoozed_until` say why no alert went out. Uptime leaves out downtime inside maintenance windows, and `days` gives it as `planned_seconds`.

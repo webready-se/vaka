@@ -144,6 +144,8 @@ async function main() {
   await send('Runtime.enable');
   // The browser in Vaka's zone, which is not UTC, so a time read in the wrong zone shows (and CI's UTC never hides it)
   await send('Emulation.setTimezoneOverride', { timezoneId: 'Europe/Stockholm' });
+  // Focus events as in a window that has focus, which a headless one does not
+  await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Log.enable');
   // A violation report the page cannot hide: CDP-added scripts are not subject to the CSP
   await send('Page.addScriptToEvaluateOnNewDocument', {
@@ -222,6 +224,24 @@ async function main() {
     expect(/No group/.test(all('.group').pop()?.textContent || ''), 'sites without a group come last');
     expect(all('.site-row .days i').length === 15 * 30, 'thirty days of bars on every row');
     expect(all('.site-row .days i.is-partial, .site-row .days i.is-down').length > 0, 'days with downtime stand out');
+    expect(all('.site-row .days i.is-planned').length >= 8, 'a day down only in maintenance has its own colour');
+    // A bar tells its day at once on hover, and the tooltip goes when the pointer leaves
+    const point = (node, type, extra = {}) => {
+      const r = node.getBoundingClientRect();
+      node.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse', clientX: r.left + r.width / 2, clientY: r.top + r.height / 2, ...extra }));
+    };
+    const cafe = all('.site-row').find((r) => /cafe\.example/.test(r.textContent));
+    const longOutage = cafe?.querySelector('.days i.is-down');
+    if (longOutage) {
+      point(longOutage, 'pointermove');
+      expect(q('.day-tip.is-visible')?.textContent === longOutage.getAttribute('data-tip'), 'hovering a bar shows its day in a tooltip');
+      expect(/^\w{3} \d{1,2} \w{3}: down once, 1 h 40 min$/.test(longOutage.getAttribute('data-tip')), `a bar says when and how long it was down (got "${longOutage.getAttribute('data-tip')}")`);
+      point(longOutage, 'pointerout', { relatedTarget: cafe });
+      expect(!q('.day-tip.is-visible'), 'the tooltip goes when the pointer leaves the bars');
+    } else {
+      fails.push('cafe.example has a red day 16 days ago');
+    }
+    expect(/: down \d+ min in maintenance \(planned, not counted\)$/.test(q('.site-row .days i.is-planned')?.getAttribute('data-tip') || ''), 'a maintenance day says it is planned and not counted');
     expect(all('.site-row').some((r) => /behind Cloudflare/.test(r.textContent)), 'a CDN site says so');
     expect(all('.site-row').some((r) => /cafe\.example\s*2 private files are public/.test(r.textContent)), 'a site with public files says so in its row');
     expect(all('.columns').every((c) => /Headers/.test(c.textContent)), 'a column for the security headers grade');
@@ -249,7 +269,22 @@ async function main() {
     if (await waitFor(() => q('dialog.drawer[open] h2'), 'the site detail to open')) {
       expect(q('dialog.drawer h2').textContent === 'shop.example', 'the detail is for the site clicked');
       expect(q('dialog.drawer .chart'), 'a response time chart');
-      expect(all('dialog.drawer .days i').length === 30, 'thirty days in the detail');
+      const bars = all('dialog.drawer .days button');
+      const note = q('dialog.drawer .day-note');
+      expect(bars.length === 30, 'thirty days in the detail');
+      expect(note?.textContent === 'Down on 1 of 30 days, 14 min in all.', `the line under the bars sums up the 30 days (got "${note?.textContent}")`);
+      expect(all('dialog.drawer .day-key li').length === 3, 'the colours are explained: no outage, under an hour, an hour or more');
+      // Hover, then the keyboard: only today is in the tab order, the arrow keys move along
+      point(bars[20], 'pointermove');
+      expect(note?.textContent === bars[20].getAttribute('data-tip') && bars[20].classList.contains('is-picked'), 'hovering a bar in the detail tells its day in the line');
+      point(bars[20], 'pointerout', { relatedTarget: note });
+      expect(note?.textContent === note?.getAttribute('data-day-note'), 'moving away brings back the summary');
+      expect(bars.filter((b) => b.tabIndex === 0).length === 1 && bars[29].tabIndex === 0, 'one bar, today, is in the tab order');
+      expect(/^Today: down once, 14 min$/.test(bars[29].getAttribute('aria-label') || ''), `today's bar says it was down (got "${bars[29].getAttribute('aria-label')}")`);
+      bars[29].focus();
+      bars[29].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      expect(document.activeElement === bars[28] && bars[28].tabIndex === 0 && bars[29].tabIndex === -1, 'the left arrow moves to yesterday');
+      expect(note?.textContent === 'Yesterday: up all day', `the line follows the keyboard (got "${note?.textContent}")`);
       expect(all('dialog.drawer .timeline li').length >= 2, 'the history lists what happened');
       expect(/Grade C: 4 of 6 in place, missing HSTS and CSP/.test(q('dialog.drawer .headers-summary')?.textContent || ''), 'the detail says the headers grade in words');
       const [headerList, mailList] = all('dialog.drawer .header-list');

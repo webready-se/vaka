@@ -723,6 +723,8 @@
   function renderGroups() {
     var node = regions.groups;
     clear(node);
+    // The bar it pointed at is gone
+    hideTip();
     var filter = state.filter.trim().toLowerCase();
     var shown = 0;
 
@@ -763,12 +765,89 @@
     }
   }
 
-  /** One bar per day: green when up all day, amber with some downtime, red with a lot, grey without data. */
-  function days(list, large, paused) {
-    return h('span', { class: 'days' + (large ? ' is-large' : ''), 'aria-hidden': 'true' }, list.map(function (d) {
-      if (paused) return h('i', { class: 'is-none', title: day(d.date) + ': paused' });
-      var cls = d.up === null ? 'is-none' : d.up >= 99.95 ? null : d.up >= 95 ? 'is-partial' : 'is-down';
-      return h('i', { class: cls, title: day(d.date) + ': ' + (d.up === null ? 'not watched yet' : d.up + '% up') });
+  /**
+   * A day bar's colour: green without an outage, amber when down for less
+   * than an hour, red for an hour or more, the quiet colour when it was only
+   * down in maintenance, grey without data.
+   */
+  function dayClass(d, paused) {
+    if (paused || d.up === null) return 'is-none';
+    if (d.down_seconds >= 3600) return 'is-down';
+    if (d.down_seconds > 0) return 'is-partial';
+    return d.planned_seconds > 0 ? 'is-planned' : null;
+  }
+
+  var WEEKDAY = new Intl.DateTimeFormat('en-GB', { weekday: 'short', timeZone: 'UTC' });
+
+  /** "Today", "Yesterday" or "Tue 27 Oct": the last day in the list is today. */
+  function dayName(list, i) {
+    if (i === list.length - 1) return 'Today';
+    if (i === list.length - 2) return 'Yesterday';
+    return WEEKDAY.format(new Date(list[i].date + 'T12:00:00Z')) + ' ' + day(list[i].date);
+  }
+
+  function times(count) {
+    return count === 1 ? 'once' : count === 2 ? 'twice' : count + ' times';
+  }
+
+  /** What a day bar says: "Yesterday: down twice, 1 h 20 min in all". */
+  function dayWords(d, paused, name) {
+    if (paused) return name + ': paused';
+    if (d.up === null) return name + ': not watched yet';
+    var words;
+    if (d.down_seconds > 0) {
+      words = 'down ' + times(d.outages) + ', ' + duration(d.down_seconds) + (d.outages > 1 ? ' in all' : '');
+      if (d.planned_seconds > 0) words += ', and ' + duration(d.planned_seconds) + ' in maintenance (not counted)';
+    } else if (d.planned_seconds > 0) {
+      words = 'down ' + duration(d.planned_seconds) + ' in maintenance (planned, not counted)';
+    } else {
+      words = name === 'Today' ? 'up so far' : 'up all day';
+    }
+    return name + ': ' + words;
+  }
+
+  /** One bar per day in the site list; the tooltip tells the day on hover (see the listeners). */
+  function days(list, paused) {
+    return h('span', { class: 'days', 'aria-hidden': 'true' }, list.map(function (d, i) {
+      return h('i', { class: dayClass(d, paused), 'data-tip': dayWords(d, paused, dayName(list, i)) });
+    }));
+  }
+
+  /**
+   * The detail's bars: buttons that tell their day in the line under them,
+   * on hover, tap or focus. Only today is in the tab order; the arrow keys
+   * move along.
+   */
+  function dayStrip(list, paused) {
+    return h('div', { class: 'days is-large', role: 'group', 'aria-label': 'One bar per day', 'data-days': '' }, list.map(function (d, i) {
+      var words = dayWords(d, paused, dayName(list, i));
+      return h('button', { type: 'button', class: dayClass(d, paused), 'data-action': 'day', 'data-tip': words, 'aria-label': words, tabindex: i === list.length - 1 ? '0' : '-1' });
+    }));
+  }
+
+  /** The 30 days in a sentence, in the line under the bars until a day is picked. */
+  function daysSummary(list, paused) {
+    if (paused) return 'Paused: no checks until it is resumed.';
+    var watched = list.filter(function (d) { return d.up !== null; });
+    if (!watched.length) return 'Not watched yet.';
+    var down = watched.filter(function (d) { return d.down_seconds > 0; });
+    var planned = watched.filter(function (d) { return d.planned_seconds > 0; });
+    var span = plural(watched.length, 'day', 'days');
+    var text = down.length
+      ? 'Down on ' + down.length + ' of ' + span + ', ' + duration(down.reduce(function (sum, d) { return sum + d.down_seconds; }, 0)) + ' in all.'
+      : 'No outages in ' + span + '.';
+    return text + (planned.length ? ' Planned maintenance on ' + plural(planned.length, 'day', 'days') + ', not counted.' : '');
+  }
+
+  /** What the colours mean: the three that always matter, and maintenance and no data when there are such days. */
+  function dayKey(list, paused) {
+    var classes = list.map(function (d) { return dayClass(d, paused); });
+    return h('ul', { class: 'day-key', 'aria-hidden': 'true' }, [
+      [null, 'No outage'], ['is-partial', 'Down less than an hour'], ['is-down', 'An hour or more'], ['is-planned', 'Maintenance'], ['is-none', 'Not watched']
+    ].filter(function (item) {
+      return item[0] === null || item[0] === 'is-partial' || item[0] === 'is-down' || classes.indexOf(item[0]) !== -1;
+    }).map(function (item) {
+      return h('li', {}, [h('i', { class: item[0] }), item[1]]);
     }));
   }
 
@@ -797,7 +876,7 @@
     }, [
       statusLabel(site.status),
       h('span', { class: 'site-name' }, [h('strong', {}, site.label), small.length ? h('small', {}, small) : null]),
-      days(site.days, false, site.status === 'paused'),
+      days(site.days, site.status === 'paused'),
       h('span', { class: 'site-figures' }, [
         h('span', { class: 'site-figure' }, [ms, h('small', {}, 'now')]),
         h('span', { class: 'site-figure' }, [month, h('small', {}, '30 days')]),
@@ -845,6 +924,8 @@
     clear(node);
 
     var kind = isQuiet(site) && site.status === 'down' ? 'quiet' : site.status;
+    var paused = site.status === 'paused';
+    var summary = daysSummary(d.days, paused);
     var since = site.since ? (site.status === 'up' ? 'Up since ' : site.status === 'down' ? 'Down since ' : 'Since ') + clock(site.since) + ' (' + duration(secondsSince(site.since)) + ')' : STATUS_WORDS[site.status];
     var settings = [
       ['Group', (site.group || 'No group')],
@@ -885,8 +966,10 @@
         return h('div', { class: 'fact' }, [h('dt', {}, fact[0]), h('dd', {}, fact[1])]);
       })),
       h('h3', {}, 'Last 30 days'),
-      days(d.days, true, site.status === 'paused'),
+      dayStrip(d.days, paused),
       h('p', { class: 'days-legend', 'aria-hidden': 'true' }, [h('span', {}, '30 days ago'), h('span', {}, 'Today')]),
+      h('p', { class: 'day-note', 'data-day-note': summary }, summary),
+      dayKey(d.days, paused),
       h('h3', {}, 'Response time, last 24 hours'),
       chart(d.samples),
       h('h3', {}, 'Security headers'),
@@ -1735,6 +1818,7 @@
 
     if (action === 'open') openDetail(target.getAttribute('data-site'), target);
     if (action === 'close') closeDetail();
+    if (action === 'day') pickDay(target);
     if (action === 'add-site') openSiteForm(null, target, target.getAttribute('data-group'));
     if (action === 'add-group') openGroupForm(null, target);
     if (action === 'edit-group') openGroupForm(target.getAttribute('data-group'), target);
@@ -1814,6 +1898,90 @@
       event.preventDefault();
       filterInput.focus();
     }
+  });
+
+  // A day bar tells its day: in a tooltip in the site list, at once (a title
+  // waits a second and never shows on a phone), and in the line under the
+  // bars in the detail, where a tap or the keyboard picks a day too
+  var tip = h('div', { class: 'day-tip', 'aria-hidden': 'true' });
+  var tipBar = null;
+  document.body.appendChild(tip);
+
+  function hideTip() {
+    tip.classList.remove('is-visible');
+    tipBar = null;
+  }
+
+  function showTip(bar) {
+    if (bar === tipBar) return;
+    tipBar = bar;
+    tip.textContent = bar.getAttribute('data-tip');
+    tip.classList.add('is-visible');
+    var box = bar.getBoundingClientRect();
+    var left = box.left + box.width / 2 - tip.offsetWidth / 2;
+    var top = box.top - tip.offsetHeight - 6;
+    // Set through the CSSOM, which the CSP allows (it blocks style attributes in markup)
+    tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, left)) + 'px';
+    tip.style.top = (top < 8 ? box.bottom + 6 : top) + 'px';
+  }
+
+  function pickDay(bar) {
+    if (bar.classList.contains('is-picked')) return;
+    var note = regions.detail.querySelector('[data-day-note]');
+    bar.parentNode.querySelectorAll('.is-picked').forEach(function (other) { other.classList.remove('is-picked'); });
+    bar.classList.add('is-picked');
+    if (note) note.textContent = bar.getAttribute('data-tip');
+  }
+
+  function unpickDays() {
+    var note = regions.detail.querySelector('[data-day-note]');
+    regions.detail.querySelectorAll('[data-days] .is-picked').forEach(function (bar) { bar.classList.remove('is-picked'); });
+    if (note) note.textContent = note.getAttribute('data-day-note');
+  }
+
+  // The bar under the pointer, by where it is along the row: the gaps count too,
+  // and a finger can tap or slide along the detail's bars, which are thin on a phone
+  function pointAtDay(event) {
+    var bars = event.target.closest && event.target.closest('.days');
+    if (!bars || !bars.children.length) return;
+    var box = bars.getBoundingClientRect();
+    var i = Math.floor((event.clientX - box.left) / box.width * bars.children.length);
+    var bar = bars.children[Math.max(0, Math.min(bars.children.length - 1, i))];
+    if (bars.hasAttribute('data-days')) pickDay(bar);
+    else if (event.pointerType !== 'touch') showTip(bar);
+  }
+  document.addEventListener('pointermove', pointAtDay);
+  document.addEventListener('pointerdown', pointAtDay);
+  document.addEventListener('pointerout', function (event) {
+    var bars = event.target.closest && event.target.closest('.days');
+    // Onto the next bar, or the gap between two: nothing changes yet
+    if (!bars || bars.contains(event.relatedTarget)) return;
+    hideTip();
+    // A finger lifts as it taps, so only a mouse that moves away changes the line: back to a clicked day, or the summary
+    if (!bars.hasAttribute('data-days') || event.pointerType !== 'mouse') return;
+    if (bars.contains(document.activeElement)) pickDay(document.activeElement);
+    else unpickDays();
+  });
+  window.addEventListener('scroll', hideTip, { passive: true });
+  document.addEventListener('focusin', function (event) {
+    var bar = event.target.closest && event.target.closest('[data-days] [data-tip]');
+    if (bar) pickDay(bar);
+  });
+  document.addEventListener('focusout', function (event) {
+    var strip = event.target.closest && event.target.closest('[data-days]');
+    if (strip && !strip.contains(event.relatedTarget)) unpickDays();
+  });
+  // The arrow keys move from day to day, Home and End to the first and last
+  document.addEventListener('keydown', function (event) {
+    var bar = event.target.closest && event.target.closest('[data-days] button');
+    if (!bar || !/^(ArrowLeft|ArrowRight|Home|End)$/.test(event.key)) return;
+    var bars = Array.prototype.slice.call(bar.parentNode.children);
+    var i = bars.indexOf(bar);
+    var next = bars[event.key === 'Home' ? 0 : event.key === 'End' ? bars.length - 1 : Math.max(0, Math.min(bars.length - 1, i + (event.key === 'ArrowLeft' ? -1 : 1)))];
+    event.preventDefault();
+    bar.setAttribute('tabindex', '-1');
+    next.setAttribute('tabindex', '0');
+    next.focus();
   });
 
   // A click on the backdrop closes the detail, as Esc does

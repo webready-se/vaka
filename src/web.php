@@ -492,8 +492,8 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'exposed' => $exposed,
         'headers' => $headers,
         'dns' => $dns,
-        'uptime_24h' => site_uptime($db, $row, 86400, $now),
-        'uptime_30d' => site_uptime($db, $row, 30 * 86400, $now),
+        'uptime_24h' => site_uptime($db, $row, 86400, $now, $config['timezone']),
+        'uptime_30d' => site_uptime($db, $row, 30 * 86400, $now, $config['timezone']),
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
         'hours' => hourly_buckets($samples, $now, 24),
     ];
@@ -600,9 +600,9 @@ function api_site(PDO $db, array $config, array $row, int $now): array
         ],
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
         'uptime' => [
-            '24h' => site_uptime($db, $row, 86400, $now),
-            '7d' => site_uptime($db, $row, 7 * 86400, $now),
-            '30d' => site_uptime($db, $row, 30 * 86400, $now),
+            '24h' => site_uptime($db, $row, 86400, $now, $config['timezone']),
+            '7d' => site_uptime($db, $row, 7 * 86400, $now, $config['timezone']),
+            '30d' => site_uptime($db, $row, 30 * 86400, $now, $config['timezone']),
         ],
         'samples' => $samples,
         'events' => $events->fetchAll(),
@@ -668,7 +668,7 @@ function read_api(array $config, array $scope, string $method, int $now): never
     $totals = ['sites' => 0, 'up' => 0, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0];
     $sites = [];
     foreach (overview_rows($db, $scope['where']) as $row) {
-        $site = api_site_fields($db, site_summary($db, $config, $row, $labels, $windows, [], $now), $row, $now);
+        $site = api_site_fields($db, $config, site_summary($db, $config, $row, $labels, $windows, [], $now), $row, $now);
         $totals['sites']++;
         $totals[$site['status']]++;
         $sites[] = $site;
@@ -686,7 +686,7 @@ function read_api(array $config, array $scope, string $method, int $now): never
 }
 
 /** A site in the read API's field names, which stay the same between versions (docs/api.md). */
-function api_site_fields(PDO $db, array $summary, array $row, int $now): array
+function api_site_fields(PDO $db, array $config, array $summary, array $row, int $now): array
 {
     return [
         'url' => $summary['url'],
@@ -704,7 +704,7 @@ function api_site_fields(PDO $db, array $summary, array $row, int $now): array
         'snoozed_until' => $summary['snoozed_until'],
         'maintenance' => $summary['maintenance'],
         'unstable' => $summary['unstable'],
-        'uptime' => ['24h' => $summary['uptime_24h'], '7d' => site_uptime($db, $row, 7 * 86400, $now), '30d' => $summary['uptime_30d']],
+        'uptime' => ['24h' => $summary['uptime_24h'], '7d' => site_uptime($db, $row, 7 * 86400, $now, $config['timezone']), '30d' => $summary['uptime_30d']],
         'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'advice']),
         'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'advice']),
         'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice']),
@@ -726,7 +726,7 @@ function api_pick(?array $values, array $keys): ?array
 function read_api_site(PDO $db, array $config, array $row, int $hours, int $now): array
 {
     $windows = load_windows($db, $now);
-    $site = api_site_fields($db, site_summary($db, $config, $row, server_labels($db), $windows, [], $now), $row, $now) + [
+    $site = api_site_fields($db, $config, site_summary($db, $config, $row, server_labels($db), $windows, [], $now), $row, $now) + [
         'keyword' => $row['keyword'],
         'interval_minutes' => site_interval($row, $config),
         'created_at' => $row['created_at'],

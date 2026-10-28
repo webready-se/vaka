@@ -110,7 +110,7 @@ test('cleanup removes session files older than a session lasts, which many serve
 // Uptime percentage, weighted by time
 // =====================================================================
 
-test('downtime counts the time between down and up, clipped to the period', function () {
+test('down periods run from down to up, clipped to the period', function () {
     $from = strtotime('2026-10-25T00:00:00Z');
     $to = strtotime('2026-10-26T00:00:00Z');
     $events = [
@@ -118,10 +118,22 @@ test('downtime counts the time between down and up, clipped to the period', func
         ['status' => 'ok', 'created_at' => '2026-10-25T10:30:00Z'],
         ['status' => 'fail', 'created_at' => '2026-10-25T23:00:00Z'],
     ];
-    expect(downtime_seconds($events, 'ok', $from, $to))->toBe(30 * 60 + 3600)
-        ->and(downtime_seconds([['status' => 'ok', 'created_at' => '2026-10-25T01:00:00Z']], 'fail', $from, $to))->toBe(3600)
-        ->and(downtime_seconds([], 'fail', $from, $to))->toBe(86400)
-        ->and(downtime_seconds([], 'ok', $from, $to))->toBe(0);
+    expect(down_periods($events, 'ok', $from, $to))->toBe([
+        [strtotime('2026-10-25T10:00:00Z'), strtotime('2026-10-25T10:30:00Z')],
+        [strtotime('2026-10-25T23:00:00Z'), $to],
+    ])
+        ->and(period_seconds(down_periods($events, 'ok', $from, $to)))->toBe(30 * 60 + 3600)
+        ->and(down_periods([['status' => 'ok', 'created_at' => '2026-10-25T01:00:00Z']], 'fail', $from, $to))->toBe([[$from, $from + 3600]])
+        ->and(down_periods([], 'fail', $from, $to))->toBe([[$from, $to]])
+        ->and(down_periods([], 'ok', $from, $to))->toBe([]);
+});
+
+test('overlap_seconds counts the time inside the cover once, even where the cover overlaps itself', function () {
+    $down = [[100, 200], [300, 400]];
+    expect(overlap_seconds($down, [[150, 350]]))->toBe(50 + 50)
+        ->and(overlap_seconds($down, [[150, 250], [120, 180]]))->toBe(80)
+        ->and(overlap_seconds($down, []))->toBe(0)
+        ->and(overlap_seconds([], [[0, 1000]]))->toBe(0);
 });
 
 test('uptime_percent rounds to what is worth showing and is null without data', function () {
@@ -144,7 +156,37 @@ test('daily_uptime gives each of the last days its uptime, in local days, from t
 
     $days = daily_uptime($db, $site, $now, 5, 'Europe/Stockholm');
     expect(array_column($days, 'date'))->toBe(['2026-10-21', '2026-10-22', '2026-10-23', '2026-10-24', '2026-10-25'])
-        ->and(array_column($days, 'up'))->toBe([null, 100.0, 100.0, 95.0, 100.0]);
+        ->and(array_column($days, 'up'))->toBe([null, 100.0, 100.0, 95.0, 100.0])
+        ->and($days[3])->toMatchArray(['down_seconds' => 72 * 60, 'outages' => 1, 'planned_seconds' => 0])
+        ->and($days[0])->toMatchArray(['down_seconds' => null, 'outages' => null, 'planned_seconds' => null]);
+});
+
+test('downtime inside a maintenance window is planned: shown on its own and left out of uptime', function () {
+    $db = get_db(temp_dir() . '/vaka.sqlite');
+    $group = add_group($db, ['name' => 'Customers']);
+    $id = add_site($db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    // Every night 00:00-07:00 in Stockholm, for the whole group; 2 November 2026 is a Monday
+    add_maintenance($db, null, $group, ['label' => '', 'days' => '1,2,3,4,5,6,7', 'start_time' => '00:00', 'end_time' => '07:00', 'starts_at' => null, 'ends_at' => null]);
+    $at = fn (string $local) => utc_now((new DateTimeImmutable($local, new DateTimeZone('Europe/Stockholm')))->getTimestamp());
+    $event = fn (string $status, string $local) => add_event($db, $id, 'uptime', ['status' => $status, 'previous' => '', 'message' => ''], $at($local));
+    $event('ok', '2026-11-01 12:00');
+    // A restart in the window: planned
+    $event('fail', '2026-11-02 02:00');
+    $event('ok', '2026-11-02 02:20');
+    // Down from 06:50 until 07:30: ten minutes planned, the half hour after the window is not
+    $event('fail', '2026-11-02 06:50');
+    $event('ok', '2026-11-02 07:30');
+    // And five minutes in the day
+    $event('fail', '2026-11-02 12:00');
+    $event('ok', '2026-11-02 12:05');
+    $site = $db->query("SELECT * FROM sites WHERE id = {$id}")->fetch();
+    $now = (new DateTimeImmutable('2026-11-03 12:00', new DateTimeZone('Europe/Stockholm')))->getTimestamp();
+
+    $days = daily_uptime($db, $site, $now, 3, 'Europe/Stockholm');
+    expect($days[1])->toBe(['date' => '2026-11-02', 'up' => 97.56, 'down_seconds' => 35 * 60, 'outages' => 2, 'planned_seconds' => 30 * 60])
+        ->and($days[2])->toMatchArray(['up' => 100.0, 'down_seconds' => 0, 'outages' => 0, 'planned_seconds' => 0])
+        // Watched for two days, 35 minutes of them down outside the window
+        ->and(site_uptime($db, $site, 7 * 86400, $now, 'Europe/Stockholm'))->toBe(uptime_percent(35 * 60, 2 * 86400));
 });
 
 test('response time buckets: the average per hour, and how many checks were up', function () {

@@ -69,6 +69,18 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         add_event($db, $id, 'uptime', ['status' => 'fail', 'previous' => 'ok', 'message' => 'Down: no answer within 10 s'], utc_now($now - $from));
         if ($to > 0) add_event($db, $id, 'uptime', ['status' => 'ok', 'previous' => 'fail', 'message' => 'Up again after ' . human_duration($from - $to) . ': answered 200 OK in ' . $ms . ' ms'], utc_now($now - $to));
     }
+    // Further back, for the 30 day bars: restarts in the Nightly group's window (planned), and two outages
+    $at = fn (int $daysAgo, int $hour) => (new DateTimeImmutable('@' . ($now - $daysAgo * 86400)))->setTimezone(new DateTimeZone('Europe/Stockholm'))->setTime($hour, 0)->getTimestamp();
+    $older = match (true) {
+        $group === 'Nightly' && $story === 'up' => [[$at(4, 3), 6 * 60, 'maintenance'], [$at(11, 3), 9 * 60, 'maintenance'], [$at(18, 3), 6 * 60, 'maintenance'], [$at(25, 3), 7 * 60, 'maintenance']],
+        $url === 'https://www.example.com' => [[$at(9, 14), 25 * 60, '']],
+        $url === 'https://cafe.example' => [[$at(16, 10), 100 * 60, '']],
+        default => [],
+    };
+    foreach ($older as [$start, $length, $silencedBy]) {
+        add_event($db, $id, 'uptime', ['status' => 'fail', 'previous' => 'ok', 'message' => 'Down: no answer within 10 s'], utc_now($start), $silencedBy);
+        add_event($db, $id, 'uptime', ['status' => 'ok', 'previous' => 'fail', 'message' => 'Up again after ' . human_duration($length) . ': answered 200 OK in ' . $ms . ' ms'], utc_now($start + $length), $silencedBy);
+    }
 
     if ($story !== 'paused') {
         for ($t = $now - 86400 + 300; $t <= $now; $t += 300) {

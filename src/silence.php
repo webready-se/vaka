@@ -110,6 +110,37 @@ function window_active(array $window, int $now, string $timezone): bool
         || (in_array($yesterday, $days, true) && $time < $window['end_time']);
 }
 
+/**
+ * The times a window covers within [$from, $to), as [start, end) pairs: a
+ * one-off window once, a recurring one on each of its days, in local time as
+ * window_active() has it.
+ *
+ * @return list<array{int, int}>
+ */
+function window_periods(array $window, int $from, int $to, string $timezone): array
+{
+    if ($window['starts_at'] !== null) {
+        $start = max($from, strtotime($window['starts_at']));
+        $end = min($to, strtotime($window['ends_at']));
+        return $start < $end ? [[$start, $end]] : [];
+    }
+    $days = array_map('intval', explode(',', $window['days']));
+    [$startHour, $startMinute] = array_map('intval', explode(':', $window['start_time']));
+    [$endHour, $endMinute] = array_map('intval', explode(':', $window['end_time']));
+    $periods = [];
+    // From the day before, for a window that runs past midnight into $from
+    $day = (new DateTimeImmutable('@' . $from))->setTimezone(new DateTimeZone($timezone))->setTime(0, 0)->modify('-1 day');
+    for (; $day->getTimestamp() < $to; $day = $day->modify('+1 day')) {
+        if (!in_array((int) $day->format('N'), $days, true)) continue;
+        $end = $day->setTime($endHour, $endMinute);
+        if ($window['end_time'] <= $window['start_time']) $end = $end->modify('+1 day');
+        $start = max($from, $day->setTime($startHour, $startMinute)->getTimestamp());
+        $end = min($to, $end->getTimestamp());
+        if ($start < $end) $periods[] = [$start, $end];
+    }
+    return $periods;
+}
+
 /** "every day 00:00-07:00", "weekdays 22:00-02:00", "once, 1 Nov 22:00 to 2 Nov 02:00" (12h: "every day 12:00 AM to 7:00 AM") */
 function describe_window(array $window, string $timezone, string $timeFormat = '24h'): string
 {
@@ -160,6 +191,14 @@ function load_windows(PDO $db, int $now): array
 {
     $stmt = $db->prepare('SELECT * FROM maintenance WHERE ends_at IS NULL OR ends_at > ?');
     $stmt->execute([utc_now($now)]);
+    return $stmt->fetchAll();
+}
+
+/** Every window that covers a site, its own and its group's, including one-off windows that are over. */
+function site_windows(PDO $db, array $site): array
+{
+    $stmt = $db->prepare('SELECT * FROM maintenance WHERE site_id = ? OR (group_id IS NOT NULL AND group_id = ?)');
+    $stmt->execute([$site['id'], $site['group_id']]);
     return $stmt->fetchAll();
 }
 

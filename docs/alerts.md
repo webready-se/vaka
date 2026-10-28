@@ -107,7 +107,7 @@ php vaka maintenance:list
 php vaka maintenance:remove 2
 ```
 
-Times are local (`TIMEZONE`) and keep their hours across daylight saving changes. A window that runs past midnight belongs to the day it starts. Outages during maintenance do not count towards "unstable".
+Times are local (`TIMEZONE`) and keep their hours across daylight saving changes. A window that runs past midnight belongs to the day it starts. Outages during maintenance do not count towards "unstable", and downtime inside a window does not count against uptime. The windows count as they are now: one added today covers earlier nights too, and a removed one no longer covers any.
 
 **Snooze** quiets an incident you already know about, for 1, 4 or 24 hours:
 
