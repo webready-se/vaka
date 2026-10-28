@@ -337,7 +337,7 @@ test('the site detail says which files lack nosniff and where the line goes', fu
         'level' => 'weak',
         'note' => 'not on the scripts and styles the page loads: /build/site.css and /js/app.js',
         'fix' => 'X-Content-Type-Options: nosniff',
-        'tip' => 'A web server rule for these files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Add the line to that rule too.',
+        'tip' => 'A web server rule for these files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Set the headers once for the whole site and keep add_header out of such rules: for caching, nginx\'s expires sets Cache-Control without it. Otherwise every such rule has to repeat every header.',
     ])
         ->and($nosniff(['checked' => ['/build/site.css'], 'missing' => []]))->toMatchArray(['level' => 'good', 'note' => 'also on the scripts and styles the page loads'])
         ->and($nosniff(null))->toMatchArray(['level' => 'good', 'note' => '']);
@@ -350,7 +350,7 @@ test('a header alert for the scripts and styles says where to look', function ()
     ])], [])[0]['items'][0];
     expect(alert_text($item)['details'])->toBe([
         'X-Content-Type-Options on scripts and styles was removed: /site.css and /app.js',
-        'A web server rule for those files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header): add X-Content-Type-Options: nosniff to that rule too.',
+        'A web server rule for those files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Set the headers once for the whole site and keep add_header out of such rules: for caching, nginx\'s expires sets Cache-Control without it.',
         'If that was not on purpose, look at the last deploy, the web server or the CDN settings.',
     ]);
 });

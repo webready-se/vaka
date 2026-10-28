@@ -334,6 +334,10 @@ async function main() {
       expect(nosniff?.textContent.includes('/build/<img src=x onerror="window.__xss=4">.js') && window.__xss === undefined, 'a file name from the site shows as plain text');
       expect(all('dialog.drawer .headers-summary')[1]?.textContent === 'Mail for shop.example: SPF and DMARC in place', 'the detail says how the mail records are in words');
       expect(mailList?.querySelectorAll('li').length === 3 && /10 mx1\.mail\.example/.test(mailList.textContent), 'the detail lists MX, SPF and DMARC with what the domain has');
+      expect(all('dialog.drawer .tile-when').length >= 4 && all('dialog.drawer .tile-when').every((p) => /^Checked \d/.test(p.textContent)), 'each check\'s tile says when it ran');
+      q('dialog.drawer [data-action="recheck"]').click();
+      await waitFor(() => /Checking/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || '') && q('dialog.drawer [data-action="recheck"]').disabled, 'Check again to say it is checking');
+      expect(/Checking shop\.example again/.test(q('.toast')?.textContent || ''), 'Check again says when the results come');
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
       expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');

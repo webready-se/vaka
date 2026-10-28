@@ -284,6 +284,15 @@ function handle_api(array $config, array $user, string $endpoint, string $method
         $row = overview_rows($db, 's.id = ' . $site['id'])[0];
         respond_json(200, ['site' => site_summary($db, $config, $row, server_labels($db), load_windows($db, $now), [], $now)]);
     }
+    if ($endpoint === 'site-recheck' && $method === 'POST') {
+        if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
+        $input = json_decode((string) file_get_contents('php://input'), true) ?: [];
+        $site = visible_site($db, (int) ($input['site_id'] ?? 0), $allowed);
+        if (!$site) respond_json(404, ['error' => 'No such site']);
+        if ($site['paused']) respond_json(409, ['error' => display_url($site['url']) . ' is paused: resume it to check it']);
+        queue_recheck($db, (int) $site['id'], $now);
+        respond_json(200, ['site' => site_summary($db, $config, visible_site($db, (int) $site['id'], $allowed), server_labels($db), load_windows($db, $now), [], $now)]);
+    }
     if ($endpoint === 'group' && $method === 'GET') {
         if ($allowed !== null) respond_json(403, ['error' => 'Only users who see every site can change groups']);
         $group = get_group($db, (int) ($_GET['id'] ?? 0));
@@ -386,12 +395,12 @@ function group_filter(?array $allowed): string
 function overview_rows(PDO $db, string $where): array
 {
     $rows = $db->query("SELECT s.*, g.name AS group_name, g.policy, g.delay_minutes,
-            c.status, c.summary, c.details, c.fail_count, c.checked_at, c.changed_at, c.snoozed_until, c.flapping_since,
-            cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details,
-            ce.status AS exposed_status, ce.summary AS exposed_summary, ce.details AS exposed_details, ce.changed_at AS exposed_changed_at,
-            ch.status AS headers_status, ch.summary AS headers_summary, ch.details AS headers_details,
-            cd.status AS domain_status, cd.summary AS domain_summary, cd.details AS domain_details,
-            cm.status AS dns_status, cm.summary AS dns_summary, cm.details AS dns_details
+            c.status, c.summary, c.details, c.fail_count, c.checked_at, c.next_at AS uptime_next_at, c.changed_at, c.snoozed_until, c.flapping_since,
+            cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details, cs.checked_at AS ssl_checked_at, cs.next_at AS ssl_next_at,
+            ce.status AS exposed_status, ce.summary AS exposed_summary, ce.details AS exposed_details, ce.changed_at AS exposed_changed_at, ce.checked_at AS exposed_checked_at, ce.next_at AS exposed_next_at,
+            ch.status AS headers_status, ch.summary AS headers_summary, ch.details AS headers_details, ch.checked_at AS headers_checked_at, ch.next_at AS headers_next_at,
+            cd.status AS domain_status, cd.summary AS domain_summary, cd.details AS domain_details, cd.checked_at AS domain_checked_at, cd.next_at AS domain_next_at,
+            cm.status AS dns_status, cm.summary AS dns_summary, cm.details AS dns_details, cm.checked_at AS dns_checked_at, cm.next_at AS dns_next_at
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
         LEFT JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
@@ -422,6 +431,8 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         default => null,
     };
     $quiet = active_silence(['id' => $row['id'], 'group_id' => $row['group_id'], 'snoozed_until' => $row['snoozed_until']], $windows, $now, $config['timezone']);
+    // When each check last ran and runs next, so a reader can tell whether a result is current
+    $when = fn (string $check) => ['checked_at' => $row["{$check}_checked_at"], 'next_at' => $row["{$check}_next_at"]];
     $ssl = null;
     if (in_array($row['ssl_status'], ['ok', 'warn', 'fail'], true)) {
         $sslDetails = json_decode((string) $row['ssl_details'], true) ?: [];
@@ -432,7 +443,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'valid_to' => $sslDetails['valid_to'] ?? null,
             'renewed_by' => $sslDetails['renewed_by'] ?? null,
             'advice' => $row['ssl_status'] === 'ok' ? '' : ssl_advice($sslDetails),
-        ];
+        ] + $when('ssl');
     }
     $exposed = null;
     if (in_array($row['exposed_status'], ['ok', 'warn', 'fail'], true)) {
@@ -443,7 +454,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'found' => $exposedDetails['found'] ?? [],
             'since' => $row['exposed_changed_at'],
             'advice' => advice_for($exposedDetails['problem'] ?? '', 0),
-        ];
+        ] + $when('exposed');
     }
     $domain = null;
     if (in_array($row['domain_status'], ['ok', 'warn', 'fail', 'unknown'], true)) {
@@ -457,12 +468,12 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'expires' => $domainDetails['expires'] ?? null,
             'registrar' => $domainDetails['registrar'] ?? '',
             'advice' => in_array($row['domain_status'], ['warn', 'fail'], true) ? advice_for($domainDetails['problem'] ?? '', 0) : '',
-        ];
+        ] + $when('domain');
     }
     // The grade only: what each header does comes with the site detail (see api_site())
     $headers = null;
     if (in_array($row['headers_status'], ['ok', 'warn', 'unknown'], true)) {
-        $headers = ['status' => $row['headers_status'], 'grade' => (json_decode((string) $row['headers_details'], true) ?: [])['grade'] ?? null, 'summary' => $row['headers_summary']];
+        $headers = ['status' => $row['headers_status'], 'grade' => (json_decode((string) $row['headers_details'], true) ?: [])['grade'] ?? null, 'summary' => $row['headers_summary']] + $when('headers');
     }
     // Mail records in words; what each record is comes with the site detail (see api_site())
     $dns = null;
@@ -473,7 +484,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'summary' => $row['dns_summary'],
             'domain' => $dnsDetails['domain'] ?? null,
             'advice' => $row['dns_status'] === 'warn' ? advice_for($dnsDetails['problem'] ?? '', 0) : '',
-        ];
+        ] + $when('dns');
     }
     $serverKey = server_key($row);
 
@@ -488,6 +499,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'advice' => in_array($status, ['down', 'failing'], true) ? advice_for($details['problem'] ?? '', (int) ($details['status_code'] ?? 0)) : '',
         'since' => $since,
         'checked_at' => $row['checked_at'],
+        'next_at' => $status === 'paused' ? null : $row['uptime_next_at'],
         'ms' => $status === 'up' ? ($details['ms'] ?? null) : null,
         'server' => $serverKey === null ? null : server_display($row, $labels),
         'cdn' => $row['cdn'] !== '' ? $row['cdn'] : null,
@@ -717,6 +729,7 @@ function api_site_fields(PDO $db, array $config, array $summary, array $row, int
         'advice' => $summary['advice'],
         'since' => $summary['since'],
         'checked_at' => $summary['checked_at'],
+        'next_at' => $summary['next_at'],
         'response_ms' => $summary['ms'],
         'server' => $summary['server'],
         'cdn' => $summary['cdn'],
@@ -724,11 +737,11 @@ function api_site_fields(PDO $db, array $config, array $summary, array $row, int
         'maintenance' => $summary['maintenance'],
         'unstable' => $summary['unstable'],
         'uptime' => ['24h' => $summary['uptime_24h'], '7d' => site_uptime($db, $row, 7 * 86400, $now, $config['timezone']), '30d' => $summary['uptime_30d']],
-        'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'advice']),
-        'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'advice']),
-        'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice']),
-        'headers' => api_pick($summary['headers'], ['status', 'grade', 'summary']),
-        'dns' => api_pick($summary['dns'], ['status', 'summary', 'domain', 'advice']),
+        'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'advice', 'checked_at', 'next_at']),
+        'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'advice', 'checked_at', 'next_at']),
+        'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice', 'checked_at', 'next_at']),
+        'headers' => api_pick($summary['headers'], ['status', 'grade', 'summary', 'checked_at', 'next_at']),
+        'dns' => api_pick($summary['dns'], ['status', 'summary', 'domain', 'advice', 'checked_at', 'next_at']),
     ];
 }
 

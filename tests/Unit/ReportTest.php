@@ -57,6 +57,20 @@ test('one site: the guide comes first, and a site with nothing wrong says so', f
         ->and($md)->toContain('**Certificate**: `Valid until 19 Dec 2026 (52 days), issued by Let\'s Encrypt`');
 });
 
+test('one site: each check says when it ran and runs next, and the guide says how to look again after a fix', function () {
+    $md = read_api_markdown_site(report_about(), report_detail([
+        'ssl' => ['status' => 'ok', 'summary' => 'Valid until 19 Dec 2026 (52 days)', 'days_left' => 52, 'valid_to' => '2026-12-19T23:00:00Z', 'renewed_by' => null, 'advice' => '', 'checked_at' => '2026-10-28T10:05:00Z', 'next_at' => '2026-10-28T16:05:00Z'],
+        'headers' => ['status' => 'warn', 'grade' => 'E', 'summary' => 'Grade E: 2 of 6 in place', 'checked_at' => '2026-10-28T13:04:30Z', 'next_at' => '2026-10-28T13:04:00Z', 'items' => [
+            ['key' => 'hsts', 'label' => 'HSTS', 'level' => 'missing', 'note' => '', 'what' => 'Makes browsers always use https for the site', 'fix' => 'Strict-Transport-Security: max-age=31536000', 'tip' => ''],
+        ]],
+    ]), REPORT_CONFIG);
+
+    expect($md)->toContain('- **Certificate**: `Valid until 19 Dec 2026 (52 days)`. Checked 28 Oct 2026 11:05 (3 h ago), next 28 Oct 2026 17:05.')
+        ->and($md)->toContain('(HSTS missing). Checked 28 Oct 2026 14:04 (just now), next on the coming run.')
+        ->and($md)->toContain('1. **Security headers: grade E**: Grade E: 2 of 6 in place. Checked 28 Oct 2026 14:04 (just now).')
+        ->and($md)->toContain('"Check again" in Vaka\'s dashboard');
+});
+
 test('one site: a down site leads with since when and what to do, and says why no alert went out', function () {
     $md = read_api_markdown_site(report_about(), report_detail([
         'status' => 'down', 'summary' => 'The site answered 503 Service Unavailable', 'advice' => 'Look at its error log.',
@@ -92,8 +106,8 @@ test('one site: every protection and mail record that is not in place is worth i
     ]), REPORT_CONFIG);
 
     expect($md)->toContain('## Worth improving (2)')
-        ->and($md)->toContain("1. **Security headers: grade C**: Grade C: 4 of 6 in place, missing HSTS\n   - **HSTS** is missing. What it does: makes browsers always use https for the site. Add `Strict-Transport-Security: max-age=31536000`. Add it once every page works over https.\n   - **X-Content-Type-Options** is weak: `not on /app.js`. What it does: stops browsers from guessing what a file is. Add `X-Content-Type-Options: nosniff`.")
-        ->and($md)->toContain("2. **Mail records**: Mail for shop.example: no DMARC\n   - **DMARC** is missing. What it says: what receivers do with email that pretends to come from the domain. Add a TXT record at _dmarc.shop.example: `v=DMARC1; p=none; rua=mailto:dmarc@shop.example`. Start with p=none.")
+        ->and($md)->toContain("1. **Security headers: grade C**: Grade C: 4 of 6 in place, missing HSTS.\n   - **HSTS** is missing. What it does: makes browsers always use https for the site. Add `Strict-Transport-Security: max-age=31536000`. Add it once every page works over https.\n   - **X-Content-Type-Options** is weak: `not on /app.js`. What it does: stops browsers from guessing what a file is. Add `X-Content-Type-Options: nosniff`.")
+        ->and($md)->toContain("2. **Mail records**: Mail for shop.example: no DMARC.\n   - **DMARC** is missing. What it says: what receivers do with email that pretends to come from the domain. Add a TXT record at _dmarc.shop.example: `v=DMARC1; p=none; rua=mailto:dmarc@shop.example`. Start with p=none.")
         ->and($md)->not->toContain('**Referrer-Policy** is');
 });
 
