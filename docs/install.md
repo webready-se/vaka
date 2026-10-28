@@ -58,7 +58,7 @@ php vaka alert:test
 4. Add a **scheduled job**, every minute: `php /home/forge/vaka.example.com/current/vaka run` (or `.../vaka.example.com/vaka run` without zero-downtime deployments). The dashboard shows the exact line once you have logged in.
 5. Add the first user over SSH: `php vaka user:add admin`.
 6. Turn on Let's Encrypt for the site.
-7. In the site's Nginx configuration, remove the `add_header` lines Forge puts in the `server` block (`X-Frame-Options "SAMEORIGIN"`, `X-XSS-Protection` and `X-Content-Type-Options`), and add the `nosniff` line to `location /` as in [Nginx](#nginx) below. Nginx adds the server block's headers to Vaka's own answers too, so they would go out twice, and `X-Frame-Options` with two values that contradict each other (`DENY` from Vaka, `SAMEORIGIN` from Forge).
+7. In the site's Nginx configuration (the site's `…` menu, **Edit Nginx configuration**, the file **General site configuration**), remove the `add_header` lines for `X-Frame-Options "SAMEORIGIN"` and `X-XSS-Protection`, and keep the one for `X-Content-Type-Options "nosniff"`. Nginx adds these to Vaka's own answers too, so `X-Frame-Options` went out as both `DENY` (Vaka) and `SAMEORIGIN` (Forge), which contradict each other, and `X-XSS-Protection` is obsolete. The `nosniff` line is where the files Nginx serves itself (the dashboard's script, styles and fonts) get theirs, since Forge keeps `location /` in a file of its own; on Vaka's own answers it then comes twice with the same value, which does no harm.
 
 The deploy script needs nothing beyond pulling the code. Database changes are applied automatically the first time Vaka opens the database after an update.
 
