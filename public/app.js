@@ -1057,7 +1057,7 @@
     else if (!/^https:/.test(site.url)) tiles.push(tile('Certificate', quiet('info'), 'No https', 'The address starts with http://'));
     else if (!ssl) tiles.push(waiting('Certificate'));
     else if (ssl.status === 'fail' || ssl.days_left === null) tiles.push(tile('Certificate', { tone: tone(ssl.status) }, ssl.status === 'fail' ? 'Not valid' : 'Unknown', ssl.summary));
-    else tiles.push(tile('Certificate', { tone: tone(ssl.status) }, daysLeft(ssl.days_left), 'Until ' + date(ssl.valid_to) + (issuer ? ', ' + issuer[1] : '')));
+    else tiles.push(tile('Certificate', { tone: tone(ssl.status) }, daysLeft(ssl.days_left), 'Until ' + date(ssl.valid_to) + (ssl.renewed_by ? ', renewed by ' + ssl.renewed_by : issuer ? ', ' + issuer[1] : '')));
 
     var domain = site.domain;
     if (off('domain')) tiles.push(turnedOff('Domain'));

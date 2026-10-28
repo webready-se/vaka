@@ -87,9 +87,15 @@ function host_matches(string $host, array $names): bool
  * ok, warn (expires within $warnDays), fail (browsers reject it) or unknown
  * (no certificate could be read; the uptime check covers that).
  *
+ * Behind Cloudflare ($cdn from the uptime check) visitors get Cloudflare's
+ * certificate, which Cloudflare renews by itself about 30 days before it
+ * expires, so 31 days left is nothing to worry about: the summary says so,
+ * and `renewed_by` lets the advice point at Cloudflare. Other CDNs may show
+ * a certificate of the site's own, so nothing is said for them.
+ *
  * @return array{status: string, summary: string, details: array}
  */
-function evaluate_ssl(string $host, array $fetched, ?array $info, int $now, int $warnDays): array
+function evaluate_ssl(string $host, array $fetched, ?array $info, int $now, int $warnDays, ?string $cdn = null): array
 {
     if ($info === null) {
         return ['status' => 'unknown', 'summary' => 'Could not read the certificate: ' . ($fetched['error'] ?: 'no answer'), 'details' => ['problem' => 'unreachable']];
@@ -102,6 +108,7 @@ function evaluate_ssl(string $host, array $fetched, ?array $info, int $now, int 
         'issuer' => $info['issuer'],
         'names' => $info['names'],
         'problem' => '',
+        'renewed_by' => $cdn === 'Cloudflare' ? 'Cloudflare' : null,
     ];
 
     if (!$fetched['verified']) {
@@ -123,17 +130,26 @@ function evaluate_ssl(string $host, array $fetched, ?array $info, int $now, int 
         };
         return ['status' => 'warn', 'summary' => "The certificate expires {$when} ({$date})", 'details' => ['problem' => 'expiring'] + $details];
     }
-    return ['status' => 'ok', 'summary' => "Valid until {$date} ({$daysLeft} days), issued by {$info['issuer']}", 'details' => $details];
+    $whose = $details['renewed_by'] !== null ? "{$details['renewed_by']}'s certificate, which {$details['renewed_by']} renews by itself: valid" : 'Valid';
+    return ['status' => 'ok', 'summary' => "{$whose} until {$date} ({$daysLeft} days), issued by {$info['issuer']}", 'details' => $details];
 }
 
-/** Check one URL's certificate. */
-function check_certificate(string $url, array $config, int $now): array
+/** What to do about a certificate's problem; one Cloudflare is late to renew points at Cloudflare, not at the site's server. */
+function ssl_advice(array $details): string
+{
+    $problem = $details['problem'] ?? '';
+    if (($details['renewed_by'] ?? null) === 'Cloudflare' && in_array($problem, ['expiring', 'expired'], true)) $problem = 'cloudflare_late';
+    return advice_for($problem, 0);
+}
+
+/** Check one URL's certificate; $cdn is the CDN the uptime check saw it behind. */
+function check_certificate(string $url, array $config, int $now, ?string $cdn = null): array
 {
     $host = trim((string) parse_url($url, PHP_URL_HOST), '[]');
     $port = (int) (parse_url($url, PHP_URL_PORT) ?: 443);
     $fetched = fetch_certificate($host, $port, $config['uptime_timeout'], $config['ssl_ca_file']);
     $info = $fetched['cert'] ? certificate_info($fetched['cert']) : null;
-    return evaluate_ssl($host, $fetched, $info, $now, max([0, ...$config['ssl_alert_days']]));
+    return evaluate_ssl($host, $fetched, $info, $now, max([0, ...$config['ssl_alert_days']]), $cdn);
 }
 
 /**

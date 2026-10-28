@@ -100,14 +100,19 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
     };
     if ($story !== 'paused') save_check_state($db, $id, 'uptime', $state, utc_now($now - 20), utc_now($now + 280));
 
-    // Certificates: most renewed a while ago, one about to expire
-    $days = $url === 'https://booking.example' ? 6 : 40 + mt_rand(0, 45);
+    // Certificates: most renewed a while ago, one about to expire, and Cloudflare's own a month from its renewal
+    $days = match ($url) {
+        'https://booking.example' => 6,
+        'https://store.example' => 31,
+        default => 40 + mt_rand(0, 45),
+    };
     $validTo = $now + $days * 86400 + 3600;
+    $issuer = $cdn === 'Cloudflare' ? 'Google Trust Services' : "Let's Encrypt";
     $ssl = $days <= 14
         ? ['status' => 'warn', 'summary' => "The certificate expires in {$days} days (" . date('j M Y', $validTo) . ')', 'problem' => 'expiring']
-        : ['status' => 'ok', 'summary' => 'Valid until ' . date('j M Y', $validTo) . " ({$days} days), issued by Let's Encrypt", 'problem' => ''];
+        : ['status' => 'ok', 'summary' => ($cdn === 'Cloudflare' ? "Cloudflare's certificate, which Cloudflare renews by itself: valid" : 'Valid') . ' until ' . date('j M Y', $validTo) . " ({$days} days), issued by {$issuer}", 'problem' => ''];
     if (!in_array($story, ['paused', 'hostile'], true)) {
-        save_check_state($db, $id, 'ssl', ['status' => $ssl['status'], 'summary' => $ssl['summary'], 'fail_count' => 0, 'changed_at' => utc_now($month), 'details' => ['days_left' => $days, 'valid_to' => utc_now($validTo), 'issuer' => "Let's Encrypt", 'problem' => $ssl['problem']]], utc_now($now - 3600), utc_now($now + 5 * 3600));
+        save_check_state($db, $id, 'ssl', ['status' => $ssl['status'], 'summary' => $ssl['summary'], 'fail_count' => 0, 'changed_at' => utc_now($month), 'details' => ['days_left' => $days, 'valid_to' => utc_now($validTo), 'issuer' => $issuer, 'problem' => $ssl['problem'], 'renewed_by' => $cdn === 'Cloudflare' ? 'Cloudflare' : null]], utc_now($now - 3600), utc_now($now + 5 * 3600));
         $db->prepare("UPDATE check_state SET alerted_status = ?, thresholds_sent = ? WHERE site_id = ? AND check_name = 'ssl'")
             ->execute([$ssl['status'], json_encode(['valid_to' => utc_now($validTo), 'sent' => $days <= 7 ? [14, 7] : []]), $id]);
     }

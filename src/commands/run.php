@@ -77,7 +77,9 @@ function cmd_check(array $config, array $args, array $opts): void
         echo "  Down: " . lcfirst($result['summary']) . "\n";
     }
     if (str_starts_with($url, 'https://') && !in_array($result['problem'], ['timeout', 'dns', 'refused', 'connect'], true)) {
-        echo '  Certificate: ' . lcfirst(check_certificate($url, $config, time())['summary']) . "\n";
+        $ssl = check_certificate($url, $config, time(), $result['cdn'] ?: null);
+        // "Cloudflare's certificate, ..." keeps its capital
+        echo '  Certificate: ' . (($ssl['details']['renewed_by'] ?? null) !== null ? $ssl['summary'] : lcfirst($ssl['summary'])) . "\n";
     }
     // Even when the site is down: an expired domain may be why
     if (registrable_candidates((string) parse_url($url, PHP_URL_HOST))) {
