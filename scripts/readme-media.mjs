@@ -136,11 +136,13 @@ async function main() {
   await shoot('dashboard-light.png', { ...hero, x: 0, width: 1280 });
   await theme('dark');
 
-  // A site's detail: uptime, response times, history and settings
+  // A site's detail: uptime, response times and what Vaka sees, ending under its tiles (a window tall enough to show them)
+  await viewport(1280, 1300);
   await run(`document.querySelector('.site-row').click()`);
   await until(`document.querySelector('.drawer[open] .drawer-inner')`);
   await sleep(600);
-  await shoot('detail.png', await box('.drawer'));
+  const detail = await box('.drawer', '.drawer .tiles');
+  await shoot('detail.png', { ...detail, height: detail.height + 24 });
 
   // A phone: the same answer first
   await viewport(390, 844, true);

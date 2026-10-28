@@ -72,9 +72,9 @@ Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other C
 <details>
 <summary>More screenshots</summary>
 
-**A site's detail:** uptime over 24 hours, 7 and 30 days, response times, its security headers and its history
+**A site's detail:** uptime over 24 hours, 7 and 30 days, what each day bar means, response times, and a tile per check: the server, the certificate, the domain, exposed files, the headers grade and mail
 
-<img alt="The detail of a site: uptime percentages, 30 days of bars, a response time chart and its security headers, each with what it does and the line to add" src="docs/screenshots/detail.png" width="600">
+<img alt="The detail of a site: uptime percentages, 30 days of bars with a line that sums them up and what the colours mean, a response time chart, and a tile for each of the server, the certificate (6 days left, in amber), the domain, exposed files, the security headers grade and mail" src="docs/screenshots/detail.png" width="600">
 
 **On a phone**
 
