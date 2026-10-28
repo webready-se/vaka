@@ -268,6 +268,7 @@ async function main() {
     all('.site-row').find((r) => /shop\.example/.test(r.textContent)).click();
     if (await waitFor(() => q('dialog.drawer[open] h2'), 'the site detail to open')) {
       expect(q('dialog.drawer h2').textContent === 'shop.example', 'the detail is for the site clicked');
+      expect(getComputedStyle(document.documentElement).overflow === 'hidden', 'the page behind the detail does not scroll');
       expect(q('dialog.drawer .chart'), 'a response time chart');
       const bars = all('dialog.drawer .days button');
       const note = q('dialog.drawer .day-note');
@@ -285,6 +286,16 @@ async function main() {
       bars[29].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
       expect(document.activeElement === bars[28] && bars[28].tabIndex === 0 && bars[29].tabIndex === -1, 'the left arrow moves to yesterday');
       expect(note?.textContent === 'Yesterday: up all day', `the line follows the keyboard (got "${note?.textContent}")`);
+      // What Vaka sees, a tile per check, and the settings in a card of their own
+      const tiles = all('dialog.drawer .tile');
+      const tileText = (i, part) => tiles[i]?.querySelector(part)?.textContent || '';
+      expect(tiles.length === 6, `six tiles of what Vaka sees (got ${tiles.length})`);
+      expect(tileText(0, '.tile-value') === 'web-1' && tileText(0, '.tile-sub') === '203.0.113.10', 'the server tile names the server and its address');
+      expect(tiles.every((t) => t.querySelector('.tile-label')?.textContent && t.querySelector('.tile-value')?.textContent), 'every tile says what it is and how it is');
+      expect(tileText(4, '.tile-value') === 'Needs a look: Grade C' && tileText(4, '.tile-sub') === '4 of 6 in place', `the headers tile gives the grade and how many are in place (got "${tileText(4, '.tile-value')}", "${tileText(4, '.tile-sub')}")`);
+      const card = q('dialog.drawer .settings-card');
+      expect(card?.querySelector('[data-action="edit-site"]') && card.querySelectorAll('.check-chips li').length === 6, 'the settings card has its Change button and lists the six checks');
+      expect(all('dialog.drawer .settings dt').every((dt) => !/^(Server|Certificate|Domain|Exposed files)$/.test(dt.textContent)), 'what Vaka found is in the tiles, not in the settings');
       expect(all('dialog.drawer .timeline li').length >= 2, 'the history lists what happened');
       expect(/Grade C: 4 of 6 in place, missing HSTS and CSP/.test(q('dialog.drawer .headers-summary')?.textContent || ''), 'the detail says the headers grade in words');
       const [headerList, mailList] = all('dialog.drawer .header-list');
@@ -298,6 +309,7 @@ async function main() {
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
       expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');
+      expect(getComputedStyle(document.documentElement).overflow !== 'hidden', 'the page scrolls again once the detail is closed');
     }
 
     // Adding, changing and removing a site in the dashboard

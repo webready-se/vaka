@@ -927,21 +927,7 @@
     var paused = site.status === 'paused';
     var summary = daysSummary(d.days, paused);
     var since = site.since ? (site.status === 'up' ? 'Up since ' : site.status === 'down' ? 'Down since ' : 'Since ') + clock(site.since) + ' (' + duration(secondsSince(site.since)) + ')' : STATUS_WORDS[site.status];
-    var settings = [
-      ['Group', (site.group || 'No group')],
-      ['Checked every', site.interval_minutes + ' min'],
-      ['Server', site.cdn ? 'Behind ' + site.cdn : (site.server || 'Not known yet')],
-      ['Certificate', site.ssl ? site.ssl.summary : (/^https:/.test(site.url) ? 'Not checked yet' : 'No https')],
-      ['Domain', site.domain ? site.domain.summary : 'Not checked yet'],
-      ['Exposed files', site.exposed ? site.exposed.summary : 'Not checked yet']
-    ];
-    if (site.keyword) settings.splice(2, 0, ['Looks for the text', '"' + site.keyword + '"']);
-    if (site.name) settings.unshift(['Name', site.name]);
     var editable = Boolean(state.data.setup);
-    d.maintenance.forEach(function (w) {
-      var text = w.when + (w.label ? ' (' + w.label + ')' : '') + (w.for === 'group' ? ', for the group' : '') + (w.active ? ', now' : '');
-      settings.push(['Maintenance', editable ? [text, ' ', h('button', { type: 'button', class: 'link-button', 'data-action': 'window-remove', 'data-id': w.id, 'aria-label': 'Remove the maintenance window ' + w.when }, 'Remove')] : text]);
-    });
 
     append(node, h('div', { class: 'drawer-inner is-' + kind }, [
       h('div', { class: 'drawer-head' }, [
@@ -970,24 +956,133 @@
       h('p', { class: 'days-legend', 'aria-hidden': 'true' }, [h('span', {}, '30 days ago'), h('span', {}, 'Today')]),
       h('p', { class: 'day-note', 'data-day-note': summary }, summary),
       dayKey(d.days, paused),
+      // Uptime first, all of it (Vaka's main job), then what the other checks see, then their detail
       h('h3', {}, 'Response time, last 24 hours'),
       chart(d.samples),
+      h('h3', { id: 'seen-title' }, 'What Vaka sees'),
+      seenTiles(site, editable),
       h('h3', {}, 'Security headers'),
       headerList(site.headers),
       h('h3', {}, 'Mail'),
       mailList(site.dns),
+      settingsCard(site, d.maintenance, editable),
       h('h3', {}, 'History'),
-      timeline(d.events),
-      h('h3', {}, 'Settings'),
-      h('dl', { class: 'settings' }, settings.reduce(function (list, row) {
+      timeline(d.events)
+    ]));
+  }
+
+  var TILE_ICONS = { ok: 'up', warn: 'failing', down: 'down', none: 'info' };
+  var TILE_WORDS = { warn: 'Needs a look: ', down: 'Problem: ' };
+
+  /** A check's status as a tile's tone: ok, warn, down, or none for pending and unknown. */
+  function tone(status) {
+    return status === 'ok' ? 'ok' : status === 'warn' ? 'warn' : status === 'fail' ? 'down' : 'none';
+  }
+
+  function tile(label, kind, value, sub, extra) {
+    return h('li', { class: 'tile is-' + kind.tone }, [
+      h('p', { class: 'tile-label' }, label),
+      h('p', { class: 'tile-value' }, [icon(kind.icon || TILE_ICONS[kind.tone]), h('span', {}, [TILE_WORDS[kind.tone] ? h('span', { class: 'visually-hidden' }, TILE_WORDS[kind.tone]) : null, value])]),
+      sub ? h('p', { class: 'tile-sub' }, sub) : null,
+      extra || null
+    ]);
+  }
+
+  function daysLeft(days) {
+    return days === 0 ? 'Expires today' : days === 1 ? 'Expires tomorrow' : plural(days, 'day', 'days') + ' left';
+  }
+
+  /**
+   * What Vaka sees besides uptime, one tile per check, so the state of each
+   * reads at a glance: the words lead, the colour and the mark say the same.
+   * The detail of the headers and mail follows further down.
+   */
+  function seenTiles(site, editable) {
+    var off = function (key) { return (site.checks_off || []).indexOf(key) !== -1; };
+    var quiet = function (iconName) { return { tone: 'none', icon: iconName }; };
+    var waiting = function (label) { return tile(label, quiet('pending'), 'Not checked yet'); };
+    var turnedOff = function (label) { return tile(label, quiet('paused'), 'Turned off', 'In the settings below'); };
+    var tiles = [];
+
+    var name = site.server ? site.server.replace(/ \(.*\)$/, '') : null;
+    var serverButton = editable && site.server_ip
+      ? h('button', { type: 'button', class: 'link-button', 'data-action': 'edit-server' }, name === site.server_ip ? 'Name it' : 'Server settings')
+      : null;
+    if (site.cdn) tiles.push(tile('Server', quiet('server'), 'Behind ' + site.cdn, 'Its addresses are shared, so it is alerted on its own'));
+    else if (site.server) tiles.push(tile('Server', quiet('server'), name, site.server_ip ? (name === site.server_ip ? 'No name yet' : site.server_ip) : 'Set by hand', serverButton));
+    else tiles.push(tile('Server', quiet('server'), 'Not known yet', 'Known after the first check'));
+
+    var ssl = site.ssl;
+    var issuer = ssl && /issued by (.+)$/.exec(ssl.summary);
+    if (off('ssl')) tiles.push(turnedOff('Certificate'));
+    else if (!/^https:/.test(site.url)) tiles.push(tile('Certificate', quiet('info'), 'No https', 'The address starts with http://'));
+    else if (!ssl) tiles.push(waiting('Certificate'));
+    else if (ssl.status === 'fail' || ssl.days_left === null) tiles.push(tile('Certificate', { tone: tone(ssl.status) }, ssl.status === 'fail' ? 'Not valid' : 'Unknown', ssl.summary));
+    else tiles.push(tile('Certificate', { tone: tone(ssl.status) }, daysLeft(ssl.days_left), 'Until ' + date(ssl.valid_to) + (issuer ? ', ' + issuer[1] : '')));
+
+    var domain = site.domain;
+    if (off('domain')) tiles.push(turnedOff('Domain'));
+    else if (!domain) tiles.push(waiting('Domain'));
+    else if (domain.status === 'fail') tiles.push(tile('Domain', { tone: 'down' }, 'Expired', domain.summary));
+    else if (domain.days_left === null) tiles.push(tile('Domain', { tone: 'none' }, 'Unknown', domain.summary));
+    else tiles.push(tile('Domain', { tone: tone(domain.status) }, daysLeft(domain.days_left), 'Until ' + date(domain.expires) + (domain.registrar ? ', ' + domain.registrar : '')));
+
+    var exposed = site.exposed;
+    var checked = exposed && /\((\d+ files? checked)\)/.exec(exposed.summary);
+    if (off('exposed')) tiles.push(turnedOff('Exposed files'));
+    else if (!exposed) tiles.push(waiting('Exposed files'));
+    else if (exposed.found.length) tiles.push(tile('Exposed files', { tone: tone(exposed.status) }, plural(exposed.found.length, 'file', 'files') + ' public', exposed.found.map(function (file) { return file.label; }).join(', ')));
+    else tiles.push(tile('Exposed files', { tone: tone(exposed.status) }, exposed.status === 'ok' ? 'None public' : exposed.summary, checked ? capitalize(checked[1]) : null));
+
+    var headers = site.headers;
+    if (off('headers')) tiles.push(turnedOff('Security headers'));
+    else if (!headers) tiles.push(waiting('Security headers'));
+    else if (!headers.grade) tiles.push(tile('Security headers', { tone: tone(headers.status) }, headers.summary));
+    // "Grade E: 2 of 6 in place, missing ...": the first part, the rest is further down
+    else tiles.push(tile('Security headers', { tone: tone(headers.status) }, 'Grade ' + headers.grade, capitalize(headers.summary.replace(/^Grade [A-F]: /, '').split(', ')[0])));
+
+    var dns = site.dns;
+    var mail = dns && /^Mail for ([^:]+): (.+)$/.exec(dns.summary);
+    if (off('dns')) tiles.push(turnedOff('Mail'));
+    else if (!dns) tiles.push(waiting('Mail'));
+    else tiles.push(tile('Mail', { tone: tone(dns.status) }, mail ? capitalize(mail[2]) : dns.summary, mail ? 'For ' + mail[1] : null));
+
+    return h('ul', { class: 'tiles', 'aria-labelledby': 'seen-title' }, tiles);
+  }
+
+  /**
+   * What the site is set to do, apart from what Vaka finds: a card of its
+   * own, with Change in its head and the maintenance windows at the end.
+   */
+  function settingsCard(site, windows, editable) {
+    var setup = state.data.setup;
+    var rows = [];
+    if (site.name) rows.push(['Name', site.name]);
+    rows.push(['Group', site.group || 'No group']);
+    rows.push(['Checked every', site.interval_minutes + ' min']);
+    if (site.keyword) rows.push(['Looks for the text', '"' + site.keyword + '"']);
+    if (setup) {
+      rows.push(['Checks', h('ul', { class: 'check-chips' }, setup.checks.map(function (check) {
+        var on = (site.checks_off || []).indexOf(check.key) === -1;
+        return h('li', { class: on ? null : 'is-off' }, [icon(on ? 'up' : 'down'), check.label, h('span', { class: 'visually-hidden' }, on ? ': on' : ': off')]);
+      }))]);
+    }
+    windows.forEach(function (w) {
+      var text = w.when + (w.label ? ' (' + w.label + ')' : '') + (w.for === 'group' ? ', for the group' : '') + (w.active ? ', now' : '');
+      rows.push(['Maintenance', editable ? [text, ' ', h('button', { type: 'button', class: 'link-button', 'data-action': 'window-remove', 'data-id': w.id, 'aria-label': 'Remove the maintenance window ' + w.when }, 'Remove')] : text]);
+    });
+    if (!windows.length) rows.push(['Maintenance', 'None']);
+
+    return h('section', { class: 'settings-card', 'aria-labelledby': 'settings-title' }, [
+      h('div', { class: 'settings-head' }, [
+        h('h3', { id: 'settings-title' }, 'Settings'),
+        editable ? h('button', { type: 'button', class: 'button', 'data-action': 'edit-site', 'aria-label': 'Change the settings of ' + site.label }, 'Change') : null
+      ]),
+      h('dl', { class: 'settings' }, rows.reduce(function (list, row) {
         return list.concat([h('dt', {}, row[0]), h('dd', {}, row[1])]);
       }, [])),
-      editable ? h('div', { class: 'actions' }, [
-        h('button', { type: 'button', class: 'button', 'data-action': 'edit-site' }, 'Change settings'),
-        h('button', { type: 'button', class: 'button', 'data-action': 'add-window' }, [icon('quiet'), 'Add a maintenance window']),
-        site.server_ip ? h('button', { type: 'button', class: 'button', 'data-action': 'edit-server' }, [icon('server'), 'Server settings']) : null
-      ]) : null
-    ]));
+      editable ? h('div', { class: 'actions' }, h('button', { type: 'button', class: 'button', 'data-action': 'add-window' }, [icon('quiet'), 'Add a maintenance window'])) : null
+    ]);
   }
 
   // =================================================================
@@ -1691,7 +1786,8 @@
 
   function chart(samples) {
     if (!samples.length) return h('p', { class: 'chart-note' }, 'No checks in the last 24 hours.');
-    var width = 700, height = 170, top = 12, bottom = 146, left = 48;
+    // Only lines and shapes in the SVG, which stretches to the width; the labels are HTML, so text is never squeezed
+    var width = 500, height = 150, top = 8, bottom = 142, left = 0;
     var end = Date.now(), start = end - 86400000;
     var good = samples.filter(function (sample) { return sample.ok; });
     var max = Math.max.apply(null, [100].concat(good.map(function (sample) { return sample.ms; })));
@@ -1706,13 +1802,7 @@
     var nodes = [
       s('line', { class: 'chart-grid', x1: left, x2: width, y1: top, y2: top }),
       s('line', { class: 'chart-grid', x1: left, x2: width, y1: (top + bottom) / 2, y2: (top + bottom) / 2 }),
-      s('line', { class: 'chart-grid', x1: left, x2: width, y1: bottom, y2: bottom }),
-      s('text', { x: 0, y: top + 4 }, max + ' ms'),
-      s('text', { x: 0, y: (top + bottom) / 2 + 4 }, max / 2 + ' ms'),
-      s('text', { x: 0, y: bottom + 4 }, '0'),
-      s('text', { x: left, y: height - 2 }, '24 h ago'),
-      s('text', { x: (left + width) / 2 - 22, y: height - 2 }, '12 h ago'),
-      s('text', { x: width - 26, y: height - 2 }, 'now')
+      s('line', { class: 'chart-grid', x1: left, x2: width, y1: bottom, y2: bottom })
     ];
     if (area) nodes.push(s('path', { class: 'chart-area', d: area }), s('path', { class: 'chart-line', d: path }));
     fails.forEach(function (sample) {
@@ -1726,7 +1816,11 @@
       : 'Every check in the last 24 hours failed.';
 
     return h('figure', {}, [
-      s('svg', { class: 'chart', viewBox: '0 0 ' + width + ' ' + height, preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Response time, last 24 hours. ' + label }, nodes),
+      h('div', { class: 'chart-plot' }, [
+        h('div', { class: 'chart-y', 'aria-hidden': 'true' }, [h('span', {}, max + ' ms'), h('span', {}, max / 2 + ' ms'), h('span', {}, '0')]),
+        s('svg', { class: 'chart', viewBox: '0 0 ' + width + ' ' + height, preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Response time, last 24 hours. ' + label }, nodes)
+      ]),
+      h('p', { class: 'chart-x', 'aria-hidden': 'true' }, [h('span', {}, '24 h ago'), h('span', {}, '12 h ago'), h('span', {}, 'now')]),
       h('figcaption', { class: 'chart-note' }, label + '.')
     ]);
   }

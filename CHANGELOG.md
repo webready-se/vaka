@@ -18,6 +18,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- A site's detail reads at a glance. After its uptime (the numbers, the 30 days and the response times), what Vaka sees is a tile per check: the server, the certificate, the domain, exposed files, the headers grade and mail, each with how it is in words ("6 days left", "Grade E", "DMARC is missing"), tinted when it needs a look. The settings are a card of their own, with Change in its head, which checks are on and off (that was not shown at all) and the maintenance windows; the history comes last. The server's settings are in its tile.
 - Downtime inside a maintenance window is planned and no longer counts against uptime, in the dashboard and the read API (`uptime`, `days`, the CSV). A day down only in maintenance has a bar of its own, in the quiet colour, and the API gives the time as `planned_seconds`. Only the part inside the window counts as planned: a site still down after its window loses uptime from then on. The windows count as they are now, so a window added today covers earlier nights too.
 - A day bar is amber for any outage and red from an hour down in all, instead of by percentage (amber below 99.95%, red below 95%). A day with a 30 second outage used to look green, and today's bar, counted on the hours so far, turned red for a few minutes down just after midnight.
 - When a site starts failing, the other sites on its server are no longer checked at once if the failure is the site's own: its domain does not resolve, or the page answered without its keyword. Anything that could be the server's still checks them, so a server that is down is still one alert.
@@ -27,6 +28,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- The page behind a site's detail scrolled along with it, and scrolling past the detail's end carried on into the page. The page now stays put while the detail is open.
+- The response time chart in a site's detail was narrower than everything around it (a browser's default margin on its figure), and its labels were squeezed sideways, most on a phone. It takes the full width now, and the labels are text beside and under it.
 - Logged out of the dashboard now and then, about once an hour: the hourly new session id deleted the old session at once, so a request already on its way with the old id (the dashboard often sends two at once) found no session, and its new, empty session's cookie replaced the good one. The old id now leads to the new one for a minute, and counts for nothing after that.
 - Session files nobody uses any more are removed by the daily clean-up: PHP's own is off on many servers (Debian and Ubuntu leave it to a cron job that only knows PHP's default directory), so `data/sessions/` only grew.
 - A `TIMEZONE` that PHP does not know (a typo such as `Europe/Stokholm`) stopped every run with an error, so nothing was checked. Vaka now keeps the server's zone, and the dashboard and every command say what is wrong and what was probably meant.
