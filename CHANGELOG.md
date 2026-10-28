@@ -15,7 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - Read tokens start with `vaka_`, so you can tell one that ended up in git at a glance, and so can a secret scanner given the pattern `vaka_[a-f0-9]{64}`. Tokens made before keep working, and `share:revoke` takes a token's start with or without `vaka_`.
 - An expired read token gets `401` with the day it expired and how to make a new one, instead of a `404`, so a script that stops working says why. An unknown or revoked token is still a `404`.
 - Behind Cloudflare, the certificate check says the certificate is Cloudflare's, which Cloudflare renews by itself about 30 days before it expires, so 31 days left reads as nothing to act on. The detail's tile says "renewed by Cloudflare", and the read API's `ssl` has `renewed_by`. When Cloudflare is late anyway (14 days left), the advice and the alert point at Cloudflare's Edge Certificates and CAA records instead of certbot. `docs/checks.md` says why the certificate on your own server cannot be seen from outside.
-- `docs/install.md`: on Forge, remove the `add_header` lines Forge puts in the Nginx `server` block, since they come on top of Vaka's own headers (`X-Frame-Options` went out as both `DENY` and `SAMEORIGIN`).
+- `docs/install.md`: on Forge, remove the `X-Frame-Options` and `X-XSS-Protection` lines Forge puts in the site's Nginx configuration, since they come on top of Vaka's own headers (`X-Frame-Options` went out as both `DENY` and `SAMEORIGIN`), and keep its `nosniff` line, which the files Nginx serves get theirs from.
 
 ### Changed
 
