@@ -85,8 +85,8 @@
       ICONS[name].map(function (d) { return s('path', { d: d }); }));
   }
 
-  // Vaka's owl from the Webready design kit (characters/vaka.svg and vaka-awake.svg, 40 x 40):
-  // the body, then the eyes (watching, or wide awake while a site is down), then the beak and feet
+  // Vaka's owl from the Webready design kit (characters/vaka.svg, vaka-awake.svg and vaka-perched.svg, 40 x 40):
+  // the body, then the eyes (watching, or wide awake while a site is down), then the beak and the feet
   var OWL = {
     body: [
       ['path', {'d': 'M10 12.6L7.4 6.2L10.9 8.3L11.5 5.2L14.6 10Z', 'fill': '#19acca'}],
@@ -115,17 +115,57 @@
       ['circle', {'cx': '25.7', 'cy': '18.5', 'r': '0.8', 'fill': '#fff'}]
     ],
     beak: [
-      ['path', {'d': 'M18.4 22.8L20 26L21.6 22.8Q20 23.4 18.4 22.8Z', 'fill': '#f5b942'}],
+      ['path', {'d': 'M18.4 22.8L20 26L21.6 22.8Q20 23.4 18.4 22.8Z', 'fill': '#f5b942'}]
+    ],
+    feet: [
       ['path', {'d': 'M16.2 35.4v1.8M17.8 35.4v1.8M22.2 35.4v1.8M23.8 35.4v1.8', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round'}]
+    ],
+    // Perched on the panel's bottom edge (at y 36, right under the body), from vaka-perched.svg: a pad on the edge for
+    // each foot, three toes over it, and the claws, in a darker gold, curled in round it
+    talons: [
+      ['ellipse', {'cx': '17', 'cy': '35.5', 'rx': '2.1', 'ry': '0.8', 'fill': '#f5b942'}],
+      ['ellipse', {'cx': '23', 'cy': '35.5', 'rx': '2.1', 'ry': '0.8', 'fill': '#f5b942'}],
+      ['path', {'d': 'M15.4 35.5v1.6M17 35.7v1.6M18.6 35.5v1.6M21.4 35.5v1.6M23 35.7v1.6M24.6 35.5v1.6', 'fill': 'none', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round'}],
+      ['path', {'d': 'M15.4 37.1q0 .8.5 1M17 37.3q0 .8.4 1M18.6 37.1q0 .8.4.9M21.4 37.1q0 .8-.4.9M23 37.3q0 .8-.4 1M24.6 37.1q0 .8-.5 1', 'fill': 'none', 'stroke': '#c98516', 'stroke-width': '0.8', 'stroke-linecap': 'round'}]
     ]
   };
 
-  /** The owl in the night panel. Awake: wide eyes, small pupils. Its eyes blink while all is calm (CSS). */
+  /**
+   * The owl in the night panel. Awake: wide eyes, small pupils. Its eyes blink
+   * while all is calm (CSS). Both kinds of feet are drawn: talons over the
+   * panel's edge where it sits on it, feet where it sits in the corner (CSS).
+   */
   function owl(awake) {
     var draw = function (items) { return items.map(function (item) { return s(item[0], item[1]); }); };
     return s('svg', { class: 'watch-owl' + (awake ? ' is-awake' : ''), viewBox: '0 0 40 40', 'aria-hidden': 'true', focusable: 'false' },
-      draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(awake ? OWL.awakeEyes : OWL.eyes))], draw(OWL.beak)));
+      draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(awake ? OWL.awakeEyes : OWL.eyes))], draw(OWL.beak),
+        [s('g', { class: 'owl-feet' }, draw(OWL.feet)), s('g', { class: 'owl-talons' }, draw(OWL.talons))]));
   }
+
+  /**
+   * Tonight's moon, above the owl: its phase from a known new moon (6 Jan
+   * 2000, 18:14 UTC) and the length of a lunar month, lit on the right while
+   * it waxes, as seen from the northern hemisphere. Drawn as the lit part
+   * over a faint disc: a half circle on the lit side, and the terminator as
+   * a half ellipse back.
+   */
+  function moon(now) {
+    var phase = (((now - Date.UTC(2000, 0, 6, 18, 14)) / 86400000 / 29.530588853) % 1 + 1) % 1;
+    var r = 10, cx = 12, top = 2, bottom = 22;
+    var waxing = phase < 0.5;
+    var bulge = phase < 0.25 || (phase >= 0.5 && phase < 0.75) ? 0 : 1;
+    var rx = (Math.abs(Math.cos(phase * 2 * Math.PI)) * r).toFixed(2);
+    var lit = 'M' + cx + ' ' + top + 'A' + r + ' ' + r + ' 0 0 ' + (waxing ? 1 : 0) + ' ' + cx + ' ' + bottom + 'A' + rx + ' ' + r + ' 0 0 ' + bulge + ' ' + cx + ' ' + top + 'Z';
+    // A small pleasure on hover: "Tonight's moon: waning gibbous, 94% lit"
+    var words = MOON_PHASES[Math.round(phase * 8) % 8] + ', ' + Math.round((1 - Math.cos(phase * 2 * Math.PI)) / 2 * 100) + '% lit';
+    return s('svg', { class: 'watch-moon', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
+      s('title', {}, "Tonight's moon: " + words),
+      s('circle', { class: 'moon-dark', cx: cx, cy: 12, r: r }),
+      s('path', { class: 'moon-lit', d: lit })
+    ]);
+  }
+
+  var MOON_PHASES = ['new moon', 'waxing crescent', 'first quarter', 'waxing gibbous', 'full moon', 'waning gibbous', 'last quarter', 'waning crescent'];
 
   // =================================================================
   // Words and times
@@ -442,7 +482,7 @@
         h('p', { class: 'watch-line' }, line),
         h('ul', { class: 'watch-stats', 'aria-label': 'At a glance' }, stats)
       ]),
-      owl(kind === 'alert')
+      h('div', { class: 'watch-perch' }, [moon(Date.now()), owl(kind === 'alert')])
     ]));
   }
 
