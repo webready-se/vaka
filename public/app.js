@@ -956,10 +956,11 @@
       h('p', { class: 'days-legend', 'aria-hidden': 'true' }, [h('span', {}, '30 days ago'), h('span', {}, 'Today')]),
       h('p', { class: 'day-note', 'data-day-note': summary }, summary),
       dayKey(d.days, paused),
-      h('h3', { id: 'seen-title' }, 'What Vaka sees'),
-      seenTiles(site, editable),
+      // Uptime first, all of it (Vaka's main job), then what the other checks see, then their detail
       h('h3', {}, 'Response time, last 24 hours'),
       chart(d.samples),
+      h('h3', { id: 'seen-title' }, 'What Vaka sees'),
+      seenTiles(site, editable),
       h('h3', {}, 'Security headers'),
       headerList(site.headers),
       h('h3', {}, 'Mail'),
