@@ -85,8 +85,8 @@
       ICONS[name].map(function (d) { return s('path', { d: d }); }));
   }
 
-  // Vaka's owl from the Webready design kit (characters/vaka.svg and vaka-awake.svg, 40 x 40):
-  // the body, then the eyes (watching, or wide awake while a site is down), then the beak and feet
+  // Vaka's owl from the Webready design kit (characters/vaka.svg, vaka-awake.svg and vaka-perched.svg, 40 x 40):
+  // the body, then the eyes (watching, or wide awake while a site is down), then the beak and the feet
   var OWL = {
     body: [
       ['path', {'d': 'M10 12.6L7.4 6.2L10.9 8.3L11.5 5.2L14.6 10Z', 'fill': '#19acca'}],
@@ -120,8 +120,8 @@
     feet: [
       ['path', {'d': 'M16.2 35.4v1.8M17.8 35.4v1.8M22.2 35.4v1.8M23.8 35.4v1.8', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round'}]
     ],
-    // A prototype, not in the kit yet: perched on the panel's bottom edge (at y 36, right under the body): a pad on the edge
-    // for each foot, three toes over it, and the claws, in a darker gold, curled in round it
+    // Perched on the panel's bottom edge (at y 36, right under the body), from vaka-perched.svg: a pad on the edge for
+    // each foot, three toes over it, and the claws, in a darker gold, curled in round it
     talons: [
       ['ellipse', {'cx': '17', 'cy': '35.5', 'rx': '2.1', 'ry': '0.8', 'fill': '#f5b942'}],
       ['ellipse', {'cx': '23', 'cy': '35.5', 'rx': '2.1', 'ry': '0.8', 'fill': '#f5b942'}],
@@ -156,11 +156,16 @@
     var bulge = phase < 0.25 || (phase >= 0.5 && phase < 0.75) ? 0 : 1;
     var rx = (Math.abs(Math.cos(phase * 2 * Math.PI)) * r).toFixed(2);
     var lit = 'M' + cx + ' ' + top + 'A' + r + ' ' + r + ' 0 0 ' + (waxing ? 1 : 0) + ' ' + cx + ' ' + bottom + 'A' + rx + ' ' + r + ' 0 0 ' + bulge + ' ' + cx + ' ' + top + 'Z';
+    // A small pleasure on hover: "Tonight's moon: waning gibbous, 94% lit"
+    var words = MOON_PHASES[Math.round(phase * 8) % 8] + ', ' + Math.round((1 - Math.cos(phase * 2 * Math.PI)) / 2 * 100) + '% lit';
     return s('svg', { class: 'watch-moon', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
+      s('title', {}, "Tonight's moon: " + words),
       s('circle', { class: 'moon-dark', cx: cx, cy: 12, r: r }),
       s('path', { class: 'moon-lit', d: lit })
     ]);
   }
+
+  var MOON_PHASES = ['new moon', 'waxing crescent', 'first quarter', 'waxing gibbous', 'full moon', 'waning gibbous', 'last quarter', 'waning crescent'];
 
   // =================================================================
   // Words and times

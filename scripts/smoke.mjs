@@ -184,6 +184,12 @@ async function main() {
     expect(/2 sites are down/.test(q('.watch h1')?.textContent || ''), 'the watch says how many sites are down and need you');
     expect(/1 more is down but snoozed/.test(q('.watch-line')?.textContent || ''), 'the watch says how many more are snoozed');
     expect(document.title === '(2) Vaka', `the tab title counts the outages (got "${document.title}")`);
+    // The owl perches on the panel's bottom edge, its talons over it, under tonight's moon
+    const panel = q('.watch')?.getBoundingClientRect();
+    const talons = q('.watch .owl-talons');
+    expect(talons && getComputedStyle(talons).display !== 'none' && getComputedStyle(q('.watch .owl-feet')).display === 'none', 'the owl grips the edge with its talons, not its standing feet');
+    expect(talons && talons.getBoundingClientRect().bottom > panel.bottom && talons.getBoundingClientRect().top < panel.bottom, 'the talons reach over the panel\'s bottom edge');
+    expect(/^Tonight's moon: (new moon|waxing crescent|first quarter|waxing gibbous|full moon|waning gibbous|last quarter|waning crescent), \d+% lit$/.test(q('.watch-moon title')?.textContent || ''), `the moon says which it is on hover (got "${q('.watch-moon title')?.textContent}")`);
     expect(/favicon-alert\.svg$/.test(q('[data-favicon]').getAttribute('href')), 'the favicon turns to the alarmed owl');
     expect(q('.brand-name')?.textContent === 'Vaka' && q('.brand .mark'), 'the mark and the name, Capitalised, in the top bar');
     expect(q('.watch-owl.is-awake'), 'the owl in the night panel is wide awake while a site is down');
@@ -487,8 +493,10 @@ async function main() {
   const phone = await evaluate(async () => {
     for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
     // On a phone the layout viewport grows with content that is too wide, so measure against the screen
-    return { overflow: document.documentElement.scrollWidth - 390, csp: window.__csp };
+    const shown = (s) => getComputedStyle(document.querySelector(s)).display !== 'none';
+    return { overflow: document.documentElement.scrollWidth - 390, csp: window.__csp, corner: shown('.watch .owl-feet') && !shown('.watch .owl-talons') && !shown('.watch-moon') };
   });
+  if (!phone.corner) fails.push('on a phone the owl stands in the corner on its feet, without the moon');
   if (phone.overflow > 0) fails.push(`no sideways scrolling on a phone (${phone.overflow}px too wide)`);
   if (phone.csp.length) fails.push(`no CSP violations on a phone: ${phone.csp.join(', ')}`);
   await screenshot('phone');
