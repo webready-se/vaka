@@ -128,6 +128,8 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [ ] TOTP two-factor login
 - [ ] An outage counts from its first failed check, not from when it was confirmed: the history says "Up again after 23 min" where the day bar says 22, since the down event is written a check later
 - [ ] Pest's test servers on ports the system hands out, as the smoke test and the README script have (and Puls's tests): today each has a fixed port, and `assert_port_free()` refuses to start when another process holds it, so a test never talks to someone else's server but fails while another session runs one there. The ports are in about 190 lines of URLs in tests and fixtures, so it is a change of its own
+- [ ] `php vaka` without a command, in a terminal, shows every command as a numbered menu in groups (Snoka and Hamstra do; proposed as the design kit's standard, from "Pick, don't remember": nobody should have to remember command names either). From a pipe, and with `php vaka help`, the help as today
+- [ ] Security headers: a protection sent twice with different values counts as weak and says so ("X-Frame-Options is sent twice, DENY and SAMEORIGIN: the app and the web server both add it"). The usual cause is an app's own headers plus the web server's, as on Forge, whose Nginx `server` block adds X-Frame-Options SAMEORIGIN on top of whatever the app sends
 - [ ] Cache-busting by file, not by version: `app.js?v=0.1.0` stays the same between releases, and with no Cache-Control a browser may keep the last deploy's files for up to an hour (the file's mtime or a hash in the URL)
 
 ## Considered and set aside
@@ -135,4 +137,6 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 Weighed and not done, with the reason, so the question has an answer the next time it comes up.
 
 - A Mail DNS column in the site list (2026-10-28). Mail has no grade, only OK or a warning (SPF and DMARC), so the column would be mostly ticks; it is about the domain, not the site, so every site on a domain shows the same; it rarely changes, and a change alerts already. The list answers "are my sites up?", and every column makes it slower to read. The detail has a tile for it.
+- A read token that never expires (2026-10-28). A token lives in a site project's `.env`, where it is easily forgotten, so every token has a last day: 90 days unless `--expires` gives another, and an expired one answers 401 with the day it expired, so the script that stopped working says why. The same rule in Snoka.
+- `VAKA_TOKEN` in the site project's `.env` instead of `VAKA_SHARE_TOKEN` (2026-10-28). Puls, released with `PULS_SHARE_TOKEN`, and the `share:*` commands already use the longer name, so Vaka keeps it and Snoka moves to `SNOKA_SHARE_TOKEN`.
 - A history of maintenance windows, so that a removed window still covers the nights it was there (2026-10-28). Downtime counts as planned by the windows as they are now: simpler, and a window added today covering earlier nights is usually what was meant. Written in docs/alerts.md.
