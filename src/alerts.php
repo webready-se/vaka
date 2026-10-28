@@ -681,7 +681,7 @@ function alert_text(array $item): array
                 'details' => [
                     ...array_map(fn (array $header) => ucfirst($header['label']) . ($header['change'] === 'removed' ? ' was removed' : ' is weaker') . ($header['note'] !== '' ? ": {$header['note']}" : ''), $site['worse']),
                     ...(in_array('nosniff_files', array_column($site['worse'], 'key'), true)
-                        ? ['A web server rule for those files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header): add X-Content-Type-Options: nosniff to that rule too.']
+                        ? ['A web server rule for those files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Set the headers once for the whole site and keep add_header out of such rules: for caching, nginx\'s expires sets Cache-Control without it.']
                         : []),
                     'If that was not on purpose, look at the last deploy, the web server or the CDN settings.',
                 ],
