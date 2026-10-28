@@ -207,7 +207,7 @@ function run_ssl(PDO $db, array $config, int $now, float $deadline): array
             $summary['left'] = count($sites) - $i;
             break;
         }
-        $result = check_certificate($site['url'], $config, $now);
+        $result = check_certificate($site['url'], $config, $now, $site['cdn'] ?: null);
         $previous = $site['state_status'] ?? 'pending';
         $changed = $previous !== $result['status'];
         save_check_state($db, $site['id'], 'ssl', [

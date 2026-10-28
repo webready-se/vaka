@@ -67,7 +67,7 @@ Each site:
 | `maintenance` | `true` while a maintenance window covers it |
 | `unstable` | `true` while it keeps going down and up (flapping) |
 | `uptime` | `{"24h", "7d", "30d"}`: percentages, rounded down to two decimals and counted from the first check, or `null` before it. Downtime inside the site's maintenance windows is left out (see `days`) |
-| `ssl` | `{status, summary, days_left, valid_to, advice}` for https sites, else `null`. `status` is `ok`, `warn` (expires within 14 days) or `fail` (expired or invalid) |
+| `ssl` | `{status, summary, days_left, valid_to, renewed_by, advice}` for https sites, else `null`. `status` is `ok`, `warn` (expires within 14 days) or `fail` (expired or invalid). `renewed_by` is `"Cloudflare"` for a site behind Cloudflare, whose certificate Cloudflare renews by itself about 30 days before it expires, else `null` |
 | `domain` | `{status, summary, domain, label, days_left, expires, registrar, advice}`, or `null`. `domain` is the registered domain as DNS has it (`xn--` for an international name), `label` as people write it. `status` is `ok`, `warn`, `fail` (expired) or `unknown` (the registry gave no date). `registrar` is **from the registry** |
 | `exposed` | Files that should never be public: `{status, summary, found, since, advice}`, or `null`. `found` is `[{label, what, severity, url}]`; `status` is `ok`, `warn` (a file that tells versions and paths) or `fail` (secrets, code or data) |
 | `headers` | Security headers: `{status, grade, summary}`, or `null`. `grade` is `A` to `F` |

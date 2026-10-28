@@ -47,6 +47,28 @@ test('a trusted certificate far from expiry is ok, with when and who issued it',
         ->and($result['details']['valid_to'])->toBe(utc_now($info['valid_to']));
 });
 
+test('behind Cloudflare the certificate is Cloudflare\'s, which it renews by itself, and the summary says so', function () {
+    $info = certificate_info(fixture_cert('valid'));
+    $now = $info['valid_to'] - 31 * 86400;
+    $result = evaluate_ssl('127.0.0.1', verified('valid'), $info, $now, 14, 'Cloudflare');
+
+    expect($result['status'])->toBe('ok')
+        ->and($result['summary'])->toBe("Cloudflare's certificate, which Cloudflare renews by itself: valid until " . date('j M Y', $info['valid_to']) . ' (31 days), issued by Vaka Test CA')
+        ->and($result['details']['renewed_by'])->toBe('Cloudflare')
+        // Other CDNs may show a certificate of the site's own, so nothing is said for them
+        ->and(evaluate_ssl('127.0.0.1', verified('valid'), $info, $now, 14, 'Fastly')['summary'])->toStartWith('Valid until')
+        ->and(evaluate_ssl('127.0.0.1', verified('valid'), $info, $now, 14, 'Fastly')['details']['renewed_by'])->toBeNull()
+        ->and(evaluate_ssl('127.0.0.1', verified('valid'), $info, $info['valid_to'] - 10 * 86400 - 60, 14, 'Cloudflare'))
+        ->toMatchArray(['status' => 'warn', 'summary' => 'The certificate expires in 10 days (' . date('j M Y', $info['valid_to']) . ')']);
+});
+
+test('ssl_advice: a Cloudflare certificate that is late to renew points at Cloudflare, not at certbot', function () {
+    expect(ssl_advice(['problem' => 'expiring', 'renewed_by' => 'Cloudflare']))->toContain('Cloudflare renews its certificates about 30 days before they expire')
+        ->and(ssl_advice(['problem' => 'expired', 'renewed_by' => 'Cloudflare']))->toContain('SSL/TLS')
+        ->and(ssl_advice(['problem' => 'expiring']))->toContain("Let's Encrypt")
+        ->and(ssl_advice(['problem' => 'name', 'renewed_by' => 'Cloudflare']))->toBe(advice_for('name', 0));
+});
+
 test('a certificate close to expiry is a warning that says when', function () {
     $info = certificate_info(fixture_cert('valid'));
     expect(evaluate_ssl('127.0.0.1', verified('valid'), $info, $info['valid_to'] - 10 * 86400 - 60, 14))
@@ -127,4 +149,6 @@ test('certificate alerts read plainly', function () {
         ->toBe('shop.example (Customers): the SSL certificate is not valid')
         ->and(alert_text(bundle_notices([notice(['kind' => 'ssl_fixed'] + $base)], [])[0]['items'][0])['headline'])->toBe('shop.example (Customers): the SSL certificate is valid again')
         ->and(alert_text(bundle_notices([notice(['kind' => 'ssl_renewed'] + $base)], [])[0]['items'][0])['headline'])->toBe('shop.example (Customers): the SSL certificate was renewed');
+    expect(alert_text(bundle_notices([notice(['renewed_by' => 'Cloudflare'] + $base)], [])[0]['items'][0])['details'][1])
+        ->toBe(ssl_advice(['problem' => 'expiring', 'renewed_by' => 'Cloudflare']));
 });

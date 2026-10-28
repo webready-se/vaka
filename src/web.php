@@ -430,7 +430,8 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'summary' => $row['ssl_summary'],
             'days_left' => $sslDetails['days_left'] ?? null,
             'valid_to' => $sslDetails['valid_to'] ?? null,
-            'advice' => $row['ssl_status'] === 'ok' ? '' : advice_for($sslDetails['problem'] ?? '', 0),
+            'renewed_by' => $sslDetails['renewed_by'] ?? null,
+            'advice' => $row['ssl_status'] === 'ok' ? '' : ssl_advice($sslDetails),
         ];
     }
     $exposed = null;
@@ -723,7 +724,7 @@ function api_site_fields(PDO $db, array $config, array $summary, array $row, int
         'maintenance' => $summary['maintenance'],
         'unstable' => $summary['unstable'],
         'uptime' => ['24h' => $summary['uptime_24h'], '7d' => site_uptime($db, $row, 7 * 86400, $now, $config['timezone']), '30d' => $summary['uptime_30d']],
-        'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'advice']),
+        'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'advice']),
         'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'advice']),
         'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice']),
         'headers' => api_pick($summary['headers'], ['status', 'grade', 'summary']),

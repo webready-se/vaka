@@ -44,6 +44,8 @@ Every six hours for https sites. See [Alerts](alerts.md#certificates) for when i
 - **Expires soon**: within 14 days (the largest of `SSL_ALERT_DAYS`).
 - **Not valid**: expired, issued for another name, self-signed, not valid yet, or the chain to a known authority is missing.
 
+Behind Cloudflare, visitors get Cloudflare's certificate, not the one on your server, and that is the one Vaka sees. Cloudflare renews it by itself about 30 days before it expires, so the dashboard says who renews it, and 31 days left is nothing to act on. Vaka still warns at 14 days: a certificate Cloudflare has not renewed by then is stuck, often on a CAA record, and the advice says where to look. The certificate on your own server cannot be seen from outside; when it expires, Cloudflare (in SSL mode Full (strict)) answers 526, and the uptime check reports the site down.
+
 The handshakes happen one at a time and stop 40 seconds into a run; what is left waits for the next run.
 
 ## Domain expiry

@@ -335,6 +335,13 @@ async function main() {
       expect(getComputedStyle(document.documentElement).overflow !== 'hidden', 'the page scrolls again once the detail is closed');
     }
 
+    // Behind Cloudflare the certificate is Cloudflare's, and the tile says who renews it
+    all('.site-row').find((r) => /store\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'store.example', 'the CDN site\'s detail to open')) {
+      expect(all('dialog.drawer .tile').some((t) => /Certificate/.test(t.textContent) && /renewed by Cloudflare/.test(t.textContent)), 'the certificate tile says Cloudflare renews it');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // Adding, changing and removing a site in the dashboard
     q('[data-add-site]').click();
     if (await waitFor(() => q('dialog.drawer[open] [data-form="site"]'), 'the add-site form to open')) {
