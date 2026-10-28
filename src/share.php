@@ -100,16 +100,16 @@ function share_target(array $token): string
 }
 
 /**
- * What a token may read: its type and name for the response, and the SQL
- * condition on sites (s.) for overview_rows().
+ * What a token may read: its type and name for the response, the SQL
+ * condition on sites (s.) for overview_rows(), and for a site token its site.
  *
- * @return array{type: string, name: string, where: string}
+ * @return array{type: string, name: string, where: string, site_id?: int}
  */
 function share_scope(array $token): array
 {
     return $token['group_id'] !== null
         ? ['type' => 'group', 'name' => $token['group_name'], 'where' => 's.group_id = ' . (int) $token['group_id']]
-        : ['type' => 'site', 'name' => display_url((string) $token['site_url']), 'where' => 's.id = ' . (int) $token['site_id']];
+        : ['type' => 'site', 'name' => display_url((string) $token['site_url']), 'where' => 's.id = ' . (int) $token['site_id'], 'site_id' => (int) $token['site_id']];
 }
 
 /** The last day (YYYY-MM-DD, local time) a token made now works, unless something else is chosen. */
