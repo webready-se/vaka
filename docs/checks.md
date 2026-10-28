@@ -122,7 +122,12 @@ Every six hours, Vaka reads three DNS records of the site's domain (the one the 
 
 The check is **ok** when SPF and DMARC are in place, and **warn** when one of them is missing or there are two SPF records (receivers then treat SPF as broken). Without them, anyone can send email that looks like it comes from the domain, which is how most phishing in a company's name starts. A domain without MX, or with a null MX (`0 .`, which says so on purpose), receives no email, which is fine on its own, and a DMARC record with `p=none` only collects reports: both are shown, neither is a warning.
 
-The site detail lists each record with what the domain has and, when one is missing or weak, the value to add and where. A domain that sends no email at all is protected with `v=spf1 -all` and a DMARC record with `p=reject`.
+The site detail lists each record with what the domain has and, when one is missing or weak, the value to add and where. What it suggests depends on whether the domain sends email, as far as its records tell:
+
+- **It sends no email:** SPF allows no sender (`v=spf1 -all`), or there is neither SPF nor a mail server. Then `v=spf1 -all` and `v=DMARC1; p=reject`, at once: there is no email of its own to stop, and anything in its name is forged. Reports are optional.
+- **It sends email:** SPF names senders (`include:`, `ip4:` and so on), or there is a mail server, whose users send too. Then `p=none` with reports first, and `p=quarantine` and `p=reject` once the reports show only your own servers. When Vaka cannot tell, it suggests this one: `p=reject` on a domain that does send could stop its own email.
+
+`rua` in a DMARC record says where receivers send their reports. It is optional, but with `p=none` the reports are all the record gives. They come as zipped XML, so a free DMARC report service is easier than a mailbox: it gives the address to put in `rua` and sums the reports up, for example Cloudflare's DMARC Management for a domain on Cloudflare, or Postmark's weekly DMARC digests. A record with `p=none` and no `rua` neither stops anything nor reports, and the detail says so.
 
 Missing records are shown, never alerted. What alerts is a change: MX pointing somewhere new, an SPF record that now allows other servers, a DMARC record that disappears. Someone who can change those can read or send the domain's email; see [Alerts](alerts.md#mail-dns). A change is looked up again 15 minutes later and only counts when that look agrees, since resolvers can disagree for a while after a change. A lookup that fails keeps what was known and tries again within the hour.
 

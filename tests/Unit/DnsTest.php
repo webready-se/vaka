@@ -79,9 +79,10 @@ test('dns_items: MX, SPF and DMARC with what each does and the record to add', f
     expect(array_column($items, 'level', 'key'))->toBe(['mx' => 'none', 'spf' => 'good', 'dmarc' => 'weak'])
         ->and($items[0])->toMatchArray(['label' => 'MX', 'records' => [], 'note' => 'No mail server: email to this domain bounces. Fine if it neither sends nor receives email.'])
         ->and($items[1])->toMatchArray(['label' => 'SPF', 'records' => ['v=spf1 -all']])
-        ->and($items[2]['note'])->toBe('p=none only monitors: email that fails the check is still delivered')
+        ->and($items[2]['note'])->toBe('p=none without rua: it neither stops email that pretends to come from the domain nor sends reports')
         ->and($items[2]['fix_label'])->toBe('Change the TXT record at _dmarc.shop.example to:')
-        ->and($items[2]['fix'])->toBe('v=DMARC1; p=quarantine');
+        // SPF says it sends nothing, so there is nothing of its own to protect: reject at once
+        ->and($items[2]['fix'])->toBe('v=DMARC1; p=reject');
 
     // A null MX (RFC 7505) says on purpose that the domain takes no email
     $this->records['shop.example'][DNS_MX] = [['type' => 'MX', 'pri' => 0, 'target' => '']];
@@ -92,8 +93,38 @@ test('dns_items: MX, SPF and DMARC with what each does and the record to add', f
     expect(array_column($missing, 'level', 'key'))->toBe(['mx' => 'good', 'spf' => 'missing', 'dmarc' => 'missing'])
         ->and($missing[1]['fix_label'])->toBe('Add a TXT record at shop.example:')
         ->and($missing[1]['fix'])->toBe('v=spf1 include:<your mail provider> -all')
-        ->and($missing[2]['fix'])->toBe('v=DMARC1; p=none; rua=mailto:dmarc@shop.example')
+        ->and($missing[2]['fix'])->toBe('v=DMARC1; p=none; rua=mailto:<your report address>')
         ->and($missing[1]['tip'])->toBe('Sends no email at all? Publish v=spf1 -all, so nobody can send in its name.');
+});
+
+test('dns_items: a domain that sends no email is told to reject at once; one that sends, or may, to start with reports', function () {
+    $items = fn (array $records) => array_column(dns_items(evaluate_mail_dns('shop.example', $records + ['mx' => [], 'spf' => [], 'dmarc' => []])['details']), null, 'key');
+
+    // No mail server and no SPF: it looks like it sends nothing
+    $none = $items([]);
+    expect($none['spf']['fix'])->toBe('v=spf1 -all')
+        ->and($none['spf']['tip'])->toBe('Sends email after all, through a mail provider or the site itself? Use v=spf1 include:<your mail provider> -all instead.')
+        ->and($none['dmarc']['fix'])->toBe('v=DMARC1; p=reject')
+        ->and($none['dmarc']['tip'])->toContain('looks like it sends no email')
+        ->and($none['dmarc']['tip'])->toContain('Reports are optional');
+
+    // Takes email but SPF allows no sender: reject too
+    expect($items(['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 -all']])['dmarc']['fix'])->toBe('v=DMARC1; p=reject');
+
+    // SPF names senders: it sends, so reports first
+    $sends = $items(['spf' => ['v=spf1 include:_spf.mail.example ~all']]);
+    expect($sends['dmarc']['fix'])->toBe('v=DMARC1; p=none; rua=mailto:<your report address>')
+        ->and($sends['dmarc']['tip'])->toContain('rua is optional')
+        ->and($sends['dmarc']['tip'])->toContain('A free DMARC report service')
+        ->and($sends['dmarc']['tip'])->toContain('move to p=quarantine, then p=reject');
+
+    // A mail server but no SPF: people there send too, and reject could stop their email, so the safe way
+    expect($items(['mx' => ['10 mx1.mail.example']])['dmarc']['fix'])->toBe('v=DMARC1; p=none; rua=mailto:<your report address>');
+
+    // A record that only monitors, on a domain that sends: quarantine next, once the reports look right
+    $monitoring = $items(['spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ['v=DMARC1; p=none; rua=mailto:reports@dmarc.example']]);
+    expect($monitoring['dmarc']['note'])->toBe('p=none only monitors: email that fails the check is still delivered')
+        ->and($monitoring['dmarc']['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:reports@dmarc.example');
 });
 
 // =====================================================================
@@ -102,11 +133,11 @@ test('dns_items: MX, SPF and DMARC with what each does and the record to add', f
 
 test('a DMARC record that only monitors keeps everything else when the hint says to quarantine', function () {
     $record = 'v=DMARC1; p=none; rua=mailto:dmarc@shop.example; ruf=mailto:dmarc@shop.example; fo=1';
-    $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => [$record]])['details']);
+    $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => [$record]])['details']);
     expect($items[2]['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:dmarc@shop.example; ruf=mailto:dmarc@shop.example; fo=1');
 
     // Written without spaces, and with sp= for subdomains left alone
-    $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1;p=none;sp=none;pct=100']])['details']);
+    $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ['v=DMARC1;p=none;sp=none;pct=100']])['details']);
     expect($items[2]['fix'])->toBe('v=DMARC1;p=quarantine;sp=none;pct=100');
 });
 
