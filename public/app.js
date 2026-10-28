@@ -2025,13 +2025,18 @@
     if (chosen) chosen.focus();
   });
 
-  // "/" jumps to the filter, as in most tools
+  // Cmd+K (Ctrl+K elsewhere) jumps to the filter, as in the other Webready tools: "/" needs Shift on many
+  // keyboard layouts (Shift+7 on a Swedish one). Ctrl+Shift+K is left to the browser, and a keydown
+  // without a key (autofill sends them) is ignored. The field shows the keys for this computer.
+  var MAC = /Mac|iPhone|iPad/.test(navigator.userAgent);
+  filterInput.setAttribute('aria-keyshortcuts', MAC ? 'Meta+K' : 'Control+K');
+  document.querySelector('.filter kbd').textContent = MAC ? '\u2318K' : 'Ctrl K';
   document.addEventListener('keydown', function (event) {
-    var typing = /^(INPUT|TEXTAREA|SELECT)$/.test(document.activeElement.tagName);
-    if (event.key === '/' && !typing && !regions.detail.open) {
-      event.preventDefault();
-      filterInput.focus();
-    }
+    if (typeof event.key !== 'string' || event.key.toLowerCase() !== 'k' || event.shiftKey || event.altKey) return;
+    if (!(MAC ? event.metaKey : event.ctrlKey) || regions.detail.open) return;
+    event.preventDefault();
+    filterInput.focus();
+    filterInput.select();
   });
 
   // A day bar tells its day: in a tooltip in the site list, at once (a title

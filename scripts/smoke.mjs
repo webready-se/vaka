@@ -442,11 +442,18 @@ async function main() {
       await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
     }
 
-    // "/" jumps to the filter
+    // Cmd+K (Ctrl+K elsewhere) jumps to the filter; "/" no longer does, and Ctrl+Shift+K is the browser's
+    const mac = /Mac|iPhone|iPad/.test(navigator.userAgent);
+    const press = (init) => document.dispatchEvent(new KeyboardEvent('keydown', { bubbles: true, cancelable: true, ...init }));
     document.activeElement.blur();
-    document.dispatchEvent(new KeyboardEvent('keydown', { key: '/', bubbles: true }));
-    expect(document.activeElement === q('[data-filter]'), 'pressing / focuses the filter');
+    press({ key: 'k', [mac ? 'metaKey' : 'ctrlKey']: true });
+    expect(document.activeElement === q('[data-filter]'), `pressing ${mac ? 'Cmd' : 'Ctrl'}+K focuses the filter`);
+    expect(q('.filter kbd')?.textContent === (mac ? '\u2318K' : 'Ctrl K') && q('[data-filter]').getAttribute('aria-keyshortcuts') === (mac ? 'Meta+K' : 'Control+K'), 'the field shows the keys for this computer, and says them to a screen reader');
     document.activeElement.blur();
+    press({ key: 'K', shiftKey: true, [mac ? 'metaKey' : 'ctrlKey']: true });
+    press({ key: '/' });
+    press({});
+    expect(document.activeElement !== q('[data-filter]'), 'Shift with it, "/" or a keydown without a key leave the focus where it was');
 
     // The font is ours, not a fallback
     await document.fonts.ready;
