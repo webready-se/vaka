@@ -113,7 +113,7 @@ src/web.php              handle_request() routing, CSP and security headers, log
 src/commands/users.php   user:add, user:edit, user:remove, user:list
 public/index.php         Web front controller (three lines: bootstrap, config, handle_request())
 public/dashboard.html    Dashboard markup (no inline script or style; {{csrf}}, {{version}}, {{user}} filled in by show_dashboard())
-public/app.js            Dashboard JS: hero, "Needs your attention" (outages first, one card per server), sites by group with 24 h sparklines, filter, detail dialog (#site-N), snooze, theme, the site form (add, change, remove) in the drawer; one click listener (data-action) and one submit listener (data-form), DOM built with textContent
+public/app.js            Dashboard JS: hero, "Needs your attention" (outages first, one card per server), sites by group with 24 h sparklines, filter, detail dialog (#site-N: day bars that tell their day, a tile per check, the settings card), snooze, theme, the site form (add, change, remove) in the drawer; one click listener (data-action) and one submit listener (data-form), DOM built with textContent
 public/app.css           Styles for the login and the dashboard (light + dark)
 public/theme.js          Applies a saved light/dark choice before paint (loaded in <head>, no inline script needed)
 public/favicon.svg       The kit's owl mark on deep teal (favicon-alert.svg: on red, eyes wide, shown while a site is down)

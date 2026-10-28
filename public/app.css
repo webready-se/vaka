@@ -552,9 +552,33 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .header-list .header-tip { margin-top: 4px; color: var(--text-3); font-size: 13px; }
 .header-list .fix-label { margin-top: 6px; color: var(--text-2); font-size: 13px; }
 .header-list .fix-label + code { margin-top: 2px; }
-.settings { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); gap: 8px 18px; font-size: 14px; }
-.settings dt { color: var(--text-3); }
+/* What Vaka sees: a tile per check, the words first, tinted when something needs a look */
+.tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
+.tile { min-width: 0; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); }
+.tile.is-warn { background: var(--warn-soft); }
+.tile.is-down { background: var(--down-soft); }
+.tile p { margin: 0; }
+.tile-label { font-size: 12px; font-weight: 600; color: var(--text-3); }
+.tile .tile-value { display: flex; align-items: flex-start; gap: 6px; margin-top: 4px; font-size: 16px; font-weight: 750; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.tile-value .icon { flex: none; width: 16px; height: 16px; margin-top: 3px; stroke-width: 2.4; color: var(--text-3); }
+.tile.is-ok .tile-value .icon { color: var(--up); }
+.tile.is-warn .tile-value .icon { color: var(--warn); }
+.tile.is-down .tile-value .icon { color: var(--down); }
+.tile .tile-sub { margin-top: 3px; color: var(--text-3); font-size: 13px; overflow-wrap: anywhere; }
+.tile .link-button { margin-top: 6px; }
+
+/* Settings: what the site is set to do, a card of its own */
+.settings-card { margin-top: 26px; padding: 0 16px 16px; border: 1px solid var(--line); border-radius: 16px; }
+.settings-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 52px; }
+.drawer .settings-head h3 { margin: 0; }
+.settings { margin: 0; display: grid; grid-template-columns: max-content minmax(0, 1fr); font-size: 14px; }
+.settings dt, .settings dd { padding: 9px 0; border-top: 1px solid var(--line); }
+.settings dt { padding-right: 18px; color: var(--text-3); }
 .settings dd { margin: 0; overflow-wrap: anywhere; }
+.check-chips { display: flex; flex-wrap: wrap; gap: 6px; margin: 0; padding: 0; list-style: none; }
+.check-chips li { display: inline-flex; align-items: center; gap: 4px; padding: 2px 9px 2px 7px; border-radius: 999px; background: var(--up-soft); color: var(--up); font-size: 13px; font-weight: 650; }
+.check-chips li.is-off { background: var(--surface-2); color: var(--text-3); }
+.check-chips .icon { width: 13px; height: 13px; stroke-width: 2.6; }
 .drawer-hint { margin: 22px 0 0; color: var(--text-3); font-size: 13.5px; }
 
 /* Toast */
