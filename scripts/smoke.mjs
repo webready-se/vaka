@@ -28,6 +28,11 @@ const EMPTY_PORT = await freePort();
 const NO_USERS_PORT = await freePort();
 const TWELVE_PORT = await freePort();
 const CDP_PORT = await freePort();
+// Vaka's zone in the test. The demo's outages are minutes old, so in the first
+// hour after midnight in Stockholm they fall on two days and the day bars'
+// checks fail; London is an hour behind, so its day has not turned yet.
+const ZONE = Number(new Intl.DateTimeFormat('en-GB', { timeZone: 'Europe/Stockholm', hour: 'numeric', hourCycle: 'h23' }).format(new Date())) === 0 ? 'Europe/London' : 'Europe/Stockholm';
+const CITY = ZONE.split('/')[1];
 const shotsArg = process.argv.find((a) => a.startsWith('--screenshots='));
 const shotsDir = shotsArg ? resolve(shotsArg.slice('--screenshots='.length)) : null;
 const tmp = mkdtempSync(join(tmpdir(), 'vaka-smoke-'));
@@ -77,7 +82,7 @@ async function main() {
   execFileSync('php', ['-r', 'file_put_contents($argv[1], json_encode(["smoke" => ["password" => password_hash("smoke password", PASSWORD_BCRYPT, ["cost" => 4]), "groups" => []]]));', usersFile]);
 
   // 2. Serve it
-  const env = { ...process.env, VAKA_ENV_FILE: '/dev/null', DB_PATH: dbPath, USERS_FILE: usersFile, TIMEZONE: 'Europe/Stockholm' };
+  const env = { ...process.env, VAKA_ENV_FILE: '/dev/null', DB_PATH: dbPath, USERS_FILE: usersFile, TIMEZONE: ZONE };
   children.push(spawn('php', ['-S', `127.0.0.1:${PHP_PORT}`, '-t', join(root, 'public')], { env, stdio: 'ignore' }));
   const base = `http://127.0.0.1:${PHP_PORT}`;
   await waitForHttp(`${base}/?health`);
@@ -151,7 +156,7 @@ async function main() {
   await send('Page.enable');
   await send('Runtime.enable');
   // The browser in Vaka's zone, which is not UTC, so a time read in the wrong zone shows (and CI's UTC never hides it)
-  await send('Emulation.setTimezoneOverride', { timezoneId: 'Europe/Stockholm' });
+  await send('Emulation.setTimezoneOverride', { timezoneId: ZONE });
   // Focus events as in a window that has focus, which a headless one does not
   await send('Emulation.setFocusEmulationEnabled', { enabled: true });
   await send('Log.enable');
@@ -548,8 +553,8 @@ async function main() {
   };
   await send('Emulation.setTimezoneOverride', { timezoneId: 'America/New_York' });
   const away = await footer(`${base}/`);
-  if (!/the last at \d\d:\d\d, Stockholm time$/.test(away)) fails.push(`a reader in another time zone is told the times are Stockholm time (got "${away}")`);
-  await send('Emulation.setTimezoneOverride', { timezoneId: 'Europe/Stockholm' });
+  if (!new RegExp(`the last at \\d\\d:\\d\\d, ${CITY} time$`).test(away)) fails.push(`a reader in another time zone is told the times are ${CITY} time (got "${away}")`);
+  await send('Emulation.setTimezoneOverride', { timezoneId: ZONE });
   // The same database and session on a second server, set to 12h, with a typo in TIMEZONE (the server's zone stands in)
   children.push(spawn('php', ['-S', `127.0.0.1:${TWELVE_PORT}`, '-t', join(root, 'public')], { env: { ...env, TIME_FORMAT: '12h', TIMEZONE: 'Europe/Stokholm' }, stdio: 'ignore' }));
   await waitForHttp(`http://127.0.0.1:${TWELVE_PORT}/?login`);
