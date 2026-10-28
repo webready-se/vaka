@@ -417,9 +417,11 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .field .check.is-small { min-height: 36px; font-size: 13.5px; color: var(--text-2); }
 .filter { position: relative; display: block; }
 .filter .icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); width: 16px; height: 16px; color: var(--text-3); pointer-events: none; }
-.filter input { width: 280px; max-width: 100%; height: 38px; padding: 0 40px 0 34px; font: inherit; font-size: 14.5px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 11px; }
+.filter input { width: 280px; max-width: 100%; height: 38px; padding: 0 64px 0 34px; font: inherit; font-size: 14.5px; color: var(--text); background: var(--surface); border: 1px solid var(--line); border-radius: 11px; }
 .filter input:focus { outline: none; border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-soft); }
 .filter kbd { position: absolute; right: 9px; top: 50%; transform: translateY(-50%); padding: 1px 7px; border: 1px solid var(--line); border-radius: 6px; color: var(--text-3); background: var(--surface-2); font-size: 12px; }
+/* No keyboard to press it on a touch screen */
+@media (hover: none) { .filter kbd { display: none; } .filter input { padding-right: 12px; } }
 
 .group { margin-bottom: 18px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); overflow: hidden; }
 .group-head { display: flex; align-items: center; justify-content: space-between; gap: 10px 16px; flex-wrap: wrap; padding: 13px 18px; border-bottom: 1px solid var(--line); }
