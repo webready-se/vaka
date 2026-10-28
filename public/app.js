@@ -1786,7 +1786,8 @@
 
   function chart(samples) {
     if (!samples.length) return h('p', { class: 'chart-note' }, 'No checks in the last 24 hours.');
-    var width = 700, height = 170, top = 12, bottom = 146, left = 48;
+    // Only lines and shapes in the SVG, which stretches to the width; the labels are HTML, so text is never squeezed
+    var width = 500, height = 150, top = 8, bottom = 142, left = 0;
     var end = Date.now(), start = end - 86400000;
     var good = samples.filter(function (sample) { return sample.ok; });
     var max = Math.max.apply(null, [100].concat(good.map(function (sample) { return sample.ms; })));
@@ -1801,13 +1802,7 @@
     var nodes = [
       s('line', { class: 'chart-grid', x1: left, x2: width, y1: top, y2: top }),
       s('line', { class: 'chart-grid', x1: left, x2: width, y1: (top + bottom) / 2, y2: (top + bottom) / 2 }),
-      s('line', { class: 'chart-grid', x1: left, x2: width, y1: bottom, y2: bottom }),
-      s('text', { x: 0, y: top + 4 }, max + ' ms'),
-      s('text', { x: 0, y: (top + bottom) / 2 + 4 }, max / 2 + ' ms'),
-      s('text', { x: 0, y: bottom + 4 }, '0'),
-      s('text', { x: left, y: height - 2 }, '24 h ago'),
-      s('text', { x: (left + width) / 2 - 22, y: height - 2 }, '12 h ago'),
-      s('text', { x: width - 26, y: height - 2 }, 'now')
+      s('line', { class: 'chart-grid', x1: left, x2: width, y1: bottom, y2: bottom })
     ];
     if (area) nodes.push(s('path', { class: 'chart-area', d: area }), s('path', { class: 'chart-line', d: path }));
     fails.forEach(function (sample) {
@@ -1821,7 +1816,11 @@
       : 'Every check in the last 24 hours failed.';
 
     return h('figure', {}, [
-      s('svg', { class: 'chart', viewBox: '0 0 ' + width + ' ' + height, preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Response time, last 24 hours. ' + label }, nodes),
+      h('div', { class: 'chart-plot' }, [
+        h('div', { class: 'chart-y', 'aria-hidden': 'true' }, [h('span', {}, max + ' ms'), h('span', {}, max / 2 + ' ms'), h('span', {}, '0')]),
+        s('svg', { class: 'chart', viewBox: '0 0 ' + width + ' ' + height, preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Response time, last 24 hours. ' + label }, nodes)
+      ]),
+      h('p', { class: 'chart-x', 'aria-hidden': 'true' }, [h('span', {}, '24 h ago'), h('span', {}, '12 h ago'), h('span', {}, 'now')]),
       h('figcaption', { class: 'chart-note' }, label + '.')
     ]);
   }

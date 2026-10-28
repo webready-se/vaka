@@ -165,6 +165,8 @@ body {
 h1, h2, h3 { line-height: 1.2; letter-spacing: -0.015em; }
 a { color: var(--accent); }
 button { font: inherit; color: inherit; }
+/* Browsers indent a figure by 40px on each side */
+figure { margin: 0; }
 code, kbd { font-family: var(--mono); font-size: 0.86em; }
 :focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; border-radius: 8px; }
 .num { font-variant-numeric: tabular-nums; }
@@ -518,12 +520,20 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .day-key li { display: flex; align-items: center; gap: 6px; }
 .day-key i { flex: none; width: 8px; height: 12px; }
 .day-key .is-none { height: 6px; }
-.chart { width: 100%; height: 170px; display: block; }
+/* The response time chart: the SVG stretches to the width, the labels around it are HTML (chart() in app.js) */
+.chart-plot { display: grid; grid-template-columns: 48px minmax(0, 1fr); }
+.chart { width: 100%; height: 150px; display: block; }
+.chart-y { position: relative; color: var(--text-3); font-size: 11px; }
+.chart-y span { position: absolute; left: 0; transform: translateY(-50%); }
+.chart-y span:nth-child(1) { top: 8px; }
+.chart-y span:nth-child(2) { top: 75px; }
+.chart-y span:nth-child(3) { top: 142px; }
+.chart-x { display: grid; grid-template-columns: 1fr auto 1fr; margin: 2px 0 0 48px; color: var(--text-3); font-size: 11px; }
+.chart-x span:last-child { text-align: right; }
 .chart .chart-line { fill: none; stroke: var(--accent); stroke-width: 2; vector-effect: non-scaling-stroke; }
 .chart .chart-area { fill: var(--accent); opacity: 0.1; }
 .chart .chart-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart .chart-fail { fill: var(--down-bar); }
-.chart text { fill: var(--text-3); font-size: 11px; font-family: var(--font); }
 .chart-note { margin: 6px 0 0; color: var(--text-3); font-size: 13px; }
 .timeline { position: relative; margin: 0; padding: 0 0 0 22px; list-style: none; }
 .timeline::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }

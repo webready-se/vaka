@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - The page behind a site's detail scrolled along with it, and scrolling past the detail's end carried on into the page. The page now stays put while the detail is open.
+- The response time chart in a site's detail was narrower than everything around it (a browser's default margin on its figure), and its labels were squeezed sideways, most on a phone. It takes the full width now, and the labels are text beside and under it.
 - Logged out of the dashboard now and then, about once an hour: the hourly new session id deleted the old session at once, so a request already on its way with the old id (the dashboard often sends two at once) found no session, and its new, empty session's cookie replaced the good one. The old id now leads to the new one for a minute, and counts for nothing after that.
 - Session files nobody uses any more are removed by the daily clean-up: PHP's own is off on many servers (Debian and Ubuntu leave it to a cron job that only knows PHP's default directory), so `data/sessions/` only grew.
 - A `TIMEZONE` that PHP does not know (a typo such as `Europe/Stokholm`) stopped every run with an error, so nothing was checked. Vaka now keeps the server's zone, and the dashboard and every command say what is wrong and what was probably meant.
