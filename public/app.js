@@ -156,10 +156,9 @@
     var bulge = phase < 0.25 || (phase >= 0.5 && phase < 0.75) ? 0 : 1;
     var rx = (Math.abs(Math.cos(phase * 2 * Math.PI)) * r).toFixed(2);
     var lit = 'M' + cx + ' ' + top + 'A' + r + ' ' + r + ' 0 0 ' + (waxing ? 1 : 0) + ' ' + cx + ' ' + bottom + 'A' + rx + ' ' + r + ' 0 0 ' + bulge + ' ' + cx + ' ' + top + 'Z';
-    // A small pleasure on hover: "Tonight's moon: waning gibbous, 94% lit"
+    // A small pleasure on hover, in the tooltip beside it: "Tonight's moon: waning gibbous, 94% lit"
     var words = MOON_PHASES[Math.round(phase * 8) % 8] + ', ' + Math.round((1 - Math.cos(phase * 2 * Math.PI)) / 2 * 100) + '% lit';
-    return s('svg', { class: 'watch-moon', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
-      s('title', {}, "Tonight's moon: " + words),
+    return s('svg', { class: 'watch-moon', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false', 'data-tip': "Tonight's moon: " + words, 'data-tip-side': 'moonlight' }, [
       s('circle', { class: 'moon-dark', cx: cx, cy: 12, r: r }),
       s('path', { class: 'moon-lit', d: lit })
     ]);
@@ -2041,24 +2040,28 @@
 
   // A day bar tells its day: in a tooltip in the site list, at once (a title
   // waits a second and never shows on a phone), and in the line under the
-  // bars in the detail, where a tap or the keyboard picks a day too
-  var tip = h('div', { class: 'day-tip', 'aria-hidden': 'true' });
-  var tipBar = null;
+  // bars in the detail, where a tap or the keyboard picks a day too. The
+  // moon names itself in the same tooltip, beside it in its own light.
+  var tip = h('div', { class: 'hover-tip', 'aria-hidden': 'true' });
+  var tipFor = null;
   document.body.appendChild(tip);
 
   function hideTip() {
     tip.classList.remove('is-visible');
-    tipBar = null;
+    tipFor = null;
   }
 
-  function showTip(bar) {
-    if (bar === tipBar) return;
-    tipBar = bar;
-    tip.textContent = bar.getAttribute('data-tip');
+  /** Above the node it is for, or below where there is no room; to the left of the moon, in moonlight. */
+  function showTip(node) {
+    if (node === tipFor) return;
+    tipFor = node;
+    var moonlight = node.getAttribute('data-tip-side') === 'moonlight';
+    tip.textContent = node.getAttribute('data-tip');
+    tip.classList.toggle('is-moonlight', moonlight);
     tip.classList.add('is-visible');
-    var box = bar.getBoundingClientRect();
-    var left = box.left + box.width / 2 - tip.offsetWidth / 2;
-    var top = box.top - tip.offsetHeight - 6;
+    var box = node.getBoundingClientRect();
+    var left = moonlight ? box.left - tip.offsetWidth - 10 : box.left + box.width / 2 - tip.offsetWidth / 2;
+    var top = moonlight ? box.top + box.height / 2 - tip.offsetHeight / 2 : box.top - tip.offsetHeight - 6;
     // Set through the CSSOM, which the CSP allows (it blocks style attributes in markup)
     tip.style.left = Math.max(8, Math.min(window.innerWidth - tip.offsetWidth - 8, left)) + 'px';
     tip.style.top = (top < 8 ? box.bottom + 6 : top) + 'px';
@@ -2081,6 +2084,8 @@
   // The bar under the pointer, by where it is along the row: the gaps count too,
   // and a finger can tap or slide along the detail's bars, which are thin on a phone
   function pointAtDay(event) {
+    var moon = event.target.closest && event.target.closest('.watch-moon');
+    if (moon && event.pointerType !== 'touch') return showTip(moon);
     var bars = event.target.closest && event.target.closest('.days');
     if (!bars || !bars.children.length) return;
     var box = bars.getBoundingClientRect();
@@ -2092,6 +2097,8 @@
   document.addEventListener('pointermove', pointAtDay);
   document.addEventListener('pointerdown', pointAtDay);
   document.addEventListener('pointerout', function (event) {
+    var moon = event.target.closest && event.target.closest('.watch-moon');
+    if (moon && !moon.contains(event.relatedTarget)) return hideTip();
     var bars = event.target.closest && event.target.closest('.days');
     // Onto the next bar, or the gap between two: nothing changes yet
     if (!bars || bars.contains(event.relatedTarget)) return;

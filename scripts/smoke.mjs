@@ -197,7 +197,16 @@ async function main() {
     const talons = q('.watch .owl-talons');
     expect(talons && getComputedStyle(talons).display !== 'none' && getComputedStyle(q('.watch .owl-feet')).display === 'none', 'the owl grips the edge with its talons, not its standing feet');
     expect(talons && talons.getBoundingClientRect().bottom > panel.bottom && talons.getBoundingClientRect().top < panel.bottom, 'the talons reach over the panel\'s bottom edge');
-    expect(/^Tonight's moon: (new moon|waxing crescent|first quarter|waxing gibbous|full moon|waning gibbous|last quarter|waning crescent), \d+% lit$/.test(q('.watch-moon title')?.textContent || ''), `the moon says which it is on hover (got "${q('.watch-moon title')?.textContent}")`);
+    const moonWords = q('.watch-moon')?.getAttribute('data-tip') || '';
+    expect(/^Tonight's moon: (new moon|waxing crescent|first quarter|waxing gibbous|full moon|waning gibbous|last quarter|waning crescent), \d+% lit$/.test(moonWords), `the moon knows which it is (got "${moonWords}")`);
+    const moonBox = q('.watch-moon')?.getBoundingClientRect();
+    if (moonBox) {
+      q('.watch-moon').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: moonBox.left + 10, clientY: moonBox.top + 10 }));
+      const moonTip = q('.hover-tip.is-visible.is-moonlight');
+      expect(moonTip?.textContent === moonWords && moonTip.getBoundingClientRect().right <= moonBox.left, 'hovering the moon names it at once, beside it in moonlight');
+      q('.watch-moon').dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: q('.watch h1') }));
+      expect(!q('.hover-tip.is-visible'), 'the moon\'s tooltip goes when the pointer leaves it');
+    }
     expect(/favicon-alert\.svg$/.test(q('[data-favicon]').getAttribute('href')), 'the favicon turns to the alarmed owl');
     expect(q('.brand-name')?.textContent === 'Vaka' && q('.brand .mark'), 'the mark and the name, Capitalised, in the top bar');
     expect(q('.watch-owl.is-awake'), 'the owl in the night panel is wide awake while a site is down');
@@ -248,10 +257,10 @@ async function main() {
     const longOutage = cafe?.querySelector('.days i.is-down');
     if (longOutage) {
       point(longOutage, 'pointermove');
-      expect(q('.day-tip.is-visible')?.textContent === longOutage.getAttribute('data-tip'), 'hovering a bar shows its day in a tooltip');
+      expect(q('.hover-tip.is-visible')?.textContent === longOutage.getAttribute('data-tip'), 'hovering a bar shows its day in a tooltip');
       expect(/^\w{3} \d{1,2} \w{3}: down once, 1 h 40 min$/.test(longOutage.getAttribute('data-tip')), `a bar says when and how long it was down (got "${longOutage.getAttribute('data-tip')}")`);
       point(longOutage, 'pointerout', { relatedTarget: cafe });
-      expect(!q('.day-tip.is-visible'), 'the tooltip goes when the pointer leaves the bars');
+      expect(!q('.hover-tip.is-visible'), 'the tooltip goes when the pointer leaves the bars');
     } else {
       fails.push('cafe.example has a red day 16 days ago');
     }
