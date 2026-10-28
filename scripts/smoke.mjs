@@ -10,16 +10,24 @@
 
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
-const PHP_PORT = 8789;
-const EMPTY_PORT = 8786;
-const NO_USERS_PORT = 8787;
-const TWELVE_PORT = 8784;
-const CDP_PORT = 9334;
+// A port the system hands out, never a fixed one: another project's test server on the same machine may hold
+// a fixed port, and then a check that something answers there passes against the wrong server
+const freePort = () => new Promise((resolvePort, reject) => {
+  const srv = createServer();
+  srv.once('error', reject);
+  srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolvePort(port)); });
+});
+const PHP_PORT = await freePort();
+const EMPTY_PORT = await freePort();
+const NO_USERS_PORT = await freePort();
+const TWELVE_PORT = await freePort();
+const CDP_PORT = await freePort();
 const shotsArg = process.argv.find((a) => a.startsWith('--screenshots='));
 const shotsDir = shotsArg ? resolve(shotsArg.slice('--screenshots='.length)) : null;
 const tmp = mkdtempSync(join(tmpdir(), 'vaka-smoke-'));

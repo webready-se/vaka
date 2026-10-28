@@ -127,6 +127,7 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [ ] TLS details: protocol versions, chain completeness
 - [ ] TOTP two-factor login
 - [ ] An outage counts from its first failed check, not from when it was confirmed: the history says "Up again after 23 min" where the day bar says 22, since the down event is written a check later
+- [ ] Pest's test servers on ports the system hands out, as the smoke test and the README script have (and Puls's tests): today each has a fixed port, and `assert_port_free()` refuses to start when another process holds it, so a test never talks to someone else's server but fails while another session runs one there. The ports are in about 190 lines of URLs in tests and fixtures, so it is a change of its own
 - [ ] Cache-busting by file, not by version: `app.js?v=0.1.0` stays the same between releases, and with no Cache-Control a browser may keep the last deploy's files for up to an hour (the file's mtime or a hash in the URL)
 
 ## Considered and set aside
