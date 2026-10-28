@@ -26,5 +26,6 @@ require_once __DIR__ . '/alerts.php';
 require_once __DIR__ . '/notify.php';
 require_once __DIR__ . '/auth.php';
 require_once __DIR__ . '/stats.php';
+require_once __DIR__ . '/report.php';
 require_once __DIR__ . '/web.php';
 require_once __DIR__ . '/cli.php';

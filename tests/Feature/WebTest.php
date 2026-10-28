@@ -589,6 +589,30 @@ test('one site in detail: every check\'s history and response times, and CSV for
         ->and(http_request('GET', WEB . '/?api&format=csv&share=' . $token)['body'])->toBe($csv['body']);
 });
 
+test('&format=md is a report for an AI assistant: one site for a site token, every site for a group token', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    add_site($this->db, ['url' => 'https://cafe.example', 'group' => 'Customers']);
+    $now = time();
+    save_check_state($this->db, $shop, 'uptime', ['status' => 'fail', 'summary' => 'The site answered 503 Service Unavailable', 'details' => ['problem' => 'http', 'status_code' => 503], 'fail_count' => 2, 'changed_at' => utc_now($now - 600)], utc_now($now - 60), utc_now($now + 60));
+    $site = create_share_token($this->db, $shop, null, '', utc_now($now + 86400), $now)['token'];
+    $group = create_share_token($this->db, null, $customers, '', utc_now($now + 86400), $now)['token'];
+
+    $r = http_request('GET', WEB . '/?api&format=md', ['headers' => ['Authorization: Bearer ' . $site]]);
+    expect($r['status'])->toBe(200)
+        ->and($r['headers']['content-type'])->toBe('text/markdown; charset=utf-8')
+        ->and($r['headers']['cache-control'])->toBe('no-store')
+        ->and($r['body'])->toStartWith("# Vaka report for shop.example\n\n> For the AI assistant reading this:")
+        ->and($r['body'])->toContain('## Needs attention (1)')
+        ->and($r['body'])->toContain('`The site answered 503 Service Unavailable`');
+
+    $r = http_request('GET', WEB . '/?api&format=md', ['headers' => ['Authorization: Bearer ' . $group]]);
+    expect($r['body'])->toStartWith('# Vaka report for group Customers')
+        ->and($r['body'])->toContain('| shop.example | down since')
+        ->and($r['body'])->toContain('| cafe.example | not checked yet');
+    expect(http_request('GET', WEB . '/?api&site=cafe.example&format=md', ['headers' => ['Authorization: Bearer ' . $group]])['body'])->toStartWith('# Vaka report for cafe.example');
+});
+
 test('a logged-in user reads the same API for the sites they may see', function () {
     add_group($this->db, ['name' => 'Customers']);
     add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);

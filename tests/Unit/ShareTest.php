@@ -129,7 +129,8 @@ test('share:create shows the token once, in the lines for .env; share:list shows
         ->and($r['out'])->toContain('never in CLAUDE.md')
         ->and($r['out'])->toContain('git check-ignore .env')
         ->and($r['out'])->toContain('PUBLIC_, VITE_ or NEXT_PUBLIC_')
-        ->and($r['out'])->toContain('(set -a; . ./.env; curl -s -H "Authorization: Bearer $VAKA_SHARE_TOKEN" "$VAKA_URL/?api")')
+        ->and($r['out'])->toContain('(set -a; . ./.env; curl -s -H "Authorization: Bearer $VAKA_SHARE_TOKEN" "$VAKA_URL/?api&format=md")')
+        ->and($r['out'])->toContain('without &format=md the same data comes as JSON')
         ->and($r['out'])->toContain('shown only once')
         ->and($r['out'])->toContain("php vaka share:revoke {$prefix}")
         ->and($r['out'])->not->toContain('Set APP_URL');
@@ -185,7 +186,7 @@ test('share:create for a site, without APP_URL, says where to set it', function 
     expect($r['exit'])->toBe(0, $r['err'])
         ->and($r['out'])->toContain('Read token for shop.example, valid through 31 Dec 2099.')
         ->and($r['out'])->toContain('VAKA_URL=https://your-vaka.example')
-        ->and($r['out'])->toContain('"$VAKA_URL/?api")')
+        ->and($r['out'])->toContain('"$VAKA_URL/?api&format=md")')
         ->and($r['out'])->toContain("Set APP_URL in Vaka's .env");
 });
 

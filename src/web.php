@@ -644,13 +644,14 @@ function share_token_from_request(array $get, array $server): string
 /**
  * Answer the read API for the sites in $scope (see share_scope()): every
  * site, or one in detail with ?site= (a site token's own without it), as
- * JSON, or CSV with &format=csv.
+ * JSON, CSV with &format=csv, or Markdown for an AI assistant with &format=md.
  */
 function read_api(array $config, array $scope, string $method, int $now): never
 {
     if ($method !== 'GET') respond_json(405, ['error' => 'The read API only answers GET']);
     $db = get_db($config['db_path']);
-    $csv = ($_GET['format'] ?? '') === 'csv';
+    $format = $_GET['format'] ?? '';
+    $csv = $format === 'csv';
     $lastRun = get_meta($db, 'last_run_at');
     $about = [
         'version' => VAKA_VERSION,
@@ -669,6 +670,7 @@ function read_api(array $config, array $scope, string $method, int $now): never
         if (!$row) respond_json(404, ['error' => 'No such site']);
         $detail = read_api_site($db, $config, $row, max(1, min(720, (int) ($_GET['hours'] ?? 24))), $now);
         if ($csv) respond_csv(['checked_at', 'status_code', 'ms', 'ok'], array_map(fn ($s) => [$s['checked_at'], $s['status_code'], $s['ms'], (int) $s['ok']], $detail['samples']));
+        if ($format === 'md') respond_markdown(read_api_markdown_site($about, $detail, $config));
         respond_json(200, $about + $detail);
     }
 
@@ -691,7 +693,14 @@ function read_api(array $config, array $scope, string $method, int $now): never
             ], $sites),
         );
     }
+    if ($format === 'md') respond_markdown(read_api_markdown_list($about, $totals, $sites, $config));
     respond_json(200, $about + ['totals' => $totals, 'sites' => $sites]);
+}
+
+/** A report for an AI assistant (src/report.php), never cached. */
+function respond_markdown(string $markdown): never
+{
+    respond(200, $markdown, 'text/markdown; charset=utf-8', ['Cache-Control' => 'no-store']);
 }
 
 /** A site in the read API's field names, which stay the same between versions (docs/api.md). */

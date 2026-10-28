@@ -48,7 +48,8 @@ function cmd_share_create(array $config, array $args, array $opts): void
     echo "Check that git ignores the file: `git check-ignore .env` answers .env when it does.\n";
     echo "Keep the names as they are: a PUBLIC_, VITE_ or NEXT_PUBLIC_ prefix puts the token in the code sent to visitors' browsers.\n\n";
     echo "Read it from that project (the token stays in .env, so an AI assistant never sees it):\n\n";
-    echo "  (set -a; . ./.env; curl -s -H \"Authorization: Bearer \$VAKA_SHARE_TOKEN\" \"\$VAKA_URL/?api\")\n\n";
+    echo "  (set -a; . ./.env; curl -s -H \"Authorization: Bearer \$VAKA_SHARE_TOKEN\" \"\$VAKA_URL/?api&format=md\")\n\n";
+    echo "That is a report written for an AI assistant; without &format=md the same data comes as JSON.\n";
     echo "It is shown only once: Vaka keeps a fingerprint of it, not the token. Lost it? Create a new one and revoke this one.\n";
     echo "The fields are described in docs/api.md. Revoke it with `php vaka share:revoke " . substr($token, 0, SHARE_PREFIX_LENGTH) . "`.\n";
 }
