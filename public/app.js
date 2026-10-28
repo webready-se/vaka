@@ -120,9 +120,13 @@
     feet: [
       ['path', {'d': 'M16.2 35.4v1.8M17.8 35.4v1.8M22.2 35.4v1.8M23.8 35.4v1.8', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round'}]
     ],
-    // A prototype, not in the kit yet: perched on the panel's bottom edge (at y 36, right under the body), three toes a foot over it, the claws hooked under
+    // A prototype, not in the kit yet: perched on the panel's bottom edge (at y 36, right under the body): a pad on the edge
+    // for each foot, three toes over it, and the claws, in a darker gold, curled in round it
     talons: [
-      ['path', {'d': 'M15.5 34.9v2q0 .9-.7 1.2M17 35.1v2q0 .9-.5 1.2M18.5 34.9v2q0 .9-.3 1.1M21.5 34.9v2q0 .9.3 1.1M23 35.1v2q0 .9.5 1.2M24.5 34.9v2q0 .9.7 1.2', 'fill': 'none', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}]
+      ['ellipse', {'cx': '17', 'cy': '35.5', 'rx': '2.1', 'ry': '0.8', 'fill': '#f5b942'}],
+      ['ellipse', {'cx': '23', 'cy': '35.5', 'rx': '2.1', 'ry': '0.8', 'fill': '#f5b942'}],
+      ['path', {'d': 'M15.4 35.5v1.6M17 35.7v1.6M18.6 35.5v1.6M21.4 35.5v1.6M23 35.7v1.6M24.6 35.5v1.6', 'fill': 'none', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round'}],
+      ['path', {'d': 'M15.4 37.1q0 .8.5 1M17 37.3q0 .8.4 1M18.6 37.1q0 .8.4.9M21.4 37.1q0 .8-.4.9M23 37.3q0 .8-.4 1M24.6 37.1q0 .8-.5 1', 'fill': 'none', 'stroke': '#c98516', 'stroke-width': '0.8', 'stroke-linecap': 'round'}]
     ]
   };
 
