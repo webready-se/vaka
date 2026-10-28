@@ -234,7 +234,7 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and($site['exposed']['advice'])->toStartWith('Remove the files from the web root')
         ->and($site['domain'])->toMatchArray(['status' => 'warn', 'summary' => 'shop.example expires in 12 days (6 Nov 2026)', 'domain' => 'shop.example', 'label' => 'shop.example', 'days_left' => 12, 'registrar' => 'Example Registrar AB'])
         ->and($site['domain']['advice'])->toStartWith('Renew it with the registrar')
-        ->and($site['headers'])->toBe(['status' => 'warn', 'grade' => 'E', 'summary' => 'Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy']);
+        ->and($site['headers'])->toBe(['status' => 'warn', 'grade' => 'E', 'summary' => 'Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy', 'checked_at' => utc_now($now), 'next_at' => utc_now($now + 3600)]);
     expect($admin['groups'][1]['sites'][0]['ssl'])->toBeNull()
         ->and($admin['groups'][1]['sites'][0]['exposed'])->toBeNull()
         ->and($admin['groups'][1]['sites'][0]['headers'])->toBeNull()
@@ -520,10 +520,12 @@ test('the read API answers a share token with the sites in its scope, in stable 
         ->and($r['json']['totals'])->toMatchArray(['sites' => 1, 'down' => 1])
         ->and($r['json']['sites'])->toHaveCount(1);
     $site = $r['json']['sites'][0];
-    expect(array_keys($site))->toBe(['url', 'label', 'name', 'group', 'status', 'summary', 'advice', 'since', 'checked_at', 'response_ms', 'server', 'cdn', 'snoozed_until', 'maintenance', 'unstable', 'uptime', 'ssl', 'domain', 'exposed', 'headers', 'dns'])
-        ->and($site)->toMatchArray(['url' => 'https://shop.example', 'label' => 'shop.example', 'group' => 'Customers', 'status' => 'down', 'summary' => 'No answer within 10 s', 'since' => utc_now($now - 600)])
+    expect(array_keys($site))->toBe(['url', 'label', 'name', 'group', 'status', 'summary', 'advice', 'since', 'checked_at', 'next_at', 'response_ms', 'server', 'cdn', 'snoozed_until', 'maintenance', 'unstable', 'uptime', 'ssl', 'domain', 'exposed', 'headers', 'dns'])
+        ->and($site)->toMatchArray(['url' => 'https://shop.example', 'label' => 'shop.example', 'group' => 'Customers', 'status' => 'down', 'summary' => 'No answer within 10 s', 'since' => utc_now($now - 600), 'checked_at' => utc_now($now - 30), 'next_at' => utc_now($now + 30)])
         ->and(array_keys($site['uptime']))->toBe(['24h', '7d', '30d'])
-        ->and($site['ssl'])->toMatchArray(['status' => 'warn', 'days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z']);
+        // Each check says when it ran and runs next, so a reader can tell whether it is current
+        ->and(array_keys($site['ssl']))->toBe(['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'advice', 'checked_at', 'next_at'])
+        ->and($site['ssl'])->toMatchArray(['status' => 'warn', 'days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z', 'checked_at' => utc_now($now), 'next_at' => utc_now($now + 3600)]);
 
     // The same with the token in a header, which keeps it out of URLs and logs
     $r = http_request('GET', WEB . '/?api', ['headers' => ['Authorization: Bearer ' . $token]]);
@@ -611,6 +613,34 @@ test('&format=md is a report for an AI assistant: one site for a site token, eve
         ->and($r['body'])->toContain('| shop.example | down since')
         ->and($r['body'])->toContain('| cafe.example | not checked yet');
     expect(http_request('GET', WEB . '/?api&site=cafe.example&format=md', ['headers' => ['Authorization: Bearer ' . $group]])['body'])->toStartWith('# Vaka report for cafe.example');
+});
+
+test('"Check again" makes every check of a site due on the next run; it needs the CSRF token and a site the user may see', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $blog = add_site($this->db, ['url' => 'https://blog.example']);
+    $paused = add_site($this->db, ['url' => 'https://old.example', 'group' => 'Customers']);
+    $this->db->exec("UPDATE sites SET paused = 1 WHERE id = {$paused}");
+    $now = time();
+    foreach (['uptime' => 240, 'ssl' => 6 * 3600, 'headers' => 5 * 3600] as $check => $later) {
+        save_check_state($this->db, $shop, $check, ['status' => 'ok', 'summary' => 'Fine', 'details' => [], 'fail_count' => 0, 'changed_at' => utc_now($now - 86400)], utc_now($now - 60), utc_now($now + $later));
+    }
+    save_check_state($this->db, $blog, 'ssl', ['status' => 'ok', 'summary' => 'Fine', 'details' => [], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now - 60), utc_now($now + 3600));
+    // Like a snooze: anyone who may see the site, restricted users too
+    $jar = ($this->login)('anna', 'anna password')['jar'];
+    $csrf = ($this->csrf)($jar);
+    $recheck = fn (int $id, string $token) => http_request('POST', WEB . '/?api=site-recheck', ['jar' => $jar, 'headers' => ['X-CSRF-Token: ' . $token], 'json' => ['site_id' => $id]]);
+
+    expect($recheck($shop, 'wrong')['status'])->toBe(403)
+        ->and($recheck($blog, $csrf)['status'])->toBe(404)
+        ->and($recheck($paused, $csrf)['json']['error'])->toBe('old.example is paused: resume it to check it');
+
+    $r = $recheck($shop, $csrf);
+    $next = $this->db->query("SELECT check_name, next_at FROM check_state WHERE site_id = {$shop} ORDER BY check_name")->fetchAll(PDO::FETCH_KEY_PAIR);
+    expect($r['status'])->toBe(200)
+        ->and($r['json']['site']['label'])->toBe('shop.example')
+        ->and(array_map(fn ($at) => strtotime($at) <= time(), $next))->toBe(['headers' => true, 'ssl' => true, 'uptime' => true])
+        ->and($this->db->query("SELECT next_at FROM check_state WHERE site_id = {$blog}")->fetchColumn())->toBe(utc_now($now + 3600));
 });
 
 test('a logged-in user reads the same API for the sites they may see', function () {

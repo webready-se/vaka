@@ -467,6 +467,16 @@ function run_headers(PDO $db, array $config, int $now, float $deadline): array
     return $summary;
 }
 
+/**
+ * "Check again", after a fix: every check of a site comes due, so the next
+ * run (within a minute) looks again. Nothing else changes: a change in the
+ * headers or mail records still counts after its second look, as always.
+ */
+function queue_recheck(PDO $db, int $siteId, int $now): void
+{
+    $db->prepare('UPDATE check_state SET next_at = ? WHERE site_id = ? AND next_at > ?')->execute([utc_now($now), $siteId, utc_now($now)]);
+}
+
 function save_check_state(PDO $db, int $siteId, string $check, array $state, string $checkedAt, string $nextAt): void
 {
     $db->prepare('INSERT INTO check_state (site_id, check_name, status, summary, details, fail_count, checked_at, next_at, changed_at)

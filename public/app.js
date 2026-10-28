@@ -13,7 +13,7 @@
     regions[node.getAttribute('data-region')] = node;
   });
   var filterInput = document.querySelector('[data-filter]');
-  var state = { data: null, filter: '', detailId: null, detail: null, form: null, timezone: undefined, failed: false, open: {}, autoOpen: null };
+  var state = { data: null, filter: '', detailId: null, detail: null, form: null, timezone: undefined, failed: false, open: {}, autoOpen: null, recheck: null };
 
   // =================================================================
   // DOM helpers
@@ -981,7 +981,7 @@
       site.domain && site.domain.advice ? advice(site.domain.summary + '. ' + site.domain.advice) : null,
       site.exposed && site.exposed.advice ? advice(site.exposed.summary + '. ' + site.exposed.advice) : null,
       badges(site),
-      h('div', { class: 'actions' }, siteActions(site, true).filter(function (n) { return n.getAttribute('data-action') !== 'open'; })),
+      h('div', { class: 'actions' }, siteActions(site, true).filter(function (n) { return n.getAttribute('data-action') !== 'open'; }).concat(recheckButton(site))),
       h('dl', { class: 'facts' }, [
         ['Up, 24 hours', percent(d.uptime['24h'])],
         ['Up, 7 days', percent(d.uptime['7d'])],
@@ -1008,6 +1008,13 @@
       h('h3', {}, 'History'),
       timeline(d.events)
     ]));
+  }
+
+  /** "Check again" after a fix: every check of the site runs on Vaka's next run, within a minute. */
+  function recheckButton(site) {
+    if (site.status === 'paused') return [];
+    var busy = state.recheck && state.recheck.id === site.id;
+    return [h('button', { type: 'button', class: 'button', 'data-action': 'recheck', 'data-site': site.id, disabled: busy ? '' : null, 'aria-label': busy ? 'Checking ' + site.label + ' again' : 'Check ' + site.label + ' again now' }, [icon('pending'), busy ? 'Checking…' : 'Check again'])];
   }
 
   var TILE_ICONS = { ok: 'up', warn: 'failing', down: 'down', none: 'info' };
@@ -1041,6 +1048,11 @@
     var quiet = function (iconName) { return { tone: 'none', icon: iconName }; };
     var waiting = function (label) { return tile(label, quiet('pending'), 'Not checked yet'); };
     var turnedOff = function (label) { return tile(label, quiet('paused'), 'Turned off', 'In the settings below'); };
+    // When the check ran, so a result from hours ago is not taken for one from just now
+    var stamped = function (node, check) {
+      if (check && check.checked_at) node.appendChild(h('p', { class: 'tile-when' }, 'Checked ' + clock(check.checked_at)));
+      return node;
+    };
     var tiles = [];
 
     var name = site.server ? site.server.replace(/ \(.*\)$/, '') : null;
@@ -1056,35 +1068,35 @@
     if (off('ssl')) tiles.push(turnedOff('Certificate'));
     else if (!/^https:/.test(site.url)) tiles.push(tile('Certificate', quiet('info'), 'No https', 'The address starts with http://'));
     else if (!ssl) tiles.push(waiting('Certificate'));
-    else if (ssl.status === 'fail' || ssl.days_left === null) tiles.push(tile('Certificate', { tone: tone(ssl.status) }, ssl.status === 'fail' ? 'Not valid' : 'Unknown', ssl.summary));
-    else tiles.push(tile('Certificate', { tone: tone(ssl.status) }, daysLeft(ssl.days_left), 'Until ' + date(ssl.valid_to) + (ssl.renewed_by ? ', renewed by ' + ssl.renewed_by : issuer ? ', ' + issuer[1] : '')));
+    else if (ssl.status === 'fail' || ssl.days_left === null) tiles.push(stamped(tile('Certificate', { tone: tone(ssl.status) }, ssl.status === 'fail' ? 'Not valid' : 'Unknown', ssl.summary), ssl));
+    else tiles.push(stamped(tile('Certificate', { tone: tone(ssl.status) }, daysLeft(ssl.days_left), 'Until ' + date(ssl.valid_to) + (ssl.renewed_by ? ', renewed by ' + ssl.renewed_by : issuer ? ', ' + issuer[1] : '')), ssl));
 
     var domain = site.domain;
     if (off('domain')) tiles.push(turnedOff('Domain'));
     else if (!domain) tiles.push(waiting('Domain'));
-    else if (domain.status === 'fail') tiles.push(tile('Domain', { tone: 'down' }, 'Expired', domain.summary));
-    else if (domain.days_left === null) tiles.push(tile('Domain', { tone: 'none' }, 'Unknown', domain.summary));
-    else tiles.push(tile('Domain', { tone: tone(domain.status) }, daysLeft(domain.days_left), 'Until ' + date(domain.expires) + (domain.registrar ? ', ' + domain.registrar : '')));
+    else if (domain.status === 'fail') tiles.push(stamped(tile('Domain', { tone: 'down' }, 'Expired', domain.summary), domain));
+    else if (domain.days_left === null) tiles.push(stamped(tile('Domain', { tone: 'none' }, 'Unknown', domain.summary), domain));
+    else tiles.push(stamped(tile('Domain', { tone: tone(domain.status) }, daysLeft(domain.days_left), 'Until ' + date(domain.expires) + (domain.registrar ? ', ' + domain.registrar : '')), domain));
 
     var exposed = site.exposed;
     var checked = exposed && /\((\d+ files? checked)\)/.exec(exposed.summary);
     if (off('exposed')) tiles.push(turnedOff('Exposed files'));
     else if (!exposed) tiles.push(waiting('Exposed files'));
-    else if (exposed.found.length) tiles.push(tile('Exposed files', { tone: tone(exposed.status) }, plural(exposed.found.length, 'file', 'files') + ' public', exposed.found.map(function (file) { return file.label; }).join(', ')));
-    else tiles.push(tile('Exposed files', { tone: tone(exposed.status) }, exposed.status === 'ok' ? 'None public' : exposed.summary, checked ? capitalize(checked[1]) : null));
+    else if (exposed.found.length) tiles.push(stamped(tile('Exposed files', { tone: tone(exposed.status) }, plural(exposed.found.length, 'file', 'files') + ' public', exposed.found.map(function (file) { return file.label; }).join(', ')), exposed));
+    else tiles.push(stamped(tile('Exposed files', { tone: tone(exposed.status) }, exposed.status === 'ok' ? 'None public' : exposed.summary, checked ? capitalize(checked[1]) : null), exposed));
 
     var headers = site.headers;
     if (off('headers')) tiles.push(turnedOff('Security headers'));
     else if (!headers) tiles.push(waiting('Security headers'));
-    else if (!headers.grade) tiles.push(tile('Security headers', { tone: tone(headers.status) }, headers.summary));
+    else if (!headers.grade) tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, headers.summary), headers));
     // "Grade E: 2 of 6 in place, missing ...": the first part, the rest is further down
-    else tiles.push(tile('Security headers', { tone: tone(headers.status) }, 'Grade ' + headers.grade, capitalize(headers.summary.replace(/^Grade [A-F]: /, '').split(', ')[0])));
+    else tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, 'Grade ' + headers.grade, capitalize(headers.summary.replace(/^Grade [A-F]: /, '').split(', ')[0])), headers));
 
     var dns = site.dns;
     var mail = dns && /^Mail for ([^:]+): (.+)$/.exec(dns.summary);
     if (off('dns')) tiles.push(turnedOff('Mail'));
     else if (!dns) tiles.push(waiting('Mail'));
-    else tiles.push(tile('Mail', { tone: tone(dns.status) }, mail ? capitalize(mail[2]) : dns.summary, mail ? 'For ' + mail[1] : null));
+    else tiles.push(stamped(tile('Mail', { tone: tone(dns.status) }, mail ? capitalize(mail[2]) : dns.summary, mail ? 'For ' + mail[1] : null), dns));
 
     return h('ul', { class: 'tiles', 'aria-labelledby': 'seen-title' }, tiles);
   }
@@ -1923,6 +1935,38 @@
     });
   }
 
+  /**
+   * Queue every check of a site for the next run, then look at the detail
+   * again a few times while the results come in (a run each minute; a change
+   * in the headers or mail records counts after its second look).
+   */
+  function recheck(id, button) {
+    if (button) button.disabled = true;
+    return api('/?api=site-recheck', {
+      method: 'POST',
+      headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
+      body: JSON.stringify({ site_id: Number(id) })
+    }).then(function (result) {
+      toast('Checking ' + result.site.label + ' again: the results come within a minute');
+      var rounds = 0;
+      clearTimeout(state.recheck && state.recheck.timer);
+      state.recheck = { id: Number(id) };
+      var look = function () {
+        rounds++;
+        if (rounds >= 6) state.recheck = null;
+        if (state.detailId === null || Number(state.detailId) !== Number(id)) { state.recheck = null; return; }
+        openDetail(id).then(function () {
+          if (state.recheck) state.recheck.timer = setTimeout(look, 30000);
+        });
+      };
+      if (state.detailId !== null) openDetail(id);
+      state.recheck.timer = setTimeout(look, 30000);
+    }).catch(function (error) {
+      if (error.message !== 'Logged out') toast(error.message);
+      if (button) button.disabled = false;
+    });
+  }
+
   var THEMES = ['system', 'light', 'dark'];
   var THEME_WORDS = { system: 'System', light: 'Light', dark: 'Dark' };
   var THEME_ICONS = { system: 'monitor', light: 'sun', dark: 'moon' };
@@ -1993,6 +2037,7 @@
     if (action === 'remove-site') removeSite(target);
     if (action === 'snooze') snooze(target.getAttribute('data-sites').split(','), { 'for': target.getAttribute('data-for') }, target);
     if (action === 'unsnooze') snooze(target.getAttribute('data-sites').split(','), { action: 'unsnooze' }, target);
+    if (action === 'recheck') recheck(target.getAttribute('data-site'), target);
     if (action === 'copy') {
       navigator.clipboard.writeText(target.getAttribute('data-copy')).then(function () { toast('Copied'); }, function () { toast('Select the text and copy it'); });
     }

@@ -591,6 +591,7 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .tile.is-warn .tile-value .icon { color: var(--warn); }
 .tile.is-down .tile-value .icon { color: var(--down); }
 .tile .tile-sub { margin-top: 3px; color: var(--text-3); font-size: 13px; overflow-wrap: anywhere; }
+.tile .tile-when { margin-top: 6px; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
 .tile .link-button { margin-top: 6px; }
 
 /* Settings: what the site is set to do, a card of its own */

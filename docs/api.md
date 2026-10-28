@@ -59,7 +59,7 @@ Each site:
 | `summary` | The latest result in words: `"Answered 200 OK in 230 ms"`, `"The site answered 503 Service Unavailable"`. **From the site** (see below) |
 | `advice` | What to look at while it is down or failing, in plain words; `""` otherwise |
 | `since` | When it went down or came back up (or started failing), or `null` |
-| `checked_at` | When uptime was last checked |
+| `checked_at`, `next_at` | When uptime was last checked, and when it is checked next (`null` while paused). A `next_at` that has passed means it is due: the next run, within a minute, does it |
 | `response_ms` | The last response time while it is up, or `null` |
 | `server` | The server it is on, as alerts name it (`"web-1 (203.0.113.10)"`), or `null` behind a CDN |
 | `cdn` | `"Cloudflare"`, `"CloudFront"`, `"Fastly"`, `"Akamai"`, `"Bunny"` or `null` |
@@ -67,11 +67,13 @@ Each site:
 | `maintenance` | `true` while a maintenance window covers it |
 | `unstable` | `true` while it keeps going down and up (flapping) |
 | `uptime` | `{"24h", "7d", "30d"}`: percentages, rounded down to two decimals and counted from the first check, or `null` before it. Downtime inside the site's maintenance windows is left out (see `days`) |
-| `ssl` | `{status, summary, days_left, valid_to, renewed_by, advice}` for https sites, else `null`. `status` is `ok`, `warn` (expires within 14 days) or `fail` (expired or invalid). `renewed_by` is `"Cloudflare"` for a site behind Cloudflare, whose certificate Cloudflare renews by itself about 30 days before it expires, else `null` |
+| `ssl` | `{status, summary, days_left, valid_to, renewed_by, advice}` for https sites, else `null`. `status` is `ok`, `warn` (expires within 14 days) or `fail` (expired or invalid). `renewed_by` is `"Cloudflare"` for a site behind Cloudflare, whose certificate Cloudflare renews by itself about 30 days before it expires, else `null`. Every check has `checked_at` and `next_at` too, see below |
 | `domain` | `{status, summary, domain, label, days_left, expires, registrar, advice}`, or `null`. `domain` is the registered domain as DNS has it (`xn--` for an international name), `label` as people write it. `status` is `ok`, `warn`, `fail` (expired) or `unknown` (the registry gave no date). `registrar` is **from the registry** |
 | `exposed` | Files that should never be public: `{status, summary, found, since, advice}`, or `null`. `found` is `[{label, what, severity, url}]`; `status` is `ok`, `warn` (a file that tells versions and paths) or `fail` (secrets, code or data) |
 | `headers` | Security headers: `{status, grade, summary}`, or `null`. `grade` is `A` to `F` |
 | `dns` | Mail DNS: `{status, summary, domain, advice}`, or `null`. `status` is `ok` (SPF and DMARC in place), `warn` (one is missing, or SPF is there twice) or `unknown`; `domain` is the domain whose records were read |
+
+`ssl`, `domain`, `exposed`, `headers` and `dns` each end with `checked_at` and `next_at`: when that check last ran and when it runs next. They run less often than uptime (every 6 or 24 hours, see [Checks](checks.md)), so a result can be hours old: look at `checked_at` before taking a grade as current, for example right after a fix. "Check again" in a site's detail in the dashboard makes every check of the site due, so the next run, within a minute, looks again. The read API cannot do that: a read token only reads.
 
 ## One site: `?api&site=shop.example`
 
@@ -152,5 +154,5 @@ When the token expires, the API answers `401` with the day it expired: create a 
 ## Things to know
 
 - **Checks run from Vaka's server.** Response times are what that server sees, not what visitors around the world see.
-- **Statuses are only as fresh as the last run.** Look at `run_ok` before trusting `status`.
+- **Statuses are only as fresh as the last run.** Look at `run_ok` before trusting `status`, and at each check's `checked_at` before trusting its result.
 - **Maintenance and snoozes do not hide anything here.** The API shows the true status; `maintenance` and `snoozed_until` say why no alert went out. Uptime leaves out downtime inside maintenance windows, and `days` gives it as `planned_seconds`.
