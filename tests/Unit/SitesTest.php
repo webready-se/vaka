@@ -173,8 +173,7 @@ test('an international domain name reads as it is written in every summary and a
     $mail = evaluate_mail_dns('xn--rksmrgs-5wao1o.example', ['mx' => [], 'spf' => [], 'dmarc' => []]);
     expect($mail['summary'])->toBe('Mail for räksmörgås.example: SPF and DMARC are missing')
         ->and(dns_items($mail['details'])[2]['fix_label'])->toBe('Add a TXT record at _dmarc.räksmörgås.example:')
-        // The value is pasted into DNS as it is: an email address there keeps the xn-- form
-        ->and(dns_items($mail['details'])[2]['fix'])->toBe('v=DMARC1; p=none; rua=mailto:dmarc@xn--rksmrgs-5wao1o.example');
+        ->and(dns_items($mail['details'])[2]['fix'])->toBe('v=DMARC1; p=reject');
 
     $notice = notice(['kind' => 'domain_expiring', 'domain' => 'xn--rksmrgs-5wao1o.example', 'days_left' => 8, 'server_key' => null, 'server' => null, 'summary' => $domain['summary']]);
     expect(alert_text(bundle_notices([$notice], [])[0]['items'][0])['headline'])->toBe('räksmörgås.example (Customers): the domain expires in 8 days');
