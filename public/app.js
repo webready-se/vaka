@@ -115,16 +115,47 @@
       ['circle', {'cx': '25.7', 'cy': '18.5', 'r': '0.8', 'fill': '#fff'}]
     ],
     beak: [
-      ['path', {'d': 'M18.4 22.8L20 26L21.6 22.8Q20 23.4 18.4 22.8Z', 'fill': '#f5b942'}],
+      ['path', {'d': 'M18.4 22.8L20 26L21.6 22.8Q20 23.4 18.4 22.8Z', 'fill': '#f5b942'}]
+    ],
+    feet: [
       ['path', {'d': 'M16.2 35.4v1.8M17.8 35.4v1.8M22.2 35.4v1.8M23.8 35.4v1.8', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round'}]
+    ],
+    // A prototype, not in the kit yet: perched on the panel's bottom edge (at y 36, right under the body), three toes a foot over it, the claws hooked under
+    talons: [
+      ['path', {'d': 'M15.5 34.9v2q0 .9-.7 1.2M17 35.1v2q0 .9-.5 1.2M18.5 34.9v2q0 .9-.3 1.1M21.5 34.9v2q0 .9.3 1.1M23 35.1v2q0 .9.5 1.2M24.5 34.9v2q0 .9.7 1.2', 'fill': 'none', 'stroke': '#f5b942', 'stroke-width': '1.3', 'stroke-linecap': 'round', 'stroke-linejoin': 'round'}]
     ]
   };
 
-  /** The owl in the night panel. Awake: wide eyes, small pupils. Its eyes blink while all is calm (CSS). */
+  /**
+   * The owl in the night panel. Awake: wide eyes, small pupils. Its eyes blink
+   * while all is calm (CSS). Both kinds of feet are drawn: talons over the
+   * panel's edge where it sits on it, feet where it sits in the corner (CSS).
+   */
   function owl(awake) {
     var draw = function (items) { return items.map(function (item) { return s(item[0], item[1]); }); };
     return s('svg', { class: 'watch-owl' + (awake ? ' is-awake' : ''), viewBox: '0 0 40 40', 'aria-hidden': 'true', focusable: 'false' },
-      draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(awake ? OWL.awakeEyes : OWL.eyes))], draw(OWL.beak)));
+      draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(awake ? OWL.awakeEyes : OWL.eyes))], draw(OWL.beak),
+        [s('g', { class: 'owl-feet' }, draw(OWL.feet)), s('g', { class: 'owl-talons' }, draw(OWL.talons))]));
+  }
+
+  /**
+   * Tonight's moon, above the owl: its phase from a known new moon (6 Jan
+   * 2000, 18:14 UTC) and the length of a lunar month, lit on the right while
+   * it waxes, as seen from the northern hemisphere. Drawn as the lit part
+   * over a faint disc: a half circle on the lit side, and the terminator as
+   * a half ellipse back.
+   */
+  function moon(now) {
+    var phase = (((now - Date.UTC(2000, 0, 6, 18, 14)) / 86400000 / 29.530588853) % 1 + 1) % 1;
+    var r = 10, cx = 12, top = 2, bottom = 22;
+    var waxing = phase < 0.5;
+    var bulge = phase < 0.25 || (phase >= 0.5 && phase < 0.75) ? 0 : 1;
+    var rx = (Math.abs(Math.cos(phase * 2 * Math.PI)) * r).toFixed(2);
+    var lit = 'M' + cx + ' ' + top + 'A' + r + ' ' + r + ' 0 0 ' + (waxing ? 1 : 0) + ' ' + cx + ' ' + bottom + 'A' + rx + ' ' + r + ' 0 0 ' + bulge + ' ' + cx + ' ' + top + 'Z';
+    return s('svg', { class: 'watch-moon', viewBox: '0 0 24 24', 'aria-hidden': 'true', focusable: 'false' }, [
+      s('circle', { class: 'moon-dark', cx: cx, cy: 12, r: r }),
+      s('path', { class: 'moon-lit', d: lit })
+    ]);
   }
 
   // =================================================================
@@ -442,7 +473,7 @@
         h('p', { class: 'watch-line' }, line),
         h('ul', { class: 'watch-stats', 'aria-label': 'At a glance' }, stats)
       ]),
-      owl(kind === 'alert')
+      h('div', { class: 'watch-perch' }, [moon(Date.now()), owl(kind === 'alert')])
     ]));
   }
 

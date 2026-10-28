@@ -281,7 +281,8 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
    =================================================================== */
 
 .watch {
-  position: relative; overflow: hidden;
+  /* Not clipped: the owl's talons reach over its bottom edge */
+  position: relative;
   display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 24px;
   margin-bottom: 30px; padding: 30px 34px; border-radius: 22px; color: var(--night-text);
   background:
@@ -310,6 +311,13 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 
 /* The owl in the panel (the kit's character): watches calmly and blinks now and then; wide awake while a site is down */
 .watch-owl { width: 136px; height: 136px; filter: drop-shadow(0 0 28px var(--glow, rgb(25 172 202 / 0.45))); }
+/* Perched on the panel's bottom edge, its talons over it (y 36 of 40 sits on the edge: 14px from the bottom at 136px), tonight's moon above */
+.watch-perch { position: relative; align-self: stretch; width: 136px; min-height: 196px; margin-bottom: -30px; }
+.watch-perch .watch-owl { position: absolute; right: 0; bottom: -14px; }
+.watch-perch .owl-feet { display: none; }
+.watch-moon { position: absolute; top: 0; right: 10px; width: 34px; height: 34px; filter: drop-shadow(0 0 6px rgb(248 241 216 / 0.35)); }
+.moon-dark { fill: rgb(255 255 255 / 0.08); }
+.moon-lit { fill: #f8f1d8; }
 .watch-owl .owl-eyes { transform-box: fill-box; transform-origin: center; animation: blink 7s infinite; }
 .watch.is-alert .watch-owl .owl-eyes { animation: none; }
 @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
@@ -609,7 +617,11 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
   .icon-button .label { display: none; }
   main { padding-top: 18px; }
   .watch { grid-template-columns: 1fr; padding: 24px 22px; }
-  .watch-owl { position: absolute; right: 16px; top: 16px; width: 72px; height: 72px; }
+  .watch-owl, .watch-perch .watch-owl { position: absolute; right: 16px; top: 16px; bottom: auto; width: 72px; height: 72px; }
+  /* In the corner on a phone, where the numbers fill the bottom: standing feet, no moon */
+  .watch-perch { display: contents; }
+  .watch-perch .owl-feet { display: inline; }
+  .watch-perch .owl-talons, .watch-moon { display: none; }
   .watch-kicker, .watch h1 { padding-right: 80px; }
   .columns { display: none; }
   .site-row { grid-template-columns: minmax(0, 1fr) auto; grid-template-areas: "name status" "days days" "figures figures"; row-gap: 8px; }
