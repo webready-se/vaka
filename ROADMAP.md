@@ -105,6 +105,8 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 ### Before going public
 
 - [x] Scan the whole git history (not only the last commit) for real names, domains, IPs and webhook URLs (done 2026-10-27: the history was rewritten with example names and moved to a new repository; the old one, with its PR texts, stays private and archived)
+- [ ] Scan again on the day: the whole history and every PR text against `.private/real-names.txt` as it is then. The hooks checked each commit against the list as it was when it was made, so a name added since (a new site, a new tool) is not checked backwards
+- [ ] Protect `main` with a ruleset, as Puls has (on the free plan GitHub offers it for public repositories only): no deletion or force push, the CI jobs (PHP 8.3, PHP 8.4, PHP 8.5, Dashboard smoke test) green before a merge, the admin role may bypass. `gh api -X POST repos/webready-se/vaka/rulesets --input <json>`, in the same step as the scan above
 - [ ] Turn on private vulnerability reporting (Settings > Security, or `gh api -X PUT repos/webready-se/vaka/private-vulnerability-reporting`): SECURITY.md links to `../../security/advisories/new`, which only works then
 - [ ] Upload `docs/screenshots/social-preview.png` as the social preview (Settings > General); GitHub accepts it only on a public repository
 - [ ] Vaka's own mark in the footer credit, linked to the repository, once it is public (design kit docs/layout.md); Snoka and Hamstra join when they are released
@@ -126,3 +128,10 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [ ] TOTP two-factor login
 - [ ] An outage counts from its first failed check, not from when it was confirmed: the history says "Up again after 23 min" where the day bar says 22, since the down event is written a check later
 - [ ] Cache-busting by file, not by version: `app.js?v=0.1.0` stays the same between releases, and with no Cache-Control a browser may keep the last deploy's files for up to an hour (the file's mtime or a hash in the URL)
+
+## Considered and set aside
+
+Weighed and not done, with the reason, so the question has an answer the next time it comes up.
+
+- A Mail DNS column in the site list (2026-10-28). Mail has no grade, only OK or a warning (SPF and DMARC), so the column would be mostly ticks; it is about the domain, not the site, so every site on a domain shows the same; it rarely changes, and a change alerts already. The list answers "are my sites up?", and every column makes it slower to read. The detail has a tile for it.
+- A history of maintenance windows, so that a removed window still covers the nights it was there (2026-10-28). Downtime counts as planned by the windows as they are now: simpler, and a window added today covering earlier nights is usually what was meant. Written in docs/alerts.md.
