@@ -10,14 +10,22 @@
 
 import { spawn, execFileSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:net';
 import { tmpdir } from 'node:os';
 import { join, dirname } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'docs/screenshots');
-const PHP_PORT = 8785;
-const CDP_PORT = 9335;
+// A port the system hands out, never a fixed one: another project's test server on the same machine may hold
+// a fixed port, and then a check that something answers there passes against the wrong server
+const freePort = () => new Promise((resolvePort, reject) => {
+  const srv = createServer();
+  srv.once('error', reject);
+  srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolvePort(port)); });
+});
+const PHP_PORT = await freePort();
+const CDP_PORT = await freePort();
 const tmp = mkdtempSync(join(tmpdir(), 'vaka-media-'));
 const children = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
