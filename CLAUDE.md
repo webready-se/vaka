@@ -71,7 +71,7 @@ Read its README.md first, then the doc for what you are changing. Copy values an
 files from it; never link to it at runtime or install it. When the kit and this
 tool disagree, the kit wins, unless this tool's docs say why it differs.
 
-Vaka copied kit 0.4.0 (the version line is in the tokens at the top of `public/app.css`). The mark, the alarm mark and the marks of the released family tools (today Puls; the footer shows no others, per the kit's docs/layout.md) are copied into `public/favicon*.svg` and `public/marks/`; the night panel's owl is generated into `OWL` in `public/app.js` from the kit's `characters/vaka.svg`, `vaka-awake.svg` and `vaka-perched.svg`. When the kit changes, copy again and update the version line.
+Vaka copied kit 0.5.0 (the version line is in the tokens at the top of `public/app.css`). The mark, the alarm mark and the marks of the released family tools (today Puls; the footer shows no others, per the kit's docs/layout.md) are copied into `public/favicon*.svg` and `public/marks/`; the night panel's owl is generated into `OWL` in `public/app.js` from the kit's `characters/vaka.svg`, `vaka-awake.svg` and `vaka-perched.svg`. When the kit changes, copy again and update the version line.
 
 ## Architecture
 
