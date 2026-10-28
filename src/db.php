@@ -172,6 +172,10 @@ function migrations(): array
                 created_at TEXT NOT NULL
             )",
         ],
+        9 => [
+            // A read token always has a last day: one made without gets 90 days from the upgrade (SHARE_DEFAULT_DAYS)
+            "UPDATE share_tokens SET expires_at = strftime('%Y-%m-%dT00:00:00Z', 'now', '+91 days') WHERE expires_at IS NULL",
+        ],
     ];
 }
 

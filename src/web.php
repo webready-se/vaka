@@ -61,8 +61,14 @@ function handle_request(array $config): never
     // The read API with a token needs no session (and sets no cookie)
     $readApi = ($_GET['api'] ?? null) === '';
     if ($readApi && ($token = share_token_from_request($_GET, $_SERVER)) !== '') {
-        $found = find_share_token(get_db($config['db_path']), $token, $now);
-        if (!$found) respond_json(404, ['error' => 'No such read token: it may have been revoked or have expired']);
+        $db = get_db($config['db_path']);
+        $found = find_share_token($db, $token, $now);
+        if (!$found) {
+            // Whoever sends an expired token had it already, so saying so leaks nothing, and saves hunting for why a script stopped working
+            $expired = share_token_expired_on($db, $token, $now);
+            if ($expired !== null) respond_json(401, ['error' => 'This read token expired on ' . share_expires_words($expired, $config['timezone']) . '. Create a new one with `php vaka share:create`.']);
+            respond_json(404, ['error' => 'No such read token: it may have been revoked']);
+        }
         read_api($config, share_scope($found), $method, $now);
     }
 
