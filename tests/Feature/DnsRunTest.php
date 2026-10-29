@@ -68,7 +68,9 @@ test('a confirmed change is one alert for the domain, however many sites share i
         ->and(($this->texts)()[0])->toContain('MX now 10 mx.evil.example (was 10 mx1.mail.example)')
         ->and(($this->texts)()[0])->toContain('DMARC removed (was v=DMARC1; p=reject)')
         ->and(substr_count(($this->texts)()[0], 'mail DNS changed'))->toBe(1)
-        ->and(($this->state)($shop)['status'])->toBe('warn');
+        ->and(($this->state)($shop)['status'])->toBe('warn')
+        // From what was confirmed, not from the first look at the change (already stored as warn)
+        ->and($this->db->query("SELECT previous, status FROM events WHERE check_name = 'dns' AND site_id = {$shop} ORDER BY id DESC")->fetch(PDO::FETCH_NUM))->toBe(['ok', 'warn']);
 
     // Told once: nothing more until it changes again
     run_dns($this->db, $this->config, $later + DNS_CONFIRM_SECONDS + DNS_INTERVAL_SECONDS, microtime(true) + 10);

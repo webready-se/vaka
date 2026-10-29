@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Fixed
 
 - A DMARC record with `p=none` and no `rua`, on a domain that sends email, was told to move to `p=quarantine` once the reports looked right, but without `rua` no reports ever come. It is now told to add `rua` first and keep `p=none`, then to move to `p=quarantine` (keeping `rua`) once the reports show that its own email passes, a contact form's too. Jumping to `p=quarantine` blind can send the site's own email to spam.
+- A change in the security headers or the mail records was written in the history as coming from the status it went to ("ok -> ok: Grade E to B"), since the first look at the change had already stored the new status and the change counts at the second. It now comes from what was confirmed before ("warn -> ok"). Changes recorded before keep their old line.
 
 ## [0.2.0] - 2026-10-28
 

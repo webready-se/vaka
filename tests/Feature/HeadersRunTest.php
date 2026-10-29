@@ -75,8 +75,9 @@ test('a protection that disappears alerts once, after a second look', function (
     process_alerts($this->db, $this->config, $later + 7 * 3600);
     expect(($this->texts)())->toHaveCount(1);
 
-    $events = $this->db->query("SELECT message FROM events WHERE check_name = 'headers' ORDER BY id")->fetchAll(PDO::FETCH_COLUMN);
-    expect($events)->toBe(['First check: grade B: 5 of 6 in place, missing HSTS', 'Grade B to C: CSP removed']);
+    // From what was confirmed, not from the first look at the change (already stored as warn)
+    $events = $this->db->query("SELECT previous, status, message FROM events WHERE check_name = 'headers' ORDER BY id")->fetchAll(PDO::FETCH_NUM);
+    expect($events)->toBe([['pending', 'ok', 'First check: grade B: 5 of 6 in place, missing HSTS'], ['ok', 'warn', 'Grade B to C: CSP removed']]);
 });
 
 test('a better grade is recorded without a message', function () {
@@ -90,7 +91,7 @@ test('a better grade is recorded without a message', function () {
 
     expect(($this->texts)())->toBe([])
         ->and(($this->state)($id)['summary'])->toBe('Grade B: 5 of 6 in place, missing HSTS')
-        ->and($this->db->query("SELECT message FROM events WHERE check_name = 'headers' ORDER BY id DESC")->fetchColumn())->toBe('Grade C to B: CSP added');
+        ->and($this->db->query("SELECT previous, status, message FROM events WHERE check_name = 'headers' ORDER BY id DESC")->fetch(PDO::FETCH_NUM))->toBe(['warn', 'ok', 'Grade C to B: CSP added']);
 });
 
 test('an error page is not graded, and a site that is down is left alone', function () {

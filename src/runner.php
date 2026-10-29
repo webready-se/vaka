@@ -404,7 +404,7 @@ function dns_site_result(PDO $db, array $site, array $result, int $now, array $s
         'changed_at' => $next['change'] !== null ? $checkedAt : $site['state_changed_at'],
     ], $checkedAt, utc_now($now + $next['wait']));
     if ($next['change'] !== null) {
-        $event = ['status' => $result['status'], 'previous' => $site['state_status'] ?? 'pending', 'message' => $next['change']];
+        $event = ['status' => $result['status'], 'previous' => dns_confirmed_status($before) ?? $site['state_status'] ?? 'pending', 'message' => $next['change']];
         add_event($db, $site['id'], 'dns', $event, $checkedAt);
         $summary['events'][] = ['url' => $site['url']] + $event;
     }
@@ -457,7 +457,7 @@ function run_headers(PDO $db, array $config, int $now, float $deadline): array
                 'changed_at' => $next['change'] !== null ? $checkedAt : $site['state_changed_at'],
             ], $checkedAt, utc_now($now + $next['wait']));
             if ($next['change'] !== null) {
-                $event = ['status' => $result['status'], 'previous' => $site['state_status'] ?? 'pending', 'message' => $next['change']];
+                $event = ['status' => $result['status'], 'previous' => headers_confirmed_status($before) ?? $site['state_status'] ?? 'pending', 'message' => $next['change']];
                 add_event($db, $site['id'], 'headers', $event, $checkedAt);
                 $summary['events'][] = ['url' => $site['url']] + $event;
             }

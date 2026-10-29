@@ -368,7 +368,23 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     if ($weak) $summary .= ', ' . list_words($weak) . (count($weak) === 1 ? ' is weak' : ' are weak');
     if (($levels['nosniff_files'] ?? null) === 'missing') $summary .= ', X-Content-Type-Options is missing on scripts and styles';
 
-    return ['status' => in_array($grade, ['A', 'B'], true) ? 'ok' : 'warn', 'summary' => $summary, 'details' => ['grade' => $grade] + $details];
+    return ['status' => headers_status($grade), 'summary' => $summary, 'details' => ['grade' => $grade] + $details];
+}
+
+/** A grade's status: ok for A or B, warn below. */
+function headers_status(string $grade): string
+{
+    return in_array($grade, ['A', 'B'], true) ? 'ok' : 'warn';
+}
+
+/**
+ * The status of the levels last confirmed, or null before the first. A
+ * change counts at its second look, and the first look already stored the
+ * new status, so this, not the stored status, is where a change came from.
+ */
+function headers_confirmed_status(?array $details): ?string
+{
+    return isset($details['confirmed']) ? headers_status(headers_grade($details['confirmed'])) : null;
 }
 
 /**
