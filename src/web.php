@@ -601,7 +601,7 @@ function api_site(PDO $db, array $config, array $row, int $now): array
 
     $windows = load_windows($db, $now);
     $site = site_summary($db, $config, $row, server_labels($db), $windows, $samples, $now);
-    if ($site['headers'] !== null) $site['headers']['items'] = header_items(json_decode((string) $row['headers_details'], true) ?: []);
+    if ($site['headers'] !== null) $site['headers'] += ['items' => header_items(json_decode((string) $row['headers_details'], true) ?: []), 'tip' => HEADERS_NGINX_TIP];
     if ($site['dns'] !== null) $site['dns']['items'] = dns_items(json_decode((string) $row['dns_details'], true) ?: []);
 
     return [
@@ -765,6 +765,7 @@ function read_api_site(PDO $db, array $config, array $row, int $hours, int $now)
     ];
     if ($site['headers'] !== null) {
         $site['headers']['items'] = array_map(fn ($item) => api_pick($item, ['key', 'label', 'level', 'note', 'what', 'fix', 'tip']), header_items(json_decode((string) $row['headers_details'], true) ?: []));
+        $site['headers']['tip'] = HEADERS_NGINX_TIP;
     }
     if ($site['dns'] !== null) {
         $site['dns']['items'] = array_map(fn ($item) => api_pick($item, ['key', 'label', 'level', 'records', 'note', 'what', 'fix_label', 'fix', 'tip']), dns_items(json_decode((string) $row['dns_details'], true) ?: []));

@@ -331,6 +331,7 @@ async function main() {
       expect([...(headerList?.querySelectorAll('code') || [])].some((c) => /^Content-Security-Policy:/.test(c.textContent)), 'a missing protection comes with the line that adds it');
       const nosniff = [...(headerList?.querySelectorAll('li') || [])].find((li) => /X-Content-Type-Options/.test(li.textContent));
       expect(/Weak/.test(nosniff?.textContent || '') && /a location with its own add_header/.test(nosniff?.textContent || ''), 'nosniff missing on the scripts and styles shows as weak, with where the line goes');
+      expect(all('dialog.drawer .headers-tip').length === 1 && /^Adding them in nginx\?/.test(q('dialog.drawer .headers-tip')?.textContent || ''), 'the detail says once, under the list, how to add the headers in nginx');
       expect(nosniff?.textContent.includes('/build/<img src=x onerror="window.__xss=4">.js') && window.__xss === undefined, 'a file name from the site shows as plain text');
       expect(all('dialog.drawer .headers-summary')[1]?.textContent === 'Mail for shop.example: SPF and DMARC in place', 'the detail says how the mail records are in words');
       expect(mailList?.querySelectorAll('li').length === 3 && /10 mx1\.mail\.example/.test(mailList.textContent), 'the detail lists MX, SPF and DMARC with what the domain has');
@@ -338,6 +339,27 @@ async function main() {
       q('dialog.drawer [data-action="recheck"]').click();
       await waitFor(() => /Checking/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || '') && q('dialog.drawer [data-action="recheck"]').disabled, 'Check again to say it is checking');
       expect(/Checking shop\.example again/.test(q('.toast')?.textContent || ''), 'Check again says when the results come');
+      expect(/^Checked \d/.test(q('dialog.drawer .fact-when')?.textContent || ''), 'the response time says when uptime was checked');
+      // As if the next run had come: first one check has run again, then all of them
+      const realFetch = window.fetch;
+      const later = new Date(Date.now() + 60000).toISOString();
+      let ran = ['ssl'];
+      window.fetch = (url, options) => realFetch(url, options).then((response) => {
+        if (!/[?&]api=site&id=1$/.test(String(url))) return response;
+        return response.json().then((data) => {
+          if (ran.includes('uptime')) data.site.checked_at = later;
+          ['ssl', 'domain', 'exposed', 'headers', 'dns'].forEach((key) => { if (data.site[key]?.checked_at && ran.includes(key)) data.site[key].checked_at = later; });
+          return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        });
+      });
+      const shopRow = () => all('.site-row').find((r) => /shop\.example/.test(r.textContent));
+      shopRow().click();
+      await waitFor(() => /^Checking… 1 of \d done$/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to say how many checks have run again');
+      ran = ['uptime', 'ssl', 'domain', 'exposed', 'headers', 'dns'];
+      shopRow().click();
+      await waitFor(() => /^Checked again \d/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to say when every check had run again');
+      expect(!q('dialog.drawer [data-action="recheck"]').disabled && /^Every check of shop\.example ran again$/.test(q('.toast')?.textContent || ''), 'once all have run, the button can be pressed again, and a message says so');
+      window.fetch = realFetch;
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
       expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');

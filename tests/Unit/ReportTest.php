@@ -99,14 +99,14 @@ test('one site: every protection and mail record that is not in place is worth i
             ['key' => 'hsts', 'label' => 'HSTS', 'level' => 'missing', 'note' => '', 'what' => 'Makes browsers always use https for the site', 'fix' => 'Strict-Transport-Security: max-age=31536000', 'tip' => 'Add it once every page works over https.'],
             ['key' => 'nosniff', 'label' => 'X-Content-Type-Options', 'level' => 'weak', 'note' => 'not on /app.js', 'what' => 'Stops browsers from guessing what a file is', 'fix' => 'X-Content-Type-Options: nosniff', 'tip' => ''],
             ['key' => 'referrer', 'label' => 'Referrer-Policy', 'level' => 'good', 'note' => '', 'what' => 'Keeps addresses private', 'fix' => 'Referrer-Policy: strict-origin-when-cross-origin', 'tip' => ''],
-        ]],
+        ], 'tip' => 'Adding them in nginx? Mind the locations.'],
         'dns' => ['status' => 'warn', 'summary' => 'Mail for shop.example: no DMARC', 'domain' => 'shop.example', 'advice' => 'Add a DMARC record.', 'items' => [
             ['key' => 'dmarc', 'label' => 'DMARC', 'level' => 'missing', 'records' => [], 'note' => '', 'what' => 'What receivers do with email that pretends to come from the domain', 'fix_label' => 'Add a TXT record at _dmarc.shop.example:', 'fix' => 'v=DMARC1; p=none; rua=mailto:dmarc@shop.example', 'tip' => 'Start with p=none.'],
         ]],
     ]), REPORT_CONFIG);
 
     expect($md)->toContain('## Worth improving (2)')
-        ->and($md)->toContain("1. **Security headers: grade C**: Grade C: 4 of 6 in place, missing HSTS.\n   - **HSTS** is missing. What it does: makes browsers always use https for the site. Add `Strict-Transport-Security: max-age=31536000`. Add it once every page works over https.\n   - **X-Content-Type-Options** is weak: `not on /app.js`. What it does: stops browsers from guessing what a file is. Add `X-Content-Type-Options: nosniff`.")
+        ->and($md)->toContain("1. **Security headers: grade C**: Grade C: 4 of 6 in place, missing HSTS. Adding them in nginx? Mind the locations.\n   - **HSTS** is missing. What it does: makes browsers always use https for the site. Add `Strict-Transport-Security: max-age=31536000`. Add it once every page works over https.\n   - **X-Content-Type-Options** is weak: `not on /app.js`. What it does: stops browsers from guessing what a file is. Add `X-Content-Type-Options: nosniff`.")
         ->and($md)->toContain("2. **Mail records**: Mail for shop.example: no DMARC.\n   - **DMARC** is missing. What it says: what receivers do with email that pretends to come from the domain. Add a TXT record at _dmarc.shop.example: `v=DMARC1; p=none; rua=mailto:dmarc@shop.example`. Start with p=none.")
         ->and($md)->not->toContain('**Referrer-Policy** is');
 });

@@ -141,6 +141,8 @@ function dns_items(array $details): array
     // A domain that sends no email can reject everything in its name at once; one that sends starts with reports
     $sends = mail_domain_sends($records);
     $reports = $monitoring && preg_match('/(^|;)\s*rua\s*=/i', $records['dmarc'][0]);
+    // Without rua no reports ever come, so on a domain that sends they are the step before quarantine
+    $addReports = $monitoring && $sends && !$reports;
     $sendsNone = $records['spf'] ? 'its SPF record allows no sender' : 'it has neither SPF nor a mail server';
     $item = fn (string $key, array $more) => ['key' => $key] + MAIL_RECORDS[$key] + ['records' => $records[$key]] + $more;
 
@@ -175,14 +177,16 @@ function dns_items(array $details): array
             'fix_label' => $monitoring ? "Change the TXT record at _dmarc.{$shown} to:" : "Add a TXT record at _dmarc.{$shown}:",
             // A record that only monitors keeps its own reports and options: only p= changes
             'fix' => match (true) {
+                $addReports => rtrim($records['dmarc'][0], '; ') . (str_contains($records['dmarc'][0], '; ') ? '; ' : ';') . 'rua=mailto:<your report address>',
                 $monitoring => preg_replace('/(^|;)(\s*)p\s*=\s*none\b/i', '$1$2p=' . ($sends ? 'quarantine' : 'reject'), $records['dmarc'][0], 1),
                 $sends => 'v=DMARC1; p=none; rua=mailto:<your report address>',
                 default => 'v=DMARC1; p=reject',
             },
             'tip' => match (true) {
-                $monitoring && $sends => 'Do it once the reports show only your own servers sending; reject is the step after that.',
+                $addReports => 'Read the reports for a few weeks: summaries from receivers (zipped XML) of every server that sends in the domain\'s name, and whether its email passes. A free DMARC report service reads them for you and gives the address to use. Once your own email passes, the mail provider\'s and the site\'s own (a contact form, say), change p=none to p=quarantine and keep rua, then p=reject.',
+                $monitoring && $sends => 'Do it once the reports show that your own email passes, the mail provider\'s and the site\'s own (a contact form, say); p=reject is the step after that.',
                 $monitoring => "It looks like it sends no email ({$sendsNone}), so there is nothing of its own to stop: reject right away.",
-                $sends => 'rua is optional, but with p=none the reports are all the record gives: summaries from receivers (zipped XML) of who sends in the domain\'s name. A free DMARC report service reads them for you and gives the address to use. Once only your own servers show up, after a few weeks, move to p=quarantine, then p=reject.',
+                $sends => 'rua is optional, but with p=none the reports are all the record gives: summaries from receivers (zipped XML) of who sends in the domain\'s name. A free DMARC report service reads them for you and gives the address to use. Once your own email passes in them, after a few weeks, move to p=quarantine, then p=reject.',
                 default => "It looks like it sends no email ({$sendsNone}), so reject everything that claims to come from it. Reports are optional. Sends email after all? Start with v=DMARC1; p=none; rua=mailto:<your report address> and read the reports first.",
             },
         ]),
