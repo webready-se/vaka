@@ -395,7 +395,7 @@ function dns_site_result(PDO $db, array $site, array $result, int $now, array $s
 {
     $checkedAt = utc_now($now);
     $before = $site['state_status'] === null ? null : (json_decode((string) $site['state_details'], true) ?: []);
-    $next = confirm_mail_dns($before, $result);
+    $next = confirm_mail_dns($before, $result, $now);
     save_check_state($db, $site['id'], 'dns', [
         'status' => $result['status'],
         'summary' => $result['summary'],

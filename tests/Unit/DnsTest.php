@@ -218,3 +218,46 @@ test('a mail DNS change reads plainly, with what to do if it was not on purpose'
     ])
         ->and(slack_payload(bundle_notices([$notice], [])[0], '')['text'])->toStartWith(':warning: *shop.example (Customers): mail DNS changed*');
 });
+
+// =====================================================================
+// Reports first: quarantine only once they have had time
+// =====================================================================
+
+test('rua added: the quarantine step waits four weeks from when Vaka saw the reports start', function () {
+    $sends = ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all']];
+    $silent = evaluate_mail_dns('shop.example', $sends + ['dmarc' => ['v=DMARC1; p=none; sp=none;']]);
+    $reporting = evaluate_mail_dns('shop.example', $sends + ['dmarc' => ['v=DMARC1; p=none; sp=none; rua=mailto:d@reports.example']]);
+    $start = strtotime('2026-10-29 10:00:00 UTC');
+    $confirmedAt = $start + DNS_CONFIRM_SECONDS;
+
+    $baseline = confirm_mail_dns(null, $silent, $start - 86400);
+    $once = confirm_mail_dns($baseline['details'], $reporting, $start);
+    expect($once['details'])->not->toHaveKey('reports_since');
+    $twice = confirm_mail_dns($once['details'], $reporting, $confirmedAt);
+    expect($twice['details']['reports_since'])->toBe(utc_now($confirmedAt));
+
+    // The next look keeps the day the reports started
+    $later = confirm_mail_dns($twice['details'], $reporting, $confirmedAt + DNS_INTERVAL_SECONDS);
+    expect($later['details']['reports_since'])->toBe(utc_now($confirmedAt));
+
+    $dmarc = fn (array $details, int $now) => dns_items($details, $now, 'Europe/Stockholm')[2];
+    $waiting = $dmarc($later['details'], $confirmedAt + 3600);
+    expect($waiting['level'])->toBe('weak')
+        ->and($waiting['fix'])->toBe('')
+        ->and($waiting['fix_label'])->toBe('')
+        ->and($waiting['tip'])->toBe('Reports since 29 Oct: read them until about 26 Nov, so that senders who send once a month show up too. Then Vaka suggests p=quarantine.');
+
+    $ready = $dmarc($later['details'], $confirmedAt + DMARC_REPORTS_DAYS * 86400);
+    expect($ready['fix'])->toBe('v=DMARC1; p=quarantine; sp=none; rua=mailto:d@reports.example')
+        ->and($ready['tip'])->toContain('once the reports show that your own email passes');
+
+    // rua taken away again: nothing to wait for
+    $gone = confirm_mail_dns(confirm_mail_dns($later['details'], $silent, $start + 7 * 86400)['details'], $silent, $start + 7 * 86400 + DNS_CONFIRM_SECONDS);
+    expect($gone['details']['reports_since'] ?? null)->toBeNull();
+});
+
+test('rua there from the first look: Vaka cannot tell how long the reports have come, so it does not wait', function () {
+    $first = confirm_mail_dns(null, evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ['v=DMARC1; p=none; rua=mailto:d@reports.example']]), time());
+    expect($first['details']['reports_since'] ?? null)->toBeNull()
+        ->and(dns_items($first['details'])[2]['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:d@reports.example');
+});
