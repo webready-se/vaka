@@ -28,7 +28,10 @@ const HEADER_LEVELS = ['missing' => 0, 'weak' => 1, 'good' => 2];
 const FILES_MAX_BYTES = 1024;
 
 /** Why scripts and styles can lack nosniff when the page has it, and where the line goes. */
-const FILES_NOSNIFF_TIP = 'A web server rule for these files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Set the headers once for the whole site and keep add_header out of such rules: for caching, nginx\'s expires sets Cache-Control without it. Otherwise every such rule has to repeat every header.';
+// Once for all six, since adding them in nginx has the same two traps whichever is missing
+const HEADERS_NGINX_TIP = 'Adding them in nginx? Put the add_header lines in the server block, with the always flag, so error pages get them too. A location with an add_header of its own drops all of the server block\'s: keep add_header out of locations, or repeat them all in every such location.';
+
+const FILES_NOSNIFF_TIP ='A web server rule for these files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Set the headers once for the whole site and keep add_header out of such rules: for caching, nginx\'s expires sets Cache-Control without it. Otherwise every such rule has to repeat every header.';
 
 /** A Content-Security-Policy as directive => sources, lowercased. */
 function csp_directives(string $policy): array
