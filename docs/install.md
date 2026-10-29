@@ -112,7 +112,7 @@ Behind a reverse proxy or load balancer, set `TRUSTED_PROXIES` so the login lock
 
 Three things tell you when Vaka itself stops:
 
-- **`HEARTBEAT_URL`**: every run pings this address. Point it at a dead man's switch such as [Healthchecks.io](https://healthchecks.io) (the free tier is plenty); it alerts you when the pings stop, for example because cron stopped or Vaka's server went down.
+- **`HEARTBEAT_URL`**: every run pings this address. Point it at a dead man's switch such as [Healthchecks.io](https://healthchecks.io) (the free tier is plenty); it alerts you when the pings stop, for example because cron stopped or Vaka's server went down. Set the check's period to 1 minute and its grace time to 5 minutes, so one slow run does not alert: a run still going when the next minute starts makes that minute's run skip, without a ping. That is on purpose: a run that holds on for longer means no checks are being made, which is what the heartbeat is there to tell.
 - **`/?health`** answers 200 while runs are recent and 503 when the last one is more than five minutes old, for any external monitor.
 - **The dashboard** says when Vaka last checked, and warns when it has stopped.
 
