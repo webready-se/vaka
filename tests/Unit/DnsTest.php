@@ -116,7 +116,7 @@ test('dns_items: a domain that sends no email is told to reject at once; one tha
     expect($sends['dmarc']['fix'])->toBe('v=DMARC1; p=none; rua=mailto:<your report address>')
         ->and($sends['dmarc']['tip'])->toContain('rua is optional')
         ->and($sends['dmarc']['tip'])->toContain('A free DMARC report service')
-        ->and($sends['dmarc']['tip'])->toContain('move to p=quarantine, then p=reject');
+        ->and($sends['dmarc']['tip'])->toContain('Once your own email passes in them');
 
     // A mail server but no SPF: people there send too, and reject could stop their email, so the safe way
     expect($items(['mx' => ['10 mx1.mail.example']])['dmarc']['fix'])->toBe('v=DMARC1; p=none; rua=mailto:<your report address>');
@@ -124,7 +124,21 @@ test('dns_items: a domain that sends no email is told to reject at once; one tha
     // A record that only monitors, on a domain that sends: quarantine next, once the reports look right
     $monitoring = $items(['spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ['v=DMARC1; p=none; rua=mailto:reports@dmarc.example']]);
     expect($monitoring['dmarc']['note'])->toBe('p=none only monitors: email that fails the check is still delivered')
-        ->and($monitoring['dmarc']['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:reports@dmarc.example');
+        ->and($monitoring['dmarc']['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:reports@dmarc.example')
+        ->and($monitoring['dmarc']['tip'])->toContain('once the reports show that your own email passes');
+
+    // Without rua no reports ever come, so there is nothing to wait for: rua first, p=none kept
+    $silent = $items(['spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ['v=DMARC1; p=none; sp=none;']]);
+    expect($silent['dmarc']['note'])->toBe('p=none without rua: it neither stops email that pretends to come from the domain nor sends reports')
+        ->and($silent['dmarc']['fix'])->toBe('v=DMARC1; p=none; sp=none; rua=mailto:<your report address>')
+        ->and($silent['dmarc']['tip'])->toContain('Read the reports for a few weeks')
+        ->and($silent['dmarc']['tip'])->toContain('change p=none to p=quarantine and keep rua');
+
+    // Written without spaces, it stays that way
+    expect($items(['mx' => ['10 mx1.mail.example'], 'dmarc' => ['v=DMARC1;p=none']])['dmarc']['fix'])->toBe('v=DMARC1;p=none;rua=mailto:<your report address>');
+
+    // A domain that sends nothing needs no reports to reject
+    expect($items(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=none']])['dmarc']['fix'])->toBe('v=DMARC1; p=reject');
 });
 
 // =====================================================================
@@ -137,8 +151,8 @@ test('a DMARC record that only monitors keeps everything else when the hint says
     expect($items[2]['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:dmarc@shop.example; ruf=mailto:dmarc@shop.example; fo=1');
 
     // Written without spaces, and with sp= for subdomains left alone
-    $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ['v=DMARC1;p=none;sp=none;pct=100']])['details']);
-    expect($items[2]['fix'])->toBe('v=DMARC1;p=quarantine;sp=none;pct=100');
+    $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ['v=DMARC1;p=none;sp=none;pct=100;rua=mailto:d@shop.example']])['details']);
+    expect($items[2]['fix'])->toBe('v=DMARC1;p=quarantine;sp=none;pct=100;rua=mailto:d@shop.example');
 });
 
 test('confirm_mail_dns: a change counts only when a second look agrees', function () {

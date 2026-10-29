@@ -243,7 +243,11 @@ test('the overview lists sites with their state, and a restricted user only sees
     $detail = http_request('GET', WEB . "/?api=site&id={$shop}", ['jar' => ($this->login)('admin', 'admin password')['jar']])['json'];
     expect($detail['site']['headers']['grade'])->toBe('E')
         ->and(array_column($detail['site']['headers']['items'], 'level', 'key'))->toBe(['hsts' => 'missing', 'csp' => 'missing', 'nosniff' => 'good', 'frames' => 'good', 'referrer' => 'missing', 'permissions' => 'missing'])
-        ->and($detail['site']['headers']['items'][1])->toMatchArray(['label' => 'CSP', 'fix' => SECURITY_HEADERS['csp']['fix'], 'what' => SECURITY_HEADERS['csp']['what']]);
+        ->and($detail['site']['headers']['items'][1])->toMatchArray(['label' => 'CSP', 'fix' => SECURITY_HEADERS['csp']['fix'], 'what' => SECURITY_HEADERS['csp']['what']])
+        // Once for all six: how to add them in nginx without a location dropping them
+        ->and($detail['site']['headers']['tip'])->toBe(HEADERS_NGINX_TIP);
+    $token = create_share_token($this->db, $shop, null, '', utc_now(time() + 86400), time())['token'];
+    expect(http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['headers']['tip'])->toBe(HEADERS_NGINX_TIP);
     expect($admin['groups'][1]['sites'][0]['advice'])->toBe('');
 
     $anna = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('anna', 'anna password')['jar']])['json'];
