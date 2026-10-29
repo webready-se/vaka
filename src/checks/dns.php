@@ -5,6 +5,9 @@ const DNS_INTERVAL_SECONDS = 6 * 3600;
 const DNS_CONFIRM_SECONDS = 15 * 60;
 const DNS_RETRY_SECONDS = 3600;
 
+/** How long DMARC reports get before quarantine is suggested: four weeks, so that senders who send once a month show up too. */
+const DMARC_REPORTS_DAYS = 28;
+
 /** The mail records, in the order they are shown, with what each does. */
 const MAIL_RECORDS = [
     'mx' => ['label' => 'MX', 'what' => 'Where email to the domain is delivered'],
@@ -73,6 +76,12 @@ function lookup_mail_dns(string $domain, callable $resolve): ?array
     ];
 }
 
+/** Whether the domain's DMARC record asks for reports (rua). */
+function dmarc_reports(array $records): bool
+{
+    return $records['dmarc'] !== [] && (bool) preg_match('/(^|;)\s*rua\s*=/i', $records['dmarc'][0]);
+}
+
 /** The p= of a DMARC record: none, quarantine or reject, or null. */
 function dmarc_policy(string $record): ?string
 {
@@ -130,9 +139,10 @@ function mail_domain_sends(array $records): bool
  *
  * @return list<array{key: string, label: string, what: string, records: list<string>, level: string, note: string, fix_label: string, fix: string, tip: string}>
  */
-function dns_items(array $details): array
+function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): array
 {
     if (!isset($details['records'])) return [];
+    $now ??= time();
     $domain = $details['domain'];
     $shown = display_domain($domain);
     $records = $details['records'];
@@ -140,9 +150,13 @@ function dns_items(array $details): array
     $nullMx = $records['mx'] === ['0 .'];
     // A domain that sends no email can reject everything in its name at once; one that sends starts with reports
     $sends = mail_domain_sends($records);
-    $reports = $monitoring && preg_match('/(^|;)\s*rua\s*=/i', $records['dmarc'][0]);
+    $reports = $monitoring && dmarc_reports($records);
     // Without rua no reports ever come, so on a domain that sends they are the step before quarantine
     $addReports = $monitoring && $sends && !$reports;
+    // Reports that started lately have not had time to show every sender: the next step waits
+    $since = isset($details['reports_since']) ? strtotime($details['reports_since']) : null;
+    $waitForReports = $reports && $sends && $since !== null && $now < $since + DMARC_REPORTS_DAYS * 86400;
+    $day = fn (int $time) => (new DateTimeImmutable('@' . $time))->setTimezone(new DateTimeZone($timezone))->format('j M');
     $sendsNone = $records['spf'] ? 'its SPF record allows no sender' : 'it has neither SPF nor a mail server';
     $item = fn (string $key, array $more) => ['key' => $key] + MAIL_RECORDS[$key] + ['records' => $records[$key]] + $more;
 
@@ -174,15 +188,21 @@ function dns_items(array $details): array
                 !$reports => 'p=none without rua: it neither stops email that pretends to come from the domain nor sends reports',
                 default => 'p=none only monitors: email that fails the check is still delivered',
             },
-            'fix_label' => $monitoring ? "Change the TXT record at _dmarc.{$shown} to:" : "Add a TXT record at _dmarc.{$shown}:",
+            'fix_label' => match (true) {
+                $waitForReports => '',
+                $monitoring => "Change the TXT record at _dmarc.{$shown} to:",
+                default => "Add a TXT record at _dmarc.{$shown}:",
+            },
             // A record that only monitors keeps its own reports and options: only p= changes
             'fix' => match (true) {
+                $waitForReports => '',
                 $addReports => rtrim($records['dmarc'][0], '; ') . (str_contains($records['dmarc'][0], '; ') ? '; ' : ';') . 'rua=mailto:<your report address>',
                 $monitoring => preg_replace('/(^|;)(\s*)p\s*=\s*none\b/i', '$1$2p=' . ($sends ? 'quarantine' : 'reject'), $records['dmarc'][0], 1),
                 $sends => 'v=DMARC1; p=none; rua=mailto:<your report address>',
                 default => 'v=DMARC1; p=reject',
             },
             'tip' => match (true) {
+                $waitForReports => 'Reports since ' . $day($since) . ': read them until about ' . $day($since + DMARC_REPORTS_DAYS * 86400) . ', so that senders who send once a month show up too. Then Vaka suggests p=quarantine.',
                 $addReports => 'Read the reports for a few weeks: summaries from receivers (zipped XML) of every server that sends in the domain\'s name, and whether its email passes. A free DMARC report service reads them for you and gives the address to use. Once your own email passes, the mail provider\'s and the site\'s own (a contact form, say), change p=none to p=quarantine and keep rua, then p=reject.',
                 $monitoring && $sends => 'Do it once the reports show that your own email passes, the mail provider\'s and the site\'s own (a contact form, say); p=reject is the step after that.',
                 $monitoring => "It looks like it sends no email ({$sendsNone}), so there is nothing of its own to stop: reject right away.",
@@ -203,22 +223,26 @@ function dns_items(array $details): array
  *
  * @return array{details: array, wait: int, change: ?string}
  */
-function confirm_mail_dns(?array $before, array $result): array
+function confirm_mail_dns(?array $before, array $result, ?int $now = null): array
 {
+    $now ??= time();
     $confirmed = $before['confirmed'] ?? null;
+    // When the confirmed record started asking for reports (`reports_since`), kept until rua goes; unknown on a first look
+    $since = isset($before['reports_since']) ? ['reports_since' => $before['reports_since']] : [];
     if ($result['status'] === 'unknown') {
         $wait = $result['details']['problem'] === 'lookup_failed' ? DNS_RETRY_SECONDS : DNS_INTERVAL_SECONDS;
-        return ['details' => $result['details'] + ['confirmed' => $confirmed, 'confirmed_domain' => $before['confirmed_domain'] ?? null], 'wait' => $wait, 'change' => null];
+        return ['details' => $result['details'] + ['confirmed' => $confirmed, 'confirmed_domain' => $before['confirmed_domain'] ?? null] + $since, 'wait' => $wait, 'change' => null];
     }
 
     $records = $result['details']['records'];
-    $counts = fn (?string $change) => ['details' => $result['details'] + ['confirmed' => $records, 'confirmed_domain' => $result['details']['domain']], 'wait' => DNS_INTERVAL_SECONDS, 'change' => $change];
+    $counts = fn (?string $change, array $since = []) => ['details' => $result['details'] + ['confirmed' => $records, 'confirmed_domain' => $result['details']['domain']] + $since, 'wait' => DNS_INTERVAL_SECONDS, 'change' => $change];
     if ($confirmed === null || ($before['confirmed_domain'] ?? null) !== $result['details']['domain']) return $counts('First check: ' . lcfirst($result['summary']));
-    if ($records === $confirmed) return $counts(null);
+    if ($records === $confirmed) return $counts(null, $since);
     if (($before['unconfirmed'] ?? false) && $records === ($before['records'] ?? null)) {
-        return $counts('Mail DNS changed: ' . implode('; ', dns_changes($confirmed, $records)));
+        $started = !dmarc_reports($records) ? [] : (dmarc_reports($confirmed) ? $since : ['reports_since' => utc_now($now)]);
+        return $counts('Mail DNS changed: ' . implode('; ', dns_changes($confirmed, $records)), $started);
     }
-    return ['details' => $result['details'] + ['confirmed' => $confirmed, 'confirmed_domain' => $before['confirmed_domain'], 'unconfirmed' => true], 'wait' => DNS_CONFIRM_SECONDS, 'change' => null];
+    return ['details' => $result['details'] + ['confirmed' => $confirmed, 'confirmed_domain' => $before['confirmed_domain'], 'unconfirmed' => true] + $since, 'wait' => DNS_CONFIRM_SECONDS, 'change' => null];
 }
 
 /**
