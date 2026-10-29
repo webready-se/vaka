@@ -217,6 +217,16 @@ function confirm_mail_dns(?array $before, array $result): array
     return ['details' => $result['details'] + ['confirmed' => $confirmed, 'confirmed_domain' => $before['confirmed_domain'], 'unconfirmed' => true], 'wait' => DNS_CONFIRM_SECONDS, 'change' => null];
 }
 
+/**
+ * The status of the records last confirmed, or null before the first. A
+ * change counts at its second look, and the first look already stored the
+ * new status, so this, not the stored status, is where a change came from.
+ */
+function dns_confirmed_status(?array $details): ?string
+{
+    return isset($details['confirmed'], $details['confirmed_domain']) ? evaluate_mail_dns($details['confirmed_domain'], $details['confirmed'])['status'] : null;
+}
+
 /** What changed between two sets of records, one line per record type: "MX now 10 b.example (was 10 a.example)". */
 function dns_changes(array $from, array $to): array
 {

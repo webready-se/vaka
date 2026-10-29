@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `share:create` shows the token once, in the two lines for the project's `.env`, then how to check that git ignores the file, a warning against the `PUBLIC_`, `VITE_` and `NEXT_PUBLIC_` prefixes (they put a variable in the code sent to browsers), and a curl command that loads the token from `.env`, so an AI assistant that runs it never sees the token. `docs/api.md` says the same.
 - A read token for one site answers `?api` with that site in detail, as `&site=` does, since it has nothing else to list; `&site=` still works. `?api&format=csv` with such a token gives its response times, where it gave a one-row list.
 
+### Fixed
+
+- A change in the security headers or the mail records was written in the history as coming from the status it went to ("ok -> ok: Grade E to B"), since the first look at the change had already stored the new status and the change counts at the second. It now comes from what was confirmed before ("warn -> ok"). Changes recorded before keep their old line.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added
