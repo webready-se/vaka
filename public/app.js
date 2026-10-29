@@ -1801,7 +1801,9 @@
             !good && item.tip ? h('p', { class: 'header-tip' }, item.tip) : null
           ])
         ]);
-      }))
+      })),
+      // Once under the list, while there is something to add
+      headers.tip && headers.items.some(function (item) { return item.level !== 'good'; }) ? h('p', { class: 'headers-tip' }, headers.tip) : null
     ]);
   }
 

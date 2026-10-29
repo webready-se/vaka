@@ -331,6 +331,7 @@ async function main() {
       expect([...(headerList?.querySelectorAll('code') || [])].some((c) => /^Content-Security-Policy:/.test(c.textContent)), 'a missing protection comes with the line that adds it');
       const nosniff = [...(headerList?.querySelectorAll('li') || [])].find((li) => /X-Content-Type-Options/.test(li.textContent));
       expect(/Weak/.test(nosniff?.textContent || '') && /a location with its own add_header/.test(nosniff?.textContent || ''), 'nosniff missing on the scripts and styles shows as weak, with where the line goes');
+      expect(all('dialog.drawer .headers-tip').length === 1 && /^Adding them in nginx\?/.test(q('dialog.drawer .headers-tip')?.textContent || ''), 'the detail says once, under the list, how to add the headers in nginx');
       expect(nosniff?.textContent.includes('/build/<img src=x onerror="window.__xss=4">.js') && window.__xss === undefined, 'a file name from the site shows as plain text');
       expect(all('dialog.drawer .headers-summary')[1]?.textContent === 'Mail for shop.example: SPF and DMARC in place', 'the detail says how the mail records are in words');
       expect(mailList?.querySelectorAll('li').length === 3 && /10 mx1\.mail\.example/.test(mailList.textContent), 'the detail lists MX, SPF and DMARC with what the domain has');
