@@ -14,12 +14,15 @@ const HSTS_MIN_SECONDS = 15552000;
 /** The protections that are graded, in the order they are shown: what each does, the header that adds it, and a tip. */
 const SECURITY_HEADERS = [
     'hsts' => ['label' => 'HSTS', 'what' => 'Makes browsers always use https for the site', 'fix' => 'Strict-Transport-Security: max-age=31536000', 'tip' => 'Add it once every page works over https.'],
-    'csp' => ['label' => 'CSP', 'what' => 'Limits which scripts may run: the main defence against injected scripts', 'fix' => "Content-Security-Policy: default-src 'self'", 'tip' => 'Try it as Content-Security-Policy-Report-Only first, to see what it would block.'],
+    'csp' => ['label' => 'CSP', 'what' => 'Limits which scripts may run: the main defence against injected scripts', 'fix' => "Content-Security-Policy-Report-Only: default-src 'self'", 'tip' => "Report-Only blocks nothing, so it is safe to try: open a few pages with the browser's console open, and it lists what the policy would block. Allow what the site needs (another host's scripts go in script-src, for example), then rename the header to Content-Security-Policy."],
     'nosniff' => ['label' => 'X-Content-Type-Options', 'what' => 'Stops browsers from guessing what a file is', 'fix' => 'X-Content-Type-Options: nosniff', 'tip' => ''],
     'frames' => ['label' => 'frame protection', 'what' => 'Stops other sites from showing this one in a frame to trick visitors into clicking', 'fix' => 'X-Frame-Options: SAMEORIGIN', 'tip' => "Or frame-ancestors 'self' in the CSP."],
     'referrer' => ['label' => 'Referrer-Policy', 'what' => 'Keeps full addresses, with search terms and tokens, from leaking to other sites', 'fix' => 'Referrer-Policy: strict-origin-when-cross-origin', 'tip' => ''],
     'permissions' => ['label' => 'Permissions-Policy', 'what' => 'Turns off browser features the site does not use, such as the camera and microphone', 'fix' => 'Permissions-Policy: camera=(), microphone=(), geolocation=()', 'tip' => ''],
 ];
+
+/** A CSP sent only as Report-Only: tried, not enforced. */
+const CSP_REPORT_ONLY_NOTE = 'only as Report-Only, which blocks nothing';
 
 /** How strong each level is, to tell worse from better. */
 const HEADER_LEVELS = ['missing' => 0, 'weak' => 1, 'good' => 2];
@@ -66,7 +69,7 @@ function header_level(string $key, array $headers, bool $https): array
 
         case 'csp':
             if (!$policies) {
-                return isset($headers['content-security-policy-report-only']) ? $result('missing', 'only as Report-Only, which blocks nothing') : $result('missing');
+                return isset($headers['content-security-policy-report-only']) ? $result('missing', CSP_REPORT_ONLY_NOTE) : $result('missing');
             }
             // Several policies all apply, so the strictest one counts
             $best = null;
@@ -181,6 +184,32 @@ function page_files(string $html, string $pageUrl): array
         if ($url !== null && own_host($url, $pageUrl)) $found[$kind] = $url;
     }
     return array_values(array_filter($found));
+}
+
+/**
+ * What a page has that a CSP of default-src 'self' would block: the inline
+ * scripts that would run (not a data block such as JSON-LD, nor an empty
+ * one) and the hosts of scripts from anywhere but the page's own host (a
+ * host under it too, unlike own_host(): 'self' is the page's host only).
+ * Read from the page's HTML, so scripts it adds later are not seen.
+ *
+ * @return array{inline: int, hosts: list<string>}
+ */
+function page_scripts(string $html, string $pageUrl): array
+{
+    preg_match_all('/<script\b([^>]*)>(.*?)<\/script\s*>/is', (string) preg_replace('/<!--.*?-->/s', '', $html), $scripts, PREG_SET_ORDER);
+    $inline = 0;
+    $hosts = [];
+    foreach ($scripts as [, $source, $body]) {
+        $attributes = html_attributes($source);
+        if (isset($attributes['src'])) {
+            $url = resolve_url($attributes['src'], $pageUrl);
+            if ($url !== null && url_host($url) !== url_host($pageUrl)) $hosts[url_host($url)] = true;
+        } elseif ($body !== '' && preg_match('/^(?:|module|importmap|speculationrules|.*(?:java|ecma)script.*)$/', strtolower(trim($attributes['type'] ?? '')))) {
+            $inline++;
+        }
+    }
+    return ['inline' => $inline, 'hosts' => array_keys($hosts)];
 }
 
 /** An HTML tag's attributes, name (lowercase) => value with entities decoded; the first of a name counts, as in browsers. */
@@ -319,6 +348,8 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     foreach (array_keys(SECURITY_HEADERS) as $key) $headers[$key] = header_level($key, $response['headers'], $https);
     $details = ['headers' => $headers];
     if ($files !== null && $headers['nosniff']['level'] === 'good') $details['files'] = $files;
+    // For the advice only, never the grade: what a first CSP would block on the page
+    if ($headers['csp']['level'] === 'missing') $details['scripts'] = page_scripts($response['body'] ?? '', $response['url']);
     $levels = header_levels($details);
     $grade = headers_grade($levels);
 
@@ -412,9 +443,38 @@ function header_items(array $details): array
                 ? ['level' => 'weak', 'note' => 'not on the scripts and styles the page loads: ' . list_words($missing), 'tip' => FILES_NOSNIFF_TIP] + $item
                 : ['note' => 'also on the scripts and styles the page loads'] + $item;
         }
+        if ($key === 'csp' && $item['level'] === 'missing') $item = csp_item($item, $details['scripts'] ?? null);
         $items[] = $item;
     }
     return $items;
+}
+
+/**
+ * The CSP item without a CSP in force. Sent only as Report-Only: enforce
+ * it once it is clean. Otherwise Report-Only to try first, and what the
+ * page has that default-src 'self' would block, so the line is not
+ * copied as it is onto a site it would break. No policy is built from
+ * the page: Vaka sees one page, and a hash for an inline script changes
+ * whenever the script does.
+ */
+function csp_item(array $item, ?array $scripts): array
+{
+    if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
+        return ['fix' => 'Content-Security-Policy: <the same policy>', 'tip' => "Rename Content-Security-Policy-Report-Only to Content-Security-Policy, keeping its policy, once the browser's console shows nothing it would block that the site needs."] + $item;
+    }
+    $inline = $scripts['inline'] ?? 0;
+    $hosts = $scripts['hosts'] ?? [];
+    $from = count($hosts) > 3 ? implode(', ', array_slice($hosts, 0, 3)) . ' and ' . (count($hosts) - 3) . ' more hosts' : list_words($hosts);
+    $note = match (true) {
+        $inline && $hosts => 'the page has ' . plural($inline, 'inline script', 'inline scripts') . " and scripts from {$from}",
+        $inline > 0 => 'the page has ' . plural($inline, 'inline script', 'inline scripts'),
+        $hosts !== [] => "the page loads scripts from {$from}",
+        default => '',
+    };
+    return [
+        'note' => $note !== '' ? "{$note}, which default-src 'self' would block" : $item['note'],
+        'tip' => $item['tip'] . ($inline ? " Inline scripts need a 'sha256-...' hash each in script-src, or a nonce: let the site's build add them, since a hash changes whenever the script does." : ''),
+    ] + $item;
 }
 
 /**

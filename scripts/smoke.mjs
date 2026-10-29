@@ -328,7 +328,7 @@ async function main() {
       expect(/Grade C: 4 of 6 in place, missing HSTS and CSP/.test(q('dialog.drawer .headers-summary')?.textContent || ''), 'the detail says the headers grade in words');
       const [headerList, mailList] = all('dialog.drawer .header-list');
       expect(headerList?.querySelectorAll('li').length === 6, 'the detail lists the six protections');
-      expect([...(headerList?.querySelectorAll('code') || [])].some((c) => /^Content-Security-Policy:/.test(c.textContent)), 'a missing protection comes with the line that adds it');
+      expect([...(headerList?.querySelectorAll('code') || [])].some((c) => /^Content-Security-Policy-Report-Only:/.test(c.textContent)), 'a missing protection comes with the line that adds it (a CSP to try first)');
       const nosniff = [...(headerList?.querySelectorAll('li') || [])].find((li) => /X-Content-Type-Options/.test(li.textContent));
       expect(/Weak/.test(nosniff?.textContent || '') && /a location with its own add_header/.test(nosniff?.textContent || ''), 'nosniff missing on the scripts and styles shows as weak, with where the line goes');
       expect(nosniff?.textContent.includes('/build/<img src=x onerror="window.__xss=4">.js') && window.__xss === undefined, 'a file name from the site shows as plain text');

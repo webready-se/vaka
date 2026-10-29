@@ -354,3 +354,56 @@ test('a header alert for the scripts and styles says where to look', function ()
         'If that was not on purpose, look at the last deploy, the web server or the CDN settings.',
     ]);
 });
+
+// =====================================================================
+// CSP: Report-Only first, and what the page has that it would block
+// =====================================================================
+
+test('page_scripts counts the inline scripts that would run and names the hosts other scripts come from', function () {
+    $html = '<!-- <script>old()</script> -->'
+        . '<script>document.documentElement.dataset.theme = localStorage.theme || "light"</script>'
+        . '<script type="module">import "/app.js"; if (a < b) start()</script>'
+        . '<script type="application/ld+json">{"@type": "Organization"}</script>'
+        . '<script></script>'
+        . '<script src="/app.js"></script>'
+        . '<script defer src="https://analytics.example/a.js"></script>'
+        . '<script src="//analytics.example/b.js"></script>'
+        . '<script src="https://static.shop.example/x.js"></script>'
+        . '<SCRIPT TYPE="text/javascript">track()</SCRIPT>';
+    expect(page_scripts($html, 'https://shop.example/'))->toBe(['inline' => 3, 'hosts' => ['analytics.example', 'static.shop.example']])
+        ->and(page_scripts('<script src="/app.js"></script><script src="https://shop.example/b.js"></script>', 'https://shop.example/'))->toBe(['inline' => 0, 'hosts' => []])
+        ->and(page_scripts('<script>a()</script>', 'http://127.0.0.1:8794/'))->toBe(['inline' => 1, 'hosts' => []])
+        ->and(page_scripts('<script src="http://127.0.0.1:5173/app.js"></script>', 'http://127.0.0.1:8794/'))->toBe(['inline' => 0, 'hosts' => ['127.0.0.1:5173']]);
+});
+
+test('without a CSP, the suggestion is Report-Only, and the note says what default-src self would block on the page', function () {
+    $csp = fn (array $response) => array_values(array_filter(header_items(evaluate_headers($response, 10)['details']), fn ($item) => $item['key'] === 'csp'))[0];
+    $page = fn (string $body, array $headers = []) => ['body' => $body] + answered($headers + ['X-Frame-Options' => 'DENY']);
+
+    $plain = $csp($page('<script src="/app.js"></script>'));
+    expect($plain['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'")
+        ->and($plain['note'])->toBe('')
+        ->and($plain['tip'])->toContain("open a few pages with the browser's console open")
+        ->and($plain['tip'])->toContain('rename the header to Content-Security-Policy')
+        ->and($plain['tip'])->not->toContain('sha256');
+
+    $both = $csp($page('<script>theme()</script><script type="module">go()</script><script src="https://analytics.example/a.js"></script>'));
+    expect($both['note'])->toBe("the page has 2 inline scripts and scripts from analytics.example, which default-src 'self' would block")
+        ->and($both['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'")
+        ->and($both['tip'])->toContain("'sha256-...'")
+        ->and($both['tip'])->toContain('changes whenever the script does');
+
+    expect($csp($page('<script>theme()</script>'))['note'])->toBe("the page has 1 inline script, which default-src 'self' would block")
+        ->and($csp($page('<script src="https://a.example/1.js"></script><script src="https://b.example/2.js"></script><script src="https://c.example/3.js"></script><script src="https://d.example/4.js"></script><script src="https://e.example/5.js"></script>'))['note'])
+        ->toBe("the page loads scripts from a.example, b.example, c.example and 2 more hosts, which default-src 'self' would block");
+
+    // Already there as Report-Only: the step after is to enforce it
+    $trying = $csp($page('<script>theme()</script>', ['Content-Security-Policy-Report-Only' => "default-src 'self'"]));
+    expect($trying['note'])->toBe('only as Report-Only, which blocks nothing')
+        ->and($trying['fix'])->toBe('Content-Security-Policy: <the same policy>')
+        ->and($trying['tip'])->toContain("once the browser's console shows nothing it would block that the site needs");
+
+    // A CSP in place says nothing about the page's scripts, and stores none
+    $enforced = evaluate_headers($page('<script>theme()</script>', ['Content-Security-Policy' => "script-src 'self' 'sha256-abc'"]), 10);
+    expect($enforced['details'])->not->toHaveKey('scripts');
+});
