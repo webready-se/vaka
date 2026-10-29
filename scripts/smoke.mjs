@@ -339,6 +339,27 @@ async function main() {
       q('dialog.drawer [data-action="recheck"]').click();
       await waitFor(() => /Checking/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || '') && q('dialog.drawer [data-action="recheck"]').disabled, 'Check again to say it is checking');
       expect(/Checking shop\.example again/.test(q('.toast')?.textContent || ''), 'Check again says when the results come');
+      expect(/^Checked \d/.test(q('dialog.drawer .fact-when')?.textContent || ''), 'the response time says when uptime was checked');
+      // As if the next run had come: first one check has run again, then all of them
+      const realFetch = window.fetch;
+      const later = new Date(Date.now() + 60000).toISOString();
+      let ran = ['ssl'];
+      window.fetch = (url, options) => realFetch(url, options).then((response) => {
+        if (!/[?&]api=site&id=1$/.test(String(url))) return response;
+        return response.json().then((data) => {
+          if (ran.includes('uptime')) data.site.checked_at = later;
+          ['ssl', 'domain', 'exposed', 'headers', 'dns'].forEach((key) => { if (data.site[key]?.checked_at && ran.includes(key)) data.site[key].checked_at = later; });
+          return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        });
+      });
+      const shopRow = () => all('.site-row').find((r) => /shop\.example/.test(r.textContent));
+      shopRow().click();
+      await waitFor(() => /^Checking… 1 of \d done$/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to say how many checks have run again');
+      ran = ['uptime', 'ssl', 'domain', 'exposed', 'headers', 'dns'];
+      shopRow().click();
+      await waitFor(() => /^Checked again \d/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to say when every check had run again');
+      expect(!q('dialog.drawer [data-action="recheck"]').disabled && /^Every check of shop\.example ran again$/.test(q('.toast')?.textContent || ''), 'once all have run, the button can be pressed again, and a message says so');
+      window.fetch = realFetch;
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
       expect(!q('dialog.drawer[open]') && location.hash === '', 'closing the detail closes it and its address');

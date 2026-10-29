@@ -180,6 +180,11 @@
     return count + ' ' + (count === 1 ? one : many);
   }
 
+  /** "a, b and c", as list_words() in PHP. */
+  function listWords(words) {
+    return words.length > 1 ? words.slice(0, -1).join(', ') + ' and ' + words[words.length - 1] : words.join('');
+  }
+
   /** A length of time the way a person says it (as human_duration() in PHP). */
   function duration(seconds) {
     if (seconds < 60) return 'less than a minute';
@@ -934,6 +939,7 @@
     if (window.location.hash !== '#site-' + id) history.replaceState(null, '', '#site-' + id);
     return api('/?api=site&id=' + encodeURIComponent(id)).then(function (detail) {
       state.detail = detail;
+      settleRecheck(detail.site);
       renderDetail();
       if (!regions.detail.open) regions.detail.showModal();
     }).catch(function (error) {
@@ -943,6 +949,8 @@
   }
 
   function closeDetail() {
+    clearTimeout(state.recheck && state.recheck.timer);
+    state.recheck = null;
     state.detailId = null;
     state.detail = null;
     state.form = null;
@@ -982,13 +990,15 @@
       site.exposed && site.exposed.advice ? advice(site.exposed.summary + '. ' + site.exposed.advice) : null,
       badges(site),
       h('div', { class: 'actions' }, siteActions(site, true).filter(function (n) { return n.getAttribute('data-action') !== 'open'; }).concat(recheckButton(site))),
+      recheckNote(site),
       h('dl', { class: 'facts' }, [
         ['Up, 24 hours', percent(d.uptime['24h'])],
         ['Up, 7 days', percent(d.uptime['7d'])],
         ['Up, 30 days', percent(d.uptime['30d'])],
-        ['Response now', site.ms !== null ? site.ms + ' ms' : '–']
+        // When, like the tiles below, so a response time from a while ago is not taken for one from just now
+        ['Response now', site.ms !== null ? site.ms + ' ms' : '–', site.checked_at ? 'Checked ' + clock(site.checked_at) : null]
       ].map(function (fact) {
-        return h('div', { class: 'fact' }, [h('dt', {}, fact[0]), h('dd', {}, fact[1])]);
+        return h('div', { class: 'fact' }, [h('dt', {}, fact[0]), h('dd', {}, fact[1]), fact[2] ? h('dd', { class: 'fact-when' }, fact[2]) : null]);
       })),
       h('h3', {}, 'Last 30 days'),
       dayStrip(d.days, paused),
@@ -1010,11 +1020,63 @@
     ]));
   }
 
-  /** "Check again" after a fix: every check of the site runs on Vaka's next run, within a minute. */
+  /**
+   * "Check again" after a fix: every check of the site runs on Vaka's next
+   * run, within a minute. While it waits, how many have run again; once all
+   * have, when (see settleRecheck()).
+   */
   function recheckButton(site) {
     if (site.status === 'paused') return [];
-    var busy = state.recheck && state.recheck.id === site.id;
-    return [h('button', { type: 'button', class: 'button', 'data-action': 'recheck', 'data-site': site.id, disabled: busy ? '' : null, 'aria-label': busy ? 'Checking ' + site.label + ' again' : 'Check ' + site.label + ' again now' }, [icon('pending'), busy ? 'Checking…' : 'Check again'])];
+    var current = state.recheck && state.recheck.id === site.id ? state.recheck : null;
+    if (current && current.done) {
+      return [h('button', { type: 'button', class: 'button is-done', 'data-action': 'recheck', 'data-site': site.id, 'aria-label': 'Checked ' + site.label + ' again at ' + clock(current.done) + '. Check it again now' }, [icon('up'), 'Checked again ' + clock(current.done)])];
+    }
+    var busy = current && !current.left;
+    var total = current ? Object.keys(current.before).length : 0;
+    var ran = busy && total ? total - recheckLeft(current, site).length : 0;
+    var words = !busy ? 'Check again' : ran ? 'Checking… ' + ran + ' of ' + total + ' done' : 'Checking…';
+    return [h('button', { type: 'button', class: 'button', 'data-action': 'recheck', 'data-site': site.id, disabled: busy ? '' : null, 'aria-label': busy ? 'Checking ' + site.label + ' again' : 'Check ' + site.label + ' again now' }, [icon('pending'), words])];
+  }
+
+  /** After three minutes of waiting, the checks that have not run again yet, and why they may wait. */
+  function recheckNote(site) {
+    var current = state.recheck && state.recheck.id === site.id ? state.recheck : null;
+    if (!current || !current.left || !current.left.length) return null;
+    var why = site.status === 'down' || site.status === 'failing' ? 'They wait while the site does not answer.' : 'They are still due, so one of the next runs takes them.';
+    return h('p', { class: 'recheck-note' }, 'Not checked again yet: ' + listWords(current.left) + '. ' + why);
+  }
+
+  // The checks "Check again" waits for, by their key in the site and in plain words
+  var RECHECKED = [['uptime', 'uptime'], ['ssl', 'certificate'], ['domain', 'domain'], ['exposed', 'exposed files'], ['headers', 'security headers'], ['dns', 'mail']];
+
+  /** When each check of a site last ran, for those that are on and have run. */
+  function checkTimes(site) {
+    var times = {};
+    RECHECKED.forEach(function (check) {
+      if ((site.checks_off || []).indexOf(check[0]) !== -1) return;
+      var at = check[0] === 'uptime' ? site.checked_at : site[check[0]] && site[check[0]].checked_at;
+      if (at) times[check[0]] = at;
+    });
+    return times;
+  }
+
+  /** The checks whose time has not moved since "Check again" was pressed, in plain words. */
+  function recheckLeft(current, site) {
+    var now = checkTimes(site);
+    return RECHECKED.filter(function (check) {
+      return current.before[check[0]] !== undefined && now[check[0]] === current.before[check[0]];
+    }).map(function (check) { return check[1]; });
+  }
+
+  /** With a fresh detail: once every check has run again, say so, and stop looking. */
+  function settleRecheck(site) {
+    var current = state.recheck;
+    if (!current || current.id !== Number(site.id) || current.done || current.left || !Object.keys(current.before).length) return;
+    if (recheckLeft(current, site).length) return;
+    var times = checkTimes(site);
+    current.done = Object.keys(times).map(function (key) { return times[key]; }).sort().pop();
+    clearTimeout(current.timer);
+    toast('Every check of ' + site.label + ' ran again');
   }
 
   var TILE_ICONS = { ok: 'up', warn: 'failing', down: 'down', none: 'info' };
@@ -1944,25 +2006,30 @@
    */
   function recheck(id, button) {
     if (button) button.disabled = true;
+    // What to compare with: a check has run again once its time has moved
+    var before = state.detail && Number(state.detail.site.id) === Number(id) ? checkTimes(state.detail.site) : {};
     return api('/?api=site-recheck', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
       body: JSON.stringify({ site_id: Number(id) })
     }).then(function (result) {
       toast('Checking ' + result.site.label + ' again: the results come within a minute');
-      var rounds = 0;
       clearTimeout(state.recheck && state.recheck.timer);
-      state.recheck = { id: Number(id) };
+      var current = state.recheck = { id: Number(id), before: before, rounds: 0 };
+      // Every 30 seconds for three minutes, until every check has run again
       var look = function () {
-        rounds++;
-        if (rounds >= 6) state.recheck = null;
+        if (state.recheck !== current || current.done) return;
         if (state.detailId === null || Number(state.detailId) !== Number(id)) { state.recheck = null; return; }
+        current.rounds++;
         openDetail(id).then(function () {
-          if (state.recheck) state.recheck.timer = setTimeout(look, 30000);
+          if (state.recheck !== current || current.done) return;
+          if (current.rounds < 6) { current.timer = setTimeout(look, 30000); return; }
+          current.left = state.detail ? recheckLeft(current, state.detail.site) : [];
+          renderDetail();
         });
       };
       if (state.detailId !== null) openDetail(id);
-      state.recheck.timer = setTimeout(look, 30000);
+      current.timer = setTimeout(look, 30000);
     }).catch(function (error) {
       if (error.message !== 'Logged out') toast(error.message);
       if (button) button.disabled = false;
