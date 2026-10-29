@@ -25,6 +25,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `share:create` shows the token once, in the two lines for the project's `.env`, then how to check that git ignores the file, a warning against the `PUBLIC_`, `VITE_` and `NEXT_PUBLIC_` prefixes (they put a variable in the code sent to browsers), and a curl command that loads the token from `.env`, so an AI assistant that runs it never sees the token. `docs/api.md` says the same.
 - A read token for one site answers `?api` with that site in detail, as `&site=` does, since it has nothing else to list; `&site=` still works. `?api&format=csv` with such a token gives its response times, where it gave a one-row list.
 
+### Fixed
+
+- A DMARC record with `p=none` and no `rua`, on a domain that sends email, was told to move to `p=quarantine` once the reports looked right, but without `rua` no reports ever come. It is now told to add `rua` first and keep `p=none`, then to move to `p=quarantine` (keeping `rua`) once the reports show that its own email passes, a contact form's too. Jumping to `p=quarantine` blind can send the site's own email to spam.
+
 ## [0.2.0] - 2026-10-28
 
 ### Added
