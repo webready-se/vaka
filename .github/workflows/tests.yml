@@ -3,16 +3,25 @@ name: Tests
 on:
   push:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
   pull_request:
     branches: [main]
+    paths-ignore: ['**.md', 'docs/**']
+
+# A new push stops the run of the one before it
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
     runs-on: ubuntu-latest
 
+    # While the repository is private, one PHP version: the one the install runs.
+    # The matrix (8.3, 8.4, 8.5) comes back when it is public, for self-hosters.
     strategy:
       matrix:
-        php: ['8.3', '8.4', '8.5']
+        php: ['8.5']
 
     name: PHP ${{ matrix.php }}
 
