@@ -204,3 +204,29 @@ test('response time buckets: the average per hour, and how many checks were up',
         ['ms' => 200, 'up' => 1.0],
     ]);
 });
+
+test('response time buckets for every site in one query come out the same as counted one by one', function () {
+    $db = get_db(temp_dir() . '/vaka.sqlite');
+    $shop = add_site($db, ['url' => 'https://shop.example']);
+    $blog = add_site($db, ['url' => 'https://blog.example']);
+    $quiet = add_site($db, ['url' => 'https://quiet.example']);
+    $now = strtotime('2026-10-25T12:00:00Z');
+    $samples = [
+        $shop => [['2026-10-25T11:10:00Z', 100, 1], ['2026-10-25T11:50:00Z', 301, 1], ['2026-10-25T09:30:00Z', 0, 0], ['2026-10-25T09:35:00Z', 180, 1]],
+        // One just before the 4 hours, one on their first second
+        $blog => [['2026-10-25T07:59:59Z', 999, 1], ['2026-10-25T08:00:00Z', 250, 1], ['2026-10-25T10:05:00Z', 0, 0]],
+    ];
+    $insert = $db->prepare('INSERT INTO samples (site_id, checked_at, status_code, ms, ok, ip) VALUES (?, ?, ?, ?, ?, ?)');
+    foreach ($samples as $site => $rows) {
+        foreach ($rows as [$at, $ms, $ok]) $insert->execute([$site, $at, $ok ? 200 : 503, $ms, $ok, '192.0.2.10']);
+    }
+    $one = fn (int $site) => hourly_buckets(array_map(fn ($row) => ['checked_at' => $row[0], 'ms' => $row[1], 'ok' => $row[2]], $samples[$site]), $now, 4);
+
+    $buckets = hourly_buckets_by_site($db, [$shop, $blog, $quiet], $now, 4);
+    expect($buckets[$shop])->toBe($one($shop))
+        ->and($buckets[$shop][3])->toBe(['ms' => 201, 'up' => 1.0])
+        ->and($buckets[$blog])->toBe($one($blog))
+        // A site without samples is left out: the caller has its empty hours
+        ->and($buckets)->not->toHaveKey($quiet)
+        ->and(hourly_buckets_by_site($db, [], $now, 4))->toBe([]);
+});

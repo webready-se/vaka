@@ -118,7 +118,8 @@ function daily_uptime(PDO $db, array $site, int $now, int $days, string $timezon
     $status = $before->fetchColumn() ?: 'ok';
     $events = $db->prepare("SELECT status, created_at FROM events WHERE site_id = ? AND check_name = 'uptime' AND status IN ('ok', 'fail') AND created_at >= ? AND created_at < ? ORDER BY created_at, id");
     $events->execute([$site['id'], utc_now($first->getTimestamp()), utc_now($now)]);
-    $events = $events->fetchAll();
+    // Each event's time read once, not once for every day
+    $events = array_map(fn ($event) => $event + ['at' => strtotime($event['created_at'])], $events->fetchAll());
     $windows = site_windows($db, $site);
 
     $result = [];
@@ -132,9 +133,8 @@ function daily_uptime(PDO $db, array $site, int $now, int $days, string $timezon
         $inDay = [];
         $statusAtStart = $status;
         foreach ($events as $event) {
-            $at = strtotime($event['created_at']);
-            if ($at < $from) $statusAtStart = $event['status'];
-            elseif ($at < $to) $inDay[] = $event;
+            if ($event['at'] < $from) $statusAtStart = $event['status'];
+            elseif ($event['at'] < $to) $inDay[] = $event;
         }
         $down = down_periods($inDay, $statusAtStart, $from, $to);
         $cover = planned_periods($windows, $from, $to, $timezone);
@@ -163,7 +163,8 @@ function hourly_buckets(array $samples, int $now, int $hours): array
     $start = $now - $hours * 3600;
     $buckets = array_fill(0, $hours, ['ms' => [], 'checks' => 0, 'ups' => 0]);
     foreach ($samples as $sample) {
-        $i = intdiv(strtotime($sample['checked_at']) - $start, 3600);
+        // floor, not intdiv: a sample a second before the start is not in the first hour
+        $i = (int) floor((strtotime($sample['checked_at']) - $start) / 3600);
         if ($i < 0 || $i >= $hours) continue;
         $buckets[$i]['checks']++;
         if ($sample['ok']) {
@@ -175,4 +176,39 @@ function hourly_buckets(array $samples, int $now, int $hours): array
         'ms' => $b['ms'] ? (int) round(array_sum($b['ms']) / count($b['ms'])) : null,
         'up' => $b['checks'] ? round($b['ups'] / $b['checks'], 4) : null,
     ], $buckets);
+}
+
+/**
+ * hourly_buckets() for many sites at once, counted by SQLite. The overview
+ * needs the last day of every site, some 14 000 samples for 50 sites, and
+ * reading each one's time in PHP was most of its time. A site without
+ * samples is left out.
+ *
+ * @param list<int> $siteIds
+ * @return array<int, list<array{ms: ?int, up: ?float}>>
+ */
+function hourly_buckets_by_site(PDO $db, array $siteIds, int $now, int $hours): array
+{
+    if (!$siteIds) return [];
+    $start = $now - $hours * 3600;
+    $stmt = $db->prepare("SELECT site_id, (CAST(strftime('%s', checked_at) AS INTEGER) - :start) / 3600 AS bucket,
+            COUNT(*) AS checks, SUM(ok) AS ups, AVG(CASE WHEN ok = 1 THEN ms END) AS ms
+        FROM samples WHERE checked_at >= :from AND site_id IN (" . implode(', ', array_map('intval', $siteIds)) . ')
+        GROUP BY site_id, bucket');
+    $stmt->bindValue(':start', $start, PDO::PARAM_INT);
+    $stmt->bindValue(':from', utc_now($start));
+    $stmt->execute();
+
+    $empty = array_fill(0, $hours, ['ms' => null, 'up' => null]);
+    $buckets = [];
+    foreach ($stmt->fetchAll() as $row) {
+        $i = (int) $row['bucket'];
+        if ($i < 0 || $i >= $hours) continue;
+        $buckets[$row['site_id']] ??= $empty;
+        $buckets[$row['site_id']][$i] = [
+            'ms' => $row['ms'] !== null ? (int) round((float) $row['ms']) : null,
+            'up' => round($row['ups'] / $row['checks'], 4),
+        ];
+    }
+    return $buckets;
 }
