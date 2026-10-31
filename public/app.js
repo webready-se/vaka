@@ -2291,6 +2291,9 @@
   // =================================================================
 
   applyTheme(currentTheme());
+  // The loading panel gets its moon and owl at once, before the overview comes
+  var perch = document.querySelector('[data-perch]');
+  if (perch) append(perch, [moon(Date.now()), owl(false)]);
   load().then(function () {
     var match = /^#site-(\d+)$/.exec(window.location.hash);
     if (match) openDetail(match[1]);
