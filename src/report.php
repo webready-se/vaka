@@ -130,7 +130,9 @@ function md_improvements(array $site, array $config, int $now): array
         $items[] = ['title' => "Security headers: grade {$headers['grade']}", 'text' => rtrim($headers['summary'] . '. ' . md_checked($headers, $config, $now, false), '. ') . '.'
             . (($headers['tip'] ?? '') !== '' ? ' ' . md_own($headers['tip']) : ''), 'lines' => array_map(fn (array $item) => "- **{$item['label']}** is {$item['level']}"
             . ($item['note'] !== '' ? ': ' . md_code($item['note']) : '') . '. What it does: ' . lcfirst($item['what']) . '. Add ' . md_code($item['fix']) . '.'
-            . ($item['tip'] !== '' ? ' ' . md_own($item['tip']) : ''), $weak)];
+            . ($item['tip'] !== '' ? ' ' . md_own($item['tip']) : '')
+            // The inline scripts a CSP would block, by their start: text from the site
+            . (($item['inline'] ?? []) ? ' The inline scripts start: ' . implode(', ', array_map('md_code', $item['inline'])) . '.' : ''), $weak)];
     }
     $dns = $site['dns'];
     $missing = array_values(array_filter($dns['items'] ?? [], fn (array $item) => in_array($item['level'], ['weak', 'missing'], true)));

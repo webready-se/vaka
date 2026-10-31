@@ -1862,32 +1862,47 @@
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
-  /** The six protections: in place, weak or missing, what each does, and the line that adds it. */
+  /**
+   * The six protections, in the order to add them (the safest first, CSP last):
+   * what is missing or weak, with why and the line that adds it; what each does
+   * and how to add it one click away. What is in place is one line.
+   */
   function headerList(headers) {
     if (!headers) return h('p', { class: 'chart-note' }, 'Not checked yet.');
     if (!headers.items || !headers.items.length) return h('p', { class: 'chart-note' }, headers.summary);
-    var words = { good: 'In place', weak: 'Weak', missing: 'Missing' };
-    var icons = { good: 'up', weak: 'failing', missing: 'down' };
+    var words = { weak: 'Weak', missing: 'Missing' };
+    var todo = headers.items.filter(function (item) { return item.level !== 'good'; });
+    var done = headers.items.filter(function (item) { return item.level === 'good'; });
     return h('div', {}, [
       h('p', { class: 'headers-summary' }, headers.summary),
-      h('ul', { class: 'header-list' }, headers.items.map(function (item) {
-        var good = item.level === 'good';
+      todo.length > 1 ? h('p', { class: 'headers-lead' }, 'Start at the top: the safest come first.') : null,
+      todo.length ? h('ul', { class: 'header-list' }, todo.map(function (item) {
+        // The one that can break a site, said where it is not the only thing to do
+        var last = item.key === 'csp' && item.level === 'missing' && todo.length > 1;
         return h('li', { class: 'is-' + item.level }, [
-          icon(icons[item.level]),
+          icon(item.level === 'weak' ? 'failing' : 'down'),
           h('div', {}, [
-            h('p', {}, [
-              h('b', {}, capitalize(item.label)),
-              good ? h('span', { class: 'visually-hidden' }, ': ' + words.good) : h('span', { class: 'header-level' }, ' · ' + words[item.level])
-            ]),
-            h('p', { class: 'header-what' }, item.what),
+            h('p', {}, [h('b', {}, capitalize(item.label)), h('span', { class: 'header-level' }, ' · ' + words[item.level] + (last ? ' · do it last, it can break the site' : ''))]),
             item.note ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
-            good ? null : h('code', {}, item.fix),
-            !good && item.tip ? h('p', { class: 'header-tip' }, item.tip) : null
+            h('code', {}, item.fix),
+            h('details', { class: 'header-more' }, [
+              h('summary', {}, [icon('chevron'), item.inline ? 'What it does, the scripts it would block, how to add it' : 'What it does and how to add it']),
+              h('p', { class: 'header-what' }, item.what),
+              item.tip ? h('p', { class: 'header-tip' }, item.tip) : null,
+              item.inline ? h('div', { class: 'header-scripts' }, [
+                h('p', {}, 'The inline scripts on the page start:'),
+                h('ul', {}, item.inline.map(function (start) { return h('li', {}, h('code', {}, start)); }))
+              ]) : null
+            ])
           ])
         ]);
-      })),
+      })) : null,
+      done.length ? h('p', { class: 'headers-done' }, [icon('up'), h('span', {}, 'In place: ' + done.map(function (item) { return item.label; }).join(', '))]) : null,
       // Once under the list, while there is something to add
-      headers.tip && headers.items.some(function (item) { return item.level !== 'good'; }) ? h('p', { class: 'headers-tip' }, headers.tip) : null
+      headers.tip && todo.length ? h('details', { class: 'headers-tip' }, [
+        h('summary', {}, [icon('chevron'), 'Adding them in nginx']),
+        h('p', {}, headers.tip.replace(/^Adding them in nginx\? /, ''))
+      ]) : null
     ]);
   }
 
