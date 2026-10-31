@@ -150,3 +150,11 @@ test('clock times follow TIME_FORMAT', function () {
         ->and(hhmm_text('07:00', '12h'))->toBe('7:00 AM')
         ->and(hhmm_text('07:00', '24h'))->toBe('07:00');
 });
+
+test('Vaka\'s requests call it VakaBot, so log filters and analytics count it as a bot', function () {
+    $config = ['user_agent' => '', 'app_url' => ''];
+    expect(user_agent($config))->toBe('VakaBot/' . VAKA_VERSION . ' (+https://github.com/webready-se/vaka)')
+        // The page that says what it does: the operator's own, when APP_URL is set
+        ->and(user_agent(['app_url' => 'https://vaka.example'] + $config))->toBe('VakaBot/' . VAKA_VERSION . ' (+https://vaka.example)')
+        ->and(user_agent(['user_agent' => 'Monitor/1.0'] + $config))->toBe('Monitor/1.0');
+});

@@ -94,9 +94,14 @@ function fetch_many(array $urls, int $timeout, string $userAgent, int $concurren
     return $results;
 }
 
-/** The User-Agent for every request Vaka makes. */
+/**
+ * The User-Agent for every request Vaka makes: "Bot" in the name is what
+ * analytics, log filters and web server bot rules look for, so the checks
+ * are counted as a robot's without anyone knowing Vaka. The address is
+ * where someone who finds it in a log can read what it does.
+ */
 function user_agent(array $config): string
 {
     if ($config['user_agent'] !== '') return $config['user_agent'];
-    return 'Vaka/' . VAKA_VERSION . ' (+' . ($config['app_url'] ?: 'https://github.com/webready-se/vaka') . ')';
+    return 'VakaBot/' . VAKA_VERSION . ' (+' . ($config['app_url'] ?: 'https://github.com/webready-se/vaka') . ')';
 }
