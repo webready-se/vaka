@@ -1,7 +1,7 @@
 <?php
 
 /** Scripts and styles from our own files only: no inline script, no inline style. */
-const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
+const CSP = "default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'";
 
 /** /?health reports a stopped cron when the last run is older than this. */
 const STALE_RUN_SECONDS = 300;
@@ -24,6 +24,27 @@ function security_headers(array $server): array
     ];
     if (is_https($server)) $headers['Strict-Transport-Security'] = 'max-age=31536000';
     return $headers;
+}
+
+/** The web app manifest: Vaka's name and home screen icon, opening on its own like an app. */
+function web_manifest(): string
+{
+    return (string) json_encode([
+        'name' => 'Vaka',
+        'short_name' => 'Vaka',
+        'description' => 'Keeps watch while you sleep.',
+        'start_url' => '/',
+        'scope' => '/',
+        'display' => 'standalone',
+        'background_color' => '#0f172a',
+        'theme_color' => '#0f172a',
+        'icons' => [
+            ['src' => '/icon-192.png', 'sizes' => '192x192', 'type' => 'image/png'],
+            ['src' => '/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png'],
+            // A square tile with the owl inside the round safe zone, so a phone's mask may cut it to any shape
+            ['src' => '/icon-512.png', 'sizes' => '512x512', 'type' => 'image/png', 'purpose' => 'maskable'],
+        ],
+    ], JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES);
 }
 
 function respond(int $status, string $body, string $type, array $headers = []): never
@@ -58,6 +79,8 @@ function handle_request(array $config): never
 
     if ($path !== '/' && $path !== '/index.php') respond(404, 'Not found', 'text/plain; charset=utf-8');
     if (isset($_GET['health'])) health($config, $now);
+    // For adding Vaka to a phone's home screen; browsers fetch it without cookies, so it needs no login
+    if (isset($_GET['manifest'])) respond(200, web_manifest(), 'application/manifest+json', ['Cache-Control' => 'public, max-age=86400']);
     // The read API with a token needs no session (and sets no cookie)
     $readApi = ($_GET['api'] ?? null) === '';
     if ($readApi && ($token = share_token_from_request($_GET, $_SERVER)) !== '') {
@@ -192,6 +215,10 @@ function show_login(array $config, ?string $error = null): never
     <meta name="theme-color" content="#0f172a">
     <title>Log in to Vaka</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
+    <link rel="manifest" href="/?manifest">
+    <link rel="apple-touch-icon" href="/icon-180.png">
+    <meta name="mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-title" content="Vaka">
     <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
     <link rel="stylesheet" href="app.css?v={$version}">
     </head>

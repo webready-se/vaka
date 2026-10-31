@@ -54,13 +54,34 @@ test('health says whether the checks are running', function () {
 });
 
 test('every page sends strict security headers', function () {
-    foreach (['/?login', '/', '/?health', '/?api=overview'] as $path) {
+    foreach (['/?login', '/', '/?health', '/?api=overview', '/?manifest'] as $path) {
         $headers = http_request('GET', WEB . $path)['headers'];
-        expect($headers['content-security-policy'] ?? '')->toBe("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+        expect($headers['content-security-policy'] ?? '')->toBe("default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
             ->and($headers['x-content-type-options'] ?? '')->toBe('nosniff')
             ->and($headers['x-frame-options'] ?? '')->toBe('DENY')
             ->and($headers['referrer-policy'] ?? '')->toBe('no-referrer')
             ->and($headers['permissions-policy'] ?? '')->toContain('camera=()');
+    }
+});
+
+test('Vaka can be added to a phone\'s home screen with its own icon, from the login page or the dashboard', function () {
+    // Browsers fetch the manifest without cookies, so it needs no login
+    $r = http_request('GET', WEB . '/?manifest');
+    expect($r['status'])->toBe(200)
+        ->and($r['headers']['content-type'] ?? '')->toContain('application/manifest+json')
+        ->and($r['json'])->toMatchArray(['name' => 'Vaka', 'short_name' => 'Vaka', 'start_url' => '/', 'display' => 'standalone'])
+        ->and(array_column($r['json']['icons'], 'src'))->toBe(['/icon-192.png', '/icon-512.png', '/icon-512.png']);
+    foreach ([180, 192, 512] as $size) {
+        $file = dirname(__DIR__, 2) . "/public/icon-{$size}.png";
+        expect(getimagesize($file))->toMatchArray([0 => $size, 1 => $size, 'mime' => 'image/png']);
+    }
+
+    $login = http_request('GET', WEB . '/?login')['body'];
+    $dashboard = http_request('GET', WEB . '/', ['jar' => ($this->login)('admin', 'admin password')['jar']])['body'];
+    foreach ([$login, $dashboard] as $page) {
+        expect($page)->toContain('<link rel="manifest" href="/?manifest">')
+            ->and($page)->toContain('<link rel="apple-touch-icon" href="/icon-180.png">')
+            ->and($page)->toContain('<meta name="apple-mobile-web-app-title" content="Vaka">');
     }
 });
 
