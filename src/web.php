@@ -441,8 +441,8 @@ function overview_rows(PDO $db, string $where): array
     return sort_sites($rows);
 }
 
-/** One site as the dashboard shows it. */
-function site_summary(PDO $db, array $config, array $row, array $labels, array $windows, array $samples, int $now): array
+/** One site as the dashboard shows it. $hours: its last 24 hours from hourly_buckets(), or [] for none. */
+function site_summary(PDO $db, array $config, array $row, array $labels, array $windows, array $hours, int $now): array
 {
     $details = json_decode((string) ($row['details'] ?? '{}'), true) ?: [];
     $status = match (true) {
@@ -551,19 +551,14 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'uptime_24h' => site_uptime($db, $row, 86400, $now, $config['timezone']),
         'uptime_30d' => site_uptime($db, $row, 30 * 86400, $now, $config['timezone']),
         'days' => daily_uptime($db, $row, $now, 30, $config['timezone']),
-        'hours' => hourly_buckets($samples, $now, 24),
+        'hours' => $hours ?: hourly_buckets([], $now, 24),
     ];
 }
 
 function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
 {
     $rows = overview_rows($db, group_filter($allowed));
-    $samples = [];
-    if ($rows) {
-        $stmt = $db->prepare('SELECT site_id, checked_at, ms, ok FROM samples WHERE checked_at >= ? AND site_id IN (' . implode(', ', array_map('intval', array_column($rows, 'id'))) . ')');
-        $stmt->execute([utc_now($now - 86400)]);
-        foreach ($stmt->fetchAll() as $sample) $samples[$sample['site_id']][] = $sample;
-    }
+    $hours = hourly_buckets_by_site($db, array_column($rows, 'id'), $now, 24);
     $labels = server_labels($db);
     $windows = load_windows($db, $now);
 
@@ -576,7 +571,7 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
         }
     }
     foreach ($rows as $row) {
-        $site = site_summary($db, $config, $row, $labels, $windows, $samples[$row['id']] ?? [], $now);
+        $site = site_summary($db, $config, $row, $labels, $windows, $hours[$row['id']] ?? [], $now);
         $totals['sites']++;
         $totals[$site['status']]++;
         $key = $row['group_id'] ?? 'none';
@@ -637,7 +632,7 @@ function api_site(PDO $db, array $config, array $row, int $now): array
     $events->execute([$row['id']]);
 
     $windows = load_windows($db, $now);
-    $site = site_summary($db, $config, $row, server_labels($db), $windows, $samples, $now);
+    $site = site_summary($db, $config, $row, server_labels($db), $windows, hourly_buckets($samples, $now, 24), $now);
     if ($site['headers'] !== null) $site['headers'] += ['items' => header_items(json_decode((string) $row['headers_details'], true) ?: []), 'tip' => HEADERS_NGINX_TIP];
     if ($site['dns'] !== null) $site['dns']['items'] = dns_items(json_decode((string) $row['dns_details'], true) ?: [], $now, $config['timezone']);
 

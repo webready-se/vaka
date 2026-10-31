@@ -42,4 +42,4 @@ The login is always night too: the first thing anyone sees of Vaka.
 
 ## Motion
 
-Little, and only where it means something: the live dot in the top bar pulses while checks run, the owl blinks now and then, the site detail slides in. All of it stops for people who prefer reduced motion.
+Little, and only where it means something: the live dot in the top bar pulses while checks run, the owl blinks now and then, the site detail slides in, and while the dashboard loads, the bars that stand in for its words and numbers breathe slowly. All of it stops for people who prefer reduced motion.

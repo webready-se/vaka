@@ -92,7 +92,7 @@ A file counts only when its content says what it is. Many sites answer every add
 
 Vaka reads at most 64 KB of each answer, never a whole backup. While something is public the site is checked every hour, so a fix shows up soon. A site that is down is checked when it is back.
 
-**Firewalls.** Asking for `/.env` and `/.git/` is also what attackers do, and some firewalls (ModSecurity rules, Imunify360, Wordfence) may block the address the requests come from. Then the uptime check sees the site as down. Vaka asks for 18 addresses per site once a day, with its own User-Agent. If a firewall blocks it, allow Vaka's IP address, or turn the check off for that site:
+**Firewalls.** Asking for `/.env` and `/.git/` is also what attackers do, and some firewalls (ModSecurity rules, Imunify360, Wordfence) may block the address the requests come from. Then the uptime check sees the site as down, or hidden behind a bot check (see "Behind a bot check" above). Vaka asks for 18 addresses per site once a day, with its own User-Agent (`VakaBot/<version>`). If a firewall blocks it, allow Vaka's IP address, or turn the check off for that site:
 
 ```bash
 php vaka site:edit shop.example --disable=exposed
