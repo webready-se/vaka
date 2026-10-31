@@ -25,7 +25,7 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | `WHOIS_SERVERS` | `se=whois.iis.se,nu=whois.iis.nu` | Registries without RDAP that are asked over WHOIS instead, as `tld=server`. Only an `expires:` line is read, so add a TLD only if its WHOIS answers in that form |
 | `SAMPLES_RETENTION_DAYS` | `30` | Days of response times to keep |
 | `SSL_CA_FILE` | (empty) | A CA bundle to verify certificates against instead of the system's, for an internal authority |
-| `USER_AGENT` | `Vaka/<version> (+<APP_URL>)` | The User-Agent of every check |
+| `USER_AGENT` | `VakaBot/<version> (+<APP_URL>)` | The User-Agent of every check. "Bot" in the name lets analytics and log filters count the checks as a robot's |
 | `HEARTBEAT_URL` | (empty) | Pinged at the end of every run, for a dead man's switch such as Healthchecks.io |
 | `REMIND_EVERY_HOURS` | `4` | Hours between reminders while a site stays down ("shop.example has been down for 4 h"). `0` sends none |
 | `DIGEST_TIME` | `08:00` | When groups with the digest policy get their daily summary (local time) |
