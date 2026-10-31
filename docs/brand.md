@@ -16,10 +16,15 @@ Vaka keeps watch over websites the way an owl keeps watch at night: calmly, and 
 |-------|------|-------------------|
 | Favicon and top bar | `public/favicon.svg`, `public/marks/vaka.svg` | `marks/vaka.svg`: the whole owl on deep teal `#0E7490` |
 | The tab while a site is down | `public/favicon-alert.svg` | `marks/vaka-alarm.svg`: the same owl on red, eyes wide |
+| A phone's home screen | `public/icon-180.png` (iOS), `icon-192.png` and `icon-512.png` (the manifest, `/?manifest`), made from `scripts/app-icon.svg` | `marks/vaka.svg`'s owl, unchanged, on a square tile (the phone rounds it; transparent corners turn black on iOS) and smaller, inside the round safe zone a phone's mask keeps |
 | The night panel | inline in `public/app.js` (`OWL`) | `characters/vaka.svg` (watching), `characters/vaka-awake.svg` (wide awake while a site is down) and the talons of `characters/vaka-perched.svg` (sitting on the panel's bottom edge) |
 | The footer credit | `public/marks/puls.svg` | The marks of the tools that are released and public, each linked (today Puls); a tool's mark is copied in when it is released |
 
-Change the owl in the kit, then copy it here; never draw a Vaka-only variant.
+Change the owl in the kit, then copy it here; never draw a Vaka-only variant. After a change, make the home screen icons again:
+
+```bash
+for size in 180 192 512; do rsvg-convert -w $size -h $size scripts/app-icon.svg -o public/icon-$size.png; done
+```
 
 ## Vaka's colour
 

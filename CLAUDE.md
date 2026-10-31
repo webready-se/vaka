@@ -118,6 +118,7 @@ public/app.js            Dashboard JS: hero, "Needs your attention" (outages fir
 public/app.css           Styles for the login and the dashboard (light + dark)
 public/theme.js          Applies a saved light/dark choice before paint (loaded in <head>, no inline script needed)
 public/favicon.svg       The kit's owl mark on deep teal (favicon-alert.svg: on red, eyes wide, shown while a site is down)
+public/icon-*.png        The home screen icon (180 for iOS, 192 and 512 for the manifest), made from scripts/app-icon.svg (docs/brand.md)
 public/marks/            Vaka's mark (top bar, login) and the released Webready tools' marks (footer credit) from the kit, inline
 public/fonts/            Figtree (SIL OFL, variable, Latin) and its licence: self-hosted, no CDN
 docs/brand.md            What is Vaka's own on top of the design kit: the owl's files and states, the night panel, motion
@@ -245,6 +246,7 @@ Checks take their inputs as arguments (resolver functions, base URLs, clocks), s
 
 | Endpoint | Auth | Purpose |
 |----------|------|---------|
+| `GET /?manifest` | No | The web app manifest (name, icons, standalone), for adding Vaka to a phone's home screen; browsers fetch it without cookies |
 | `GET /?health` | No | `{status: ok\|stale\|never_run, last_run_at, seconds_since_last_run}`; 200 only when the last run is under 5 min old, so something external can watch the watcher |
 | `GET /?login` | No | Login form (server-rendered, CSRF token in the session); before the first user exists, how to create one instead |
 | `POST /?login` | No | Login (CSRF, lockout per IP, constant-time check for unknown users) |
@@ -271,7 +273,7 @@ Query-string routing like Puls, so it works on shared hosting without rewrite ru
 ### Security headers (Vaka's own responses)
 
 ```text
-Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'
+Content-Security-Policy: default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self'; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'
 X-Content-Type-Options: nosniff
 X-Frame-Options: DENY
 Referrer-Policy: no-referrer
