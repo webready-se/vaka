@@ -276,6 +276,30 @@ test('mail DNS shows in words on the overview, and record by record in the site 
         ->and(array_keys($api['site']['dns']['items'][2]))->toBe(['key', 'label', 'level', 'records', 'note', 'what', 'fix_label', 'fix', 'tip']);
 });
 
+test('a site behind a bot check says so, with what to do and the address to let through, in the overview and the read API', function () {
+    $shop = add_site($this->db, ['url' => 'https://shop.example']);
+    $now = time();
+    $details = ['blocked' => 'Imunify360', 'blocked_since' => utc_now($now - 3600), 'from_ip' => '2001:db8::5', 'status_code' => 200, 'ms' => 231, 'problem' => ''];
+    save_check_state($this->db, $shop, 'uptime', ['status' => 'ok', 'summary' => "Imunify360's bot check answered instead of the site", 'details' => $details, 'fail_count' => 0, 'changed_at' => utc_now($now - 86400)], utc_now($now), utc_now($now + 300));
+    $jar = ($this->login)('admin', 'admin password')['jar'];
+
+    $site = http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['json']['groups'][0]['sites'][0];
+    expect($site['blocked'])->toBe(['by' => 'Imunify360', 'since' => utc_now($now - 3600), 'from_ip' => '2001:db8::5'])
+        ->and($site['advice'])->toStartWith('While a bot check answers instead of the site')
+        // The last time measured is not the site's time now
+        ->and($site['ms'])->toBeNull();
+
+    $token = create_share_token($this->db, $shop, null, '', utc_now($now + 86400), $now)['token'];
+    expect(http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['blocked'])->toBe(['by' => 'Imunify360', 'since' => utc_now($now - 3600), 'from_ip' => '2001:db8::5']);
+
+    // Seen again: nothing to say
+    save_check_state($this->db, $shop, 'uptime', ['status' => 'ok', 'summary' => 'Answered 200 OK in 90 ms', 'details' => ['status_code' => 200, 'ms' => 90, 'problem' => ''], 'fail_count' => 0, 'changed_at' => utc_now($now - 86400)], utc_now($now), utc_now($now + 300));
+    $site = http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['json']['groups'][0]['sites'][0];
+    expect($site['blocked'])->toBeNull()
+        ->and($site['advice'])->toBe('')
+        ->and($site['ms'])->toBe(90);
+});
+
 test('uptime counts from the first check: a site not checked yet has no figures', function () {
     $now = time();
     $new = add_site($this->db, ['url' => 'https://new.example']);
@@ -524,7 +548,7 @@ test('the read API answers a share token with the sites in its scope, in stable 
         ->and($r['json']['totals'])->toMatchArray(['sites' => 1, 'down' => 1])
         ->and($r['json']['sites'])->toHaveCount(1);
     $site = $r['json']['sites'][0];
-    expect(array_keys($site))->toBe(['url', 'label', 'name', 'group', 'status', 'summary', 'advice', 'since', 'checked_at', 'next_at', 'response_ms', 'server', 'cdn', 'snoozed_until', 'maintenance', 'unstable', 'uptime', 'ssl', 'domain', 'exposed', 'headers', 'dns'])
+    expect(array_keys($site))->toBe(['url', 'label', 'name', 'group', 'status', 'summary', 'advice', 'since', 'checked_at', 'next_at', 'response_ms', 'server', 'cdn', 'snoozed_until', 'maintenance', 'unstable', 'blocked', 'uptime', 'ssl', 'domain', 'exposed', 'headers', 'dns'])
         ->and($site)->toMatchArray(['url' => 'https://shop.example', 'label' => 'shop.example', 'group' => 'Customers', 'status' => 'down', 'summary' => 'No answer within 10 s', 'since' => utc_now($now - 600), 'checked_at' => utc_now($now - 30), 'next_at' => utc_now($now + 30)])
         ->and(array_keys($site['uptime']))->toBe(['24h', '7d', '30d'])
         // Each check says when it ran and runs next, so a reader can tell whether it is current

@@ -145,7 +145,8 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array $win
         if ($next['state']['status'] === 'ok' && $next['state']['fail_count'] === 0 && $site['snoozed_until'] !== null) {
             $db->prepare("UPDATE check_state SET snoozed_until = NULL WHERE site_id = ? AND check_name = 'uptime'")->execute([$site['id']]);
         }
-        $sample->execute([$site['id'], $checkedAt, $result['status_code'], $result['ms'], $result['ok'] ? 1 : 0, $result['ip']]);
+        // A bot check's answer is no sample of the site: neither its response time nor up or down
+        if ($result['problem'] !== 'blocked') $sample->execute([$site['id'], $checkedAt, $result['status_code'], $result['ms'], $result['ok'] ? 1 : 0, $result['ip']]);
         // Keep the last known IP when a request gets none (DNS failure), so a down server still groups its sites
         $site['ip'] = $result['ip'] !== '' ? $result['ip'] : $site['ip'];
         $site['cdn'] = $result['cdn'];

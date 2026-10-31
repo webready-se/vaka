@@ -8,10 +8,10 @@ const MAX_BODY_BYTES = 1048576;
  * Follows up to 5 redirects (http and https only); the headers returned are
  * the final response's. At most $maxBytes of each body is read. A failed
  * request comes back with errno and error set and status 0, never as an
- * exception.
+ * exception. `local_ip` is the address Vaka asked from.
  *
  * @param array<array-key, string> $urls
- * @return array<array-key, array{status: int, headers: array<string, list<string>>, body: string, ms: int, ip: string, errno: int, error: string, url: string}>
+ * @return array<array-key, array{status: int, headers: array<string, list<string>>, body: string, ms: int, ip: string, local_ip: string, errno: int, error: string, url: string}>
  */
 function fetch_many(array $urls, int $timeout, string $userAgent, int $concurrency = 20, string $caFile = '', int $maxBytes = MAX_BODY_BYTES): array
 {
@@ -78,6 +78,7 @@ function fetch_many(array $urls, int $timeout, string $userAgent, int $concurren
                 'body' => $transfer->body,
                 'ms' => intdiv((int) curl_getinfo($handle, CURLINFO_TOTAL_TIME_T), 1000),
                 'ip' => (string) curl_getinfo($handle, CURLINFO_PRIMARY_IP),
+                'local_ip' => (string) curl_getinfo($handle, CURLINFO_LOCAL_IP),
                 'errno' => $errno,
                 'error' => $errno ? (curl_error($handle) ?: curl_strerror($errno)) : '',
                 'url' => (string) curl_getinfo($handle, CURLINFO_EFFECTIVE_URL),

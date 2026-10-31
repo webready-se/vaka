@@ -73,6 +73,9 @@ function cmd_check(array $config, array $args, array $opts): void
     if ($result['ok']) {
         $from = $result['cdn'] !== '' ? "behind {$result['cdn']}" : "from {$result['ip']}";
         echo "  Up: " . lcfirst($result['summary']) . ", {$from}\n";
+    } elseif ($result['problem'] === 'blocked') {
+        echo "  Could not check: {$result['summary']}\n";
+        echo '  ' . advice_for('blocked', 0) . ($result['from_ip'] !== '' ? " Vaka asked from {$result['from_ip']}." : '') . "\n";
     } else {
         echo "  Down: " . lcfirst($result['summary']) . "\n";
     }
@@ -136,6 +139,9 @@ function cmd_status(array $config, array $args, array $opts): void
             default => ['up', (json_decode($site['details'], true)['ms'] ?? '?') . ' ms, checked ' . ago($site['checked_at'], $now)],
         };
         $counts[$word === 'DOWN' ? 'down' : $word]++;
+        // What a bot check showed says nothing about the site, so it is all there is to tell
+        $uptime = json_decode((string) $site['details'], true) ?: [];
+        if (isset($uptime['blocked']) && !$site['paused']) $detail = bot_check_words($uptime['blocked']) . ' since ' . local_time($uptime['blocked_since'], $now, $config['time_format']);
         $quiet = active_silence($site, $windows, $now, $config['timezone']);
         if ($quiet === 'snooze') $detail .= '; snoozed until ' . local_time($site['snoozed_until'], $now, $config['time_format']);
         if ($quiet === 'maintenance') $detail = trim($detail . '; in a maintenance window', '; ');
@@ -145,13 +151,14 @@ function cmd_status(array $config, array $args, array $opts): void
     }
 
     $width = max(array_map(fn ($row) => text_length($row[1]), $rows));
+    $words = max(7, ...array_map(fn ($row) => strlen($row[2]), $rows)) + 2;
     $group = null;
     foreach ($rows as [$name, $site, $word, $detail]) {
         if ($name !== $group) {
             echo "\n{$name}\n";
             $group = $name;
         }
-        echo rtrim('  ' . $site . str_repeat(' ', $width - text_length($site) + 2) . str_pad($word, 9) . $detail) . "\n";
+        echo rtrim('  ' . $site . str_repeat(' ', $width - text_length($site) + 2) . str_pad($word, $words) . $detail) . "\n";
     }
 
     $parts = [];

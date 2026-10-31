@@ -487,6 +487,10 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         ] + $when('dns');
     }
     $serverKey = server_key($row);
+    // A bot check answers instead of the site: Vaka cannot see it, and says where to let it through
+    $blocked = isset($details['blocked']) && !$row['paused']
+        ? ['by' => $details['blocked'], 'since' => $details['blocked_since'] ?? null, 'from_ip' => ($details['from_ip'] ?? '') ?: null]
+        : null;
 
     return [
         'id' => $row['id'],
@@ -496,16 +500,22 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'group' => $row['group_name'],
         'status' => $status,
         'summary' => (string) ($row['summary'] ?? ''),
-        'advice' => in_array($status, ['down', 'failing'], true) ? advice_for($details['problem'] ?? '', (int) ($details['status_code'] ?? 0)) : '',
+        'advice' => match (true) {
+            in_array($status, ['down', 'failing'], true) => advice_for($details['problem'] ?? '', (int) ($details['status_code'] ?? 0)),
+            $blocked !== null => advice_for('blocked', 0),
+            default => '',
+        },
         'since' => $since,
         'checked_at' => $row['checked_at'],
         'next_at' => $status === 'paused' ? null : $row['uptime_next_at'],
-        'ms' => $status === 'up' ? ($details['ms'] ?? null) : null,
+        // Behind a bot check the last time measured is not the site's time now
+        'ms' => $status === 'up' && $blocked === null ? ($details['ms'] ?? null) : null,
         'server' => $serverKey === null ? null : server_display($row, $labels),
         'cdn' => $row['cdn'] !== '' ? $row['cdn'] : null,
         'snoozed_until' => $quiet === 'snooze' ? $row['snoozed_until'] : null,
         'maintenance' => $quiet === 'maintenance',
         'unstable' => $row['flapping_since'] !== null,
+        'blocked' => $blocked,
         'ssl' => $ssl,
         'domain' => $domain,
         'exposed' => $exposed,
@@ -736,6 +746,7 @@ function api_site_fields(PDO $db, array $config, array $summary, array $row, int
         'snoozed_until' => $summary['snoozed_until'],
         'maintenance' => $summary['maintenance'],
         'unstable' => $summary['unstable'],
+        'blocked' => $summary['blocked'],
         'uptime' => ['24h' => $summary['uptime_24h'], '7d' => site_uptime($db, $row, 7 * 86400, $now, $config['timezone']), '30d' => $summary['uptime_30d']],
         'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'advice', 'checked_at', 'next_at']),
         'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'advice', 'checked_at', 'next_at']),

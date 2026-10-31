@@ -34,6 +34,17 @@ What a failure means, and what the dashboard suggests:
 | Certificate not accepted | Browsers will refuse the site too |
 | Redirect loop | Check the redirect rules |
 
+### Behind a bot check
+
+Some hosts and CDNs put a bot check in front of a site: a page that runs a script in the browser before it lets anyone through. Vaka runs no scripts, so it gets that page instead of the site. It recognises two: Cloudflare's challenge (`cf-mitigated: challenge`, status 403) and Imunify360's "One moment, please..." page, which many shared hosts show with status 200. Such a page says nothing about the site, so Vaka does not grade it as the site:
+
+- Uptime keeps the status it had: no outage, no recovery, no response time. The dashboard puts the site in "Needs your attention" as hidden behind a bot check, with the address Vaka's server asked from (when it is a public one), the address to let through. Nothing is alerted: the fix is one change at the host, and an alert each time the check comes back would be noise.
+- Security headers and exposed files say "Could not check", which never alerts. Graded, the bot check's page would look as if every protection had been removed.
+
+Let Vaka's server through: ask the host, or add a rule at the CDN. A host's bot check often starts after requests that look like an attack, and the exposed-files check asks for `.env`, `.git/config` and the like once a day; when a host keeps putting the check up, turning that check off for the site (`site:edit <site> --disable=exposed`) can keep it away.
+
+### Behind a CDN
+
 A site behind a CDN (Cloudflare, CloudFront, Fastly, Akamai, Bunny) is recognised from its response headers. CDN addresses are shared by unrelated sites, so such a site is not grouped with others by IP; set its server by hand with `site:edit --server=<name>` if you want it grouped.
 
 ## SSL certificates

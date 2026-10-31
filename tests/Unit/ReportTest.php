@@ -12,7 +12,7 @@ function report_site(array $over = []): array
         'url' => 'https://shop.example', 'label' => 'shop.example', 'name' => '', 'group' => 'Customers',
         'status' => 'up', 'summary' => 'Answered 200 OK in 230 ms', 'advice' => '', 'since' => '2026-10-01T10:00:00Z',
         'checked_at' => '2026-10-28T13:04:15Z', 'response_ms' => 230, 'server' => 'web-1 (203.0.113.10)', 'cdn' => null,
-        'snoozed_until' => null, 'maintenance' => false, 'unstable' => false,
+        'snoozed_until' => null, 'maintenance' => false, 'unstable' => false, 'blocked' => null,
         'uptime' => ['24h' => 100.0, '7d' => 99.9, '30d' => 99.95],
         'ssl' => ['status' => 'ok', 'summary' => 'Valid until 19 Dec 2026 (52 days), issued by Let\'s Encrypt', 'days_left' => 52, 'valid_to' => '2026-12-19T23:00:00Z', 'renewed_by' => null, 'advice' => ''],
         'domain' => ['status' => 'ok', 'summary' => 'shop.example is registered until 2 Sep 2028 (675 days)', 'domain' => 'shop.example', 'label' => 'shop.example', 'days_left' => 675, 'expires' => '2028-09-02T22:00:00Z', 'registrar' => 'Example Registrar AB', 'advice' => ''],
@@ -78,6 +78,15 @@ test('one site: a down site leads with since when and what to do, and says why n
     ]), REPORT_CONFIG);
 
     expect($md)->toContain("## Needs attention (1)\n\n1. **Down since 28 Oct 2026 13:50**: `The site answered 503 Service Unavailable`\n   What to do: Look at its error log.\n   Snoozed until 28 Oct 2026 17:50: someone is on it.");
+});
+
+test('one site: a bot check in front of the site says since when, what to do, and the address to let through', function () {
+    $md = read_api_markdown_site(report_about(), report_detail([
+        'summary' => "Imunify360's bot check answered instead of the site", 'advice' => advice_for('blocked', 0),
+        'blocked' => ['by' => 'Imunify360', 'since' => '2026-10-28T12:50:00Z', 'from_ip' => '2001:db8::5'],
+    ]), REPORT_CONFIG);
+
+    expect($md)->toContain("## Needs attention (1)\n\n1. **Hidden behind a bot check since 28 Oct 2026 13:50**: `Imunify360's bot check answered instead of the site`\n   What to do: " . advice_for('blocked', 0) . "\n   Vaka's server asks from `2001:db8::5`: the address to let through.");
 });
 
 test('one site: public files, domains and certificates that need attention, what is broken before what is about to be', function () {

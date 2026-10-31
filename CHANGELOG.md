@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - A DMARC record with `p=none` and no `rua`, on a domain that sends email, was told to move to `p=quarantine` once the reports looked right, but without `rua` no reports ever come. It is now told to add `rua` first and keep `p=none`, then to move to `p=quarantine` (keeping `rua`) once the reports show that its own email passes, a contact form's too. Jumping to `p=quarantine` blind can send the site's own email to spam.
 - A change in the security headers or the mail records was written in the history as coming from the status it went to ("ok -> ok: Grade E to B"), since the first look at the change had already stored the new status and the change counts at the second. It now comes from what was confirmed before ("warn -> ok"). Changes recorded before keep their old line.
+- A bot check in front of a site was taken for the site. A shared host's Imunify360 answered Vaka with its "One moment, please..." page (status 200) for most of each day, so the site counted as up whatever it did, and its security headers were graded on that page: "HSTS removed" was alerted every day, and "HSTS added" noted every morning. Cloudflare's challenge (403) would have made a site look down. Vaka now recognises both: uptime keeps the status it had (no outage, no recovery, no sample), headers and exposed files say "Could not check", and the dashboard, the read API (`blocked`) and the report say the site is hidden behind a bot check, with what to do and the address of Vaka's server to let through. `php vaka check` and `status` say so too. See "Behind a bot check" in `docs/checks.md`.
+- `php vaka status` ran a long status word ("not checked yet") into the text after it.
 
 ## [0.2.0] - 2026-10-28
 

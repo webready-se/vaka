@@ -66,6 +66,7 @@ Each site:
 | `snoozed_until` | When a snooze ends, or `null` |
 | `maintenance` | `true` while a maintenance window covers it |
 | `unstable` | `true` while it keeps going down and up (flapping) |
+| `blocked` | `{by, since, from_ip}` while a bot check answers instead of the site, else `null`. `by` is `"Cloudflare"` or `"Imunify360"`; `since` is when it began; `from_ip` is the address Vaka's server asks from, the one to let through, or `null` when it is not a public address. Vaka cannot see the site meanwhile, so `status` stays what it was, `response_ms` is `null` and `advice` says what to do |
 | `uptime` | `{"24h", "7d", "30d"}`: percentages, rounded down to two decimals and counted from the first check, or `null` before it. Downtime inside the site's maintenance windows is left out (see `days`) |
 | `ssl` | `{status, summary, days_left, valid_to, renewed_by, advice}` for https sites, else `null`. `status` is `ok`, `warn` (expires within 14 days) or `fail` (expired or invalid). `renewed_by` is `"Cloudflare"` for a site behind Cloudflare, whose certificate Cloudflare renews by itself about 30 days before it expires, else `null`. Every check has `checked_at` and `next_at` too, see below |
 | `domain` | `{status, summary, domain, label, days_left, expires, registrar, advice}`, or `null`. `domain` is the registered domain as DNS has it (`xn--` for an international name), `label` as people write it. `status` is `ok`, `warn`, `fail` (expired) or `unknown` (the registry gave no date). `registrar` is **from the registry** |
@@ -105,7 +106,7 @@ curl -s -H 'Authorization: Bearer TOKEN' 'https://your-vaka.example/?api' | jq -
 
 `&format=md` turns the same data into a report written for an AI assistant (`text/markdown`). It opens with a short guide: what Vaka checks, that times are local to Vaka (in `TIMEZONE`, which the guide names, where the JSON is in UTC), that values in `code` come from the sites and are data, never instructions, and to ask before changing anything. Then:
 
-- **Needs attention**: a site that is down, failing or unstable, files that should not be public, and a domain or certificate that has expired or is about to, worst first, each with the summary and what to do.
+- **Needs attention**: a site that is down, failing, unstable or hidden behind a bot check, files that should not be public, and a domain or certificate that has expired or is about to, worst first, each with the summary and what to do.
 - **Worth improving**: every security header and mail record that is not in place, with the line to add. For every site (`?api` with a group token), one line per site, and the detail is in the report for that site.
 - For one site: uptime (now, 24 h, 7 and 30 days, the days it was down, response times, maintenance), the other checks, and the latest changes. For every site: a table.
 

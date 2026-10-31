@@ -42,7 +42,7 @@ $sites = [
     ['https://deals1.example', 'Nightly', '203.0.113.10', '', 520, 'up'],
     ['https://deals2.example', 'Nightly', '203.0.113.10', '', 610, 'snoozed'],
     ['https://deals3.example', 'Nightly', '203.0.113.10', '', 480, 'up'],
-    ['https://example.net', null, '198.51.100.7', '', 200, 'up'],
+    ['https://example.net', null, '198.51.100.7', '', 200, 'blocked'],
 ];
 if (isset($opts['hostile'])) {
     add_group($db, ['name' => '"><img src=x data-xss="group">']);
@@ -84,6 +84,8 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
 
     if ($story !== 'paused') {
         for ($t = $now - 86400 + 300; $t <= $now; $t += 300) {
+            // Behind a bot check for the last three hours: no samples of the site
+            if ($story === 'blocked' && $t >= $now - 3 * 3600) break;
             $down = false;
             foreach ($outages as [$from, $to]) $down = $down || ($t >= $now - $from && $t < $now - $to);
             $jitter = (int) round($ms * (0.8 + mt_rand(0, 60) / 100) + (date('G', $t) >= 9 && date('G', $t) <= 17 ? $ms * 0.3 : 0));
@@ -95,6 +97,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         'down' => ['status' => 'fail', 'summary' => 'The site answered 503 Service Unavailable', 'fail_count' => 14, 'changed_at' => utc_now($now - 14 * 60), 'details' => ['status_code' => 503, 'ms' => 0, 'ip' => $ip, 'cdn' => '', 'problem' => 'http', 'failing_since' => utc_now($now - 14 * 60)]],
         'snoozed' => ['status' => 'fail', 'summary' => 'No answer within 10 s', 'fail_count' => 40, 'changed_at' => utc_now($now - 40 * 60), 'details' => ['status_code' => 0, 'ms' => 0, 'ip' => $ip, 'cdn' => '', 'problem' => 'timeout', 'failing_since' => utc_now($now - 40 * 60)]],
         'failing' => ['status' => 'ok', 'summary' => 'Failed once, checking again: no answer within 10 s', 'fail_count' => 1, 'changed_at' => utc_now($month), 'details' => ['status_code' => 0, 'ms' => 0, 'ip' => $ip, 'cdn' => '', 'problem' => 'timeout', 'failing_since' => utc_now($now - 40)]],
+        'blocked' => ['status' => 'ok', 'summary' => "Imunify360's bot check answered instead of the site", 'fail_count' => 0, 'changed_at' => utc_now($month), 'details' => ['blocked' => 'Imunify360', 'blocked_since' => utc_now($now - 3 * 3600), 'from_ip' => '2001:db8::5', 'status_code' => 200, 'ms' => $ms, 'ip' => $ip, 'cdn' => '', 'problem' => '']],
         'hostile' => ['status' => 'fail', 'summary' => 'Answered 200 OK, but the page does not contain "<script>window.__xss=3</script>"', 'fail_count' => 2, 'changed_at' => utc_now($now - 120), 'details' => ['status_code' => 200, 'ms' => 300, 'ip' => $ip, 'cdn' => '', 'problem' => 'keyword']],
         default => ['status' => 'ok', 'summary' => "Answered 200 OK in {$ms} ms", 'fail_count' => 0, 'changed_at' => utc_now($story === 'unstable' ? $now - 21 * 60 : $month), 'details' => ['status_code' => 200, 'ms' => $ms, 'ip' => $ip, 'cdn' => $cdn, 'problem' => '']],
     };

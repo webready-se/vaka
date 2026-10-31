@@ -245,3 +245,9 @@ function txt(string $value): array
 {
     return ['type' => 'TXT', 'txt' => $value, 'entries' => str_split($value, 255)];
 }
+
+/** The page a host's bot protection answers with instead of the site (tests/fixtures/bot-check.html). */
+function bot_check_page(): string
+{
+    return (string) file_get_contents(__DIR__ . '/../fixtures/bot-check.html');
+}
