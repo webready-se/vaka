@@ -39,7 +39,20 @@
 <main id="app" aria-busy="true">
   <div data-region="banner"></div>
   <section data-region="watch" aria-live="polite">
-    <p class="loading">Looking at your sites…</p>
+    <!-- While the overview loads: the panel and the list in the shape they will have, so nothing jumps when they come -->
+    <div class="watch is-loading">
+      <div>
+        <p class="watch-kicker">Keeping watch</p>
+        <h1>Looking at your sites…</h1>
+        <p class="watch-line" aria-hidden="true"><span class="placeholder is-night is-wide"></span></p>
+        <ul class="watch-stats" aria-hidden="true">
+          <li><b class="placeholder is-night is-stat"></b><span class="placeholder is-night is-label"></span></li>
+          <li><b class="placeholder is-night is-stat"></b><span class="placeholder is-night is-label"></span></li>
+          <li><b class="placeholder is-night is-stat"></b><span class="placeholder is-night is-label"></span></li>
+        </ul>
+      </div>
+      <div class="watch-perch" data-perch></div>
+    </div>
   </section>
   <section class="attention" data-region="attention" aria-labelledby="attention-title" hidden></section>
   <section data-region="sites" aria-labelledby="sites-title">
@@ -60,7 +73,17 @@
         <kbd aria-hidden="true">Ctrl K</kbd>
       </label>
     </div>
-    <div data-region="groups"></div>
+    <div data-region="groups">
+      <div class="group is-loading" aria-hidden="true">
+        <div class="group-head"><span class="placeholder is-title"></span><span class="placeholder is-meta"></span></div>
+        <ul class="site-list">
+          <li><div class="site-row is-placeholder"><span class="placeholder is-status"></span><span class="placeholder is-name"></span><span class="placeholder is-days"></span><span class="placeholder is-figure"></span><span class="placeholder is-figure"></span><span class="placeholder is-grade"></span></div></li>
+          <li><div class="site-row is-placeholder"><span class="placeholder is-status"></span><span class="placeholder is-name is-short"></span><span class="placeholder is-days"></span><span class="placeholder is-figure"></span><span class="placeholder is-figure"></span><span class="placeholder is-grade"></span></div></li>
+          <li><div class="site-row is-placeholder"><span class="placeholder is-status"></span><span class="placeholder is-name"></span><span class="placeholder is-days"></span><span class="placeholder is-figure"></span><span class="placeholder is-figure"></span><span class="placeholder is-grade"></span></div></li>
+          <li><div class="site-row is-placeholder"><span class="placeholder is-status"></span><span class="placeholder is-name is-short"></span><span class="placeholder is-days"></span><span class="placeholder is-figure"></span><span class="placeholder is-figure"></span><span class="placeholder is-grade"></span></div></li>
+        </ul>
+      </div>
+    </div>
   </section>
 </main>
 

@@ -192,6 +192,7 @@ async function main() {
     const expect = (cond, what) => { if (!cond) fails.push(what); };
 
     if (!await waitFor(() => q('#app[aria-busy="false"]'), 'the dashboard to render')) return fails;
+    expect(!q('.placeholder') && !q('.is-loading'), 'the loading placeholders are gone once the overview is there');
 
     // What is wrong comes first, in plain words
     expect(/2 sites are down/.test(q('.watch h1')?.textContent || ''), 'the watch says how many sites are down and need you');

@@ -269,7 +269,23 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .credit-marks { display: inline-flex; align-items: center; gap: 5px; margin-left: 4px; }
 .credit-mark { display: block; width: 16px; height: 16px; }
 .section-title { margin: 0 0 12px; font-size: 12px; font-weight: 700; letter-spacing: 0.09em; text-transform: uppercase; color: var(--text-3); }
-.loading { color: var(--text-3); }
+/* While the overview loads: bars where the words and numbers will be, breathing slowly */
+.placeholder { display: block; height: 12px; border-radius: 6px; background: var(--line); animation: placeholder 1.6s ease-in-out infinite; }
+.placeholder.is-night { background: rgb(148 163 184 / 0.24); }
+.watch-line .placeholder.is-wide { width: min(420px, 80%); height: 14px; margin: 7px 0 4px; }
+.watch-stats .placeholder.is-stat { width: 64px; height: 24px; }
+.watch-stats .placeholder.is-label { width: 84px; height: 10px; margin-top: 5px; }
+.group-head .placeholder.is-title { width: 120px; height: 16px; }
+.group-head .placeholder.is-meta { width: 160px; height: 12px; }
+.site-row.is-placeholder { cursor: default; }
+.site-row.is-placeholder:hover { background: none; }
+.placeholder.is-status { width: 56px; height: 14px; }
+.placeholder.is-name { width: 60%; height: 14px; }
+.placeholder.is-name.is-short { width: 40%; }
+.placeholder.is-days { height: 26px; }
+.placeholder.is-figure { width: 52px; height: 14px; justify-self: end; }
+.placeholder.is-grade { width: 18px; height: 14px; justify-self: end; }
+@keyframes placeholder { 50% { opacity: 0.5; } }
 
 .banner { display: flex; gap: 12px; align-items: flex-start; margin: 0 0 18px; padding: 14px 16px; border-radius: var(--radius); background: var(--down-soft); color: var(--text); border: 1px solid color-mix(in srgb, var(--down) 35%, transparent); }
 .banner .icon { color: var(--down); margin-top: 2px; }
@@ -638,6 +654,10 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
   .site-row .status { grid-area: status; justify-self: end; }
   .site-row .days { grid-area: days; height: 18px; }
   .site-row .site-figures { grid-area: figures; display: flex; justify-content: space-between; }
+  .site-row.is-placeholder .is-name { grid-area: name; }
+  .site-row.is-placeholder .is-status { grid-area: status; justify-self: end; }
+  .site-row.is-placeholder .is-days { grid-area: days; height: 18px; }
+  .site-row.is-placeholder .is-figure, .site-row.is-placeholder .is-grade { display: none; }
   .site-figures .site-figure { display: flex; gap: 6px; align-items: baseline; }
   .site-figures .site-figure small { display: inline; }
   .incident summary { grid-template-columns: 34px minmax(0, 1fr) auto; gap: 12px; padding: 12px 14px 12px 16px; }
