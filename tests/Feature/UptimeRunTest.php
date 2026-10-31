@@ -193,3 +193,35 @@ test('php vaka status shows each site in plain words, by group', function () {
         ->and($out)->toContain('paused')
         ->and($out)->toContain('3 sites: 1 up, 1 failing, 1 paused');
 });
+
+test('a site behind a bot check keeps its status, with no sample, and its headers and files are not graded', function () {
+    add_site($this->db, ['url' => 'http://127.0.0.1:8791/botcheck']);
+    run($this->db, $this->config, $this->now);
+
+    $state = ($this->state)('http://127.0.0.1:8791/botcheck');
+    expect($state)->toMatchArray(['status' => 'pending', 'fail_count' => 0, 'summary' => "Imunify360's bot check answered instead of the site"])
+        ->and(json_decode($state['details'], true))->toMatchArray(['blocked' => 'Imunify360', 'blocked_since' => utc_now($this->now), 'from_ip' => ''])
+        ->and(($this->events)())->toBe([])
+        ->and($this->db->query('SELECT count(*) FROM samples')->fetchColumn())->toBe(0);
+
+    $other = $this->db->query("SELECT check_name, status, summary FROM check_state WHERE check_name IN ('headers', 'exposed') ORDER BY check_name")->fetchAll();
+    expect($other)->toBe([
+        ['check_name' => 'exposed', 'status' => 'unknown', 'summary' => "Could not check: Imunify360's bot check answered instead of the site"],
+        ['check_name' => 'headers', 'status' => 'unknown', 'summary' => "Could not check: Imunify360's bot check answered instead of the site"],
+    ]);
+});
+
+test('php vaka check says when a bot check answered, rather than up or down', function () {
+    $r = vaka(['check', 'http://127.0.0.1:8791/botcheck'], cli_env());
+    expect($r['out'])->toContain("Imunify360's bot check answered instead of the site")
+        ->and($r['out'])->not->toContain('Down:')
+        ->and($r['out'])->not->toContain('Up:');
+});
+
+test('php vaka status says when a bot check answers instead of the site', function () {
+    $env = cli_env();
+    vaka(['site:add', 'http://127.0.0.1:8791/botcheck'], $env);
+    vaka(['run'], $env);
+
+    expect(vaka(['status'], $env)['out'])->toMatch("/127\.0\.0\.1:8791\/botcheck\s+not checked yet\s+Imunify360's bot check answered instead of the site since \d/");
+});

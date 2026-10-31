@@ -223,24 +223,26 @@ async function main() {
     // Needs your attention: one compact row each, outages first, the quiet ones folded away last
     const rows = all('.attention > .incidents > .incident');
     const summary = (row) => row?.querySelector('summary')?.textContent || '';
-    expect(rows.length === 7, `seven rows need attention (got ${rows.length})`);
+    expect(rows.length === 8, `eight rows need attention (got ${rows.length})`);
     expect(/shop\.example\s*is down/.test(summary(rows[0])), 'an outage comes first');
     expect(/The site answered 503/.test(summary(rows[0])), 'the row says why in one line');
     expect(/The site itself answers with an error/.test(rows[0]?.textContent || ''), 'the advice is inside the row');
     expect(/blog\.example\s*failed a check/.test(summary(rows[2])), 'a failing check comes after the outages');
     expect(/cafe\.example\s*2 private files are public/.test(summary(rows[3])) && /\.env, \.git\//.test(summary(rows[3])), 'public files come after them, and say which');
     expect(/the environment file/.test(rows[3]?.textContent || '') && /change every password and key/.test(rows[3]?.textContent || ''), 'the row says what each file holds and what to do');
-    expect(/booking\.example\s*certificate expires in 6 days/.test(summary(rows[4])), 'an expiring certificate comes after what is broken now');
-    expect(/docs\.example\s*domain expires in 12 days/.test(summary(rows[5])), 'a domain that runs out soon comes with the other warnings');
-    expect(/Renew it with the registrar/.test(rows[5]?.textContent || ''), 'the domain row says what to do');
-    expect(/1 site is down, snoozed/.test(summary(rows[6])) && /deals2\.example/.test(rows[6].textContent), 'snoozed outages are folded into one row at the end');
+    expect(/example\.net\s*is hidden behind a bot check/.test(summary(rows[4])) && /Imunify360's bot check answers instead of the site/.test(summary(rows[4])), 'a site behind a bot check leads the warnings, and says whose');
+    expect(/an outage would go unnoticed/.test(rows[4]?.textContent || '') && rows[4]?.querySelector('code')?.textContent === '2001:db8::5', 'the row says why it matters and the address to let through');
+    expect(/booking\.example\s*certificate expires in 6 days/.test(summary(rows[5])), 'an expiring certificate comes after what is broken now');
+    expect(/docs\.example\s*domain expires in 12 days/.test(summary(rows[6])), 'a domain that runs out soon comes with the other warnings');
+    expect(/Renew it with the registrar/.test(rows[6]?.textContent || ''), 'the domain row says what to do');
+    expect(/1 site is down, snoozed/.test(summary(rows[7])) && /deals2\.example/.test(rows[7].textContent), 'snoozed outages are folded into one row at the end');
 
 
     expect(!q('.attention details[open]'), 'with two outages, every row starts closed');
     expect(rows.every((row) => row.getBoundingClientRect().height < 90), 'closed rows are compact');
 
     // A row opens on click and stays open across a refresh
-    rows[4].querySelector('summary').click();
+    rows[5].querySelector('summary').click();
     expect(q('.attention details[data-key^="cert:"]').open, 'a click opens the row');
     document.dispatchEvent(new Event('visibilitychange'));
     await sleep(400);
@@ -248,6 +250,8 @@ async function main() {
 
     // Every site, by group, with its numbers
     expect(all('.site-row').length === 15, `15 site rows (got ${all('.site-row').length})`);
+    const hiddenRow = all('.site-row').find((row) => /example\.net/.test(row.textContent));
+    expect(/hidden behind a bot check/.test(hiddenRow?.textContent || '') && !/200 ms/.test(hiddenRow?.textContent || ''), 'a site behind a bot check says so in the list, without a response time Vaka did not measure');
     expect(all('.group').length === 5, 'five groups, sites without a group last');
     expect(/No group/.test(all('.group').pop()?.textContent || ''), 'sites without a group come last');
     expect(all('.site-row .days i').length === 15 * 30, 'thirty days of bars on every row');

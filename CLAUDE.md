@@ -95,7 +95,7 @@ src/commands/alerts.php  alert:test, server:list, server:label
 src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, snooze, unsnooze; group_or_site() and pick_group_or_site()
 src/commands/share.php   share:create, share:list, share:revoke
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
-src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), advice_for(), plain-words errors and durations
+src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), bot_check() (a bot check is not the site: uptime keeps its status, headers and exposed files say unknown), advice_for(), plain-words errors and durations
 src/checks/ssl.php       fetch_certificate() (verified, then unverified to describe a bad one), certificate_info(), host_matches(), evaluate_ssl(), ssl_notice() (thresholds once per certificate)
 src/checks/domain.php    registrable_candidates(), RDAP (IANA bootstrap, cached in data/rdap-dns.json) and WHOIS for .se/.nu (expires: line only), evaluate_domain(), domain_notice()
 src/checks/exposed.php   EXPOSED_FILES, exposed_matches() (content signatures), evaluate_exposed() (soft-404 baseline), check_exposed(), exposed_notice()

@@ -4,9 +4,12 @@
  * What one uptime request says about a site, in plain words. Up means a
  * status below 400 and, when a keyword is set, the keyword on the page.
  * `problem` names the kind of failure for advice_for(): timeout, dns,
- * refused, connect, certificate, tls, redirects, http, keyword or other.
+ * refused, connect, certificate, tls, redirects, http, keyword or other;
+ * or `blocked` when a bot check answered instead of the site (see
+ * bot_check()), which is neither up nor down. Then `from_ip` is the address
+ * Vaka asked from, for the host to let through, when it is a public one.
  *
- * @return array{ok: bool, summary: string, status_code: int, ms: int, ip: string, cdn: string, problem: string}
+ * @return array{ok: bool, summary: string, status_code: int, ms: int, ip: string, cdn: string, problem: string, blocked: string, from_ip: string}
  */
 function evaluate_uptime(array $response, string $keyword, int $timeout): array
 {
@@ -18,12 +21,21 @@ function evaluate_uptime(array $response, string $keyword, int $timeout): array
         'ip' => $response['ip'],
         'cdn' => detect_cdn($response['headers']),
         'problem' => '',
+        'blocked' => '',
+        'from_ip' => '',
     ];
 
     if ($response['errno']) {
         $result['summary'] = connection_problem($response['errno'], $response['error'], $timeout);
         $result['problem'] = problem_kind($response['errno'], $response['error']);
         return $result;
+    }
+
+    $by = bot_check($response);
+    if ($by !== '') {
+        $from = $response['local_ip'] ?? '';
+        return ['summary' => bot_check_words($by), 'problem' => 'blocked', 'blocked' => $by,
+            'from_ip' => filter_var($from, FILTER_VALIDATE_IP, FILTER_FLAG_NO_PRIV_RANGE | FILTER_FLAG_NO_RES_RANGE) ? $from : ''] + $result;
     }
 
     $status = $response['status'];
@@ -90,6 +102,7 @@ function advice_for(string $problem, int $status): string
         'certificate' => 'Browsers will refuse the site too. Renew or fix its SSL certificate.',
         'tls' => 'The secure connection fails. Check the server\'s SSL setup.',
         'redirects' => 'The site redirects in a loop. Check the redirect rules, for example between www and https.',
+        'blocked' => 'While a bot check answers instead of the site, Vaka cannot tell whether the site works, and an outage would go unnoticed. Let Vaka\'s server through the bot protection: ask the host, or change the setting at the CDN.',
         'expired', 'expiring' => 'Renew the certificate. With Let\'s Encrypt, check that the automatic renewal runs (certbot, or the setting at your host).',
         'name' => 'The certificate does not cover this domain. Issue one that includes it.',
         'self_signed' => 'Use a certificate from a trusted authority, such as Let\'s Encrypt (free).',
@@ -145,6 +158,26 @@ function detect_cdn(array $headers): string
 }
 
 /**
+ * The bot protection that answered instead of the site, or ''. Such a page
+ * says nothing about the site, so no check grades it as the site. Known
+ * pages only, as with detect_cdn(): Cloudflare marks its challenges with
+ * `cf-mitigated: challenge` (status 403), and Imunify360's WebShield, in
+ * front of many shared hosts, answers 200 with "One moment, please...".
+ */
+function bot_check(array $response): string
+{
+    if (in_array('challenge', array_map('strtolower', $response['headers']['cf-mitigated'] ?? []), true)) return 'Cloudflare';
+    if (str_contains($response['body'] ?? '', 'Please wait while your request is being verified')) return 'Imunify360';
+    return '';
+}
+
+/** A bot check in words, for a summary: "Cloudflare's bot check answered instead of the site". */
+function bot_check_words(string $by): string
+{
+    return "{$by}'s bot check answered instead of the site";
+}
+
+/**
  * The uptime state after one more result. A site is down after $downAfter
  * failures in a row, counted from the first of them; until then it keeps
  * its status and is checked again soon. Returns the new state and the event
@@ -163,6 +196,13 @@ function next_uptime_state(array $state, array $result, int $downAfter, string $
         'changed_at' => $state['changed_at'],
         'details' => ['status_code' => $result['status_code'], 'ms' => $result['ms'], 'ip' => $result['ip'], 'cdn' => $result['cdn'], 'problem' => $result['problem']],
     ];
+
+    // A bot check answered, not the site: nothing is learned about the site, so its status stays as it was
+    if ($result['problem'] === 'blocked') {
+        $next['fail_count'] = $state['fail_count'];
+        $next['details'] = ['blocked' => $result['blocked'], 'blocked_since' => $details['blocked_since'] ?? $now, 'from_ip' => $result['from_ip']] + $details;
+        return ['state' => $next, 'event' => null];
+    }
 
     if ($result['ok']) {
         $next['status'] = 'ok';
@@ -227,12 +267,12 @@ function next_uptime_slot(int $siteId, int $intervalMinutes, int $now): int
 /**
  * Whether a failure could be the whole server's, so the other sites on it
  * are checked in the same run (and a server that is down is one alert).
- * Not when the domain does not resolve (no server was asked) or the page
- * answered without its keyword (the server answered); anything else may be
- * the server's: no answer, refused, a broken gateway, a firewall that
- * blocks Vaka, the same certificate trouble on every site.
+ * Not when the domain does not resolve (no server was asked), or the page
+ * answered without its keyword or with a bot check (the server answered);
+ * anything else may be the server's: no answer, refused, a broken gateway,
+ * a firewall that blocks Vaka, the same certificate trouble on every site.
  */
 function server_failure(array $result): bool
 {
-    return !in_array($result['problem'], ['dns', 'keyword'], true);
+    return !in_array($result['problem'], ['dns', 'keyword', 'blocked'], true);
 }

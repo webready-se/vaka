@@ -125,6 +125,14 @@ test('a site that cannot be reached is unknown, not an alert', function () {
         ->and($result['summary'])->toBe('Could not check: no answer within 10 s');
 });
 
+test('a bot check in place of every file is unknown, not a site with nothing public', function () {
+    $check = probe(200, bot_check_page());
+    expect(evaluate_exposed(probes([], $check), $check, 10))->toMatchArray([
+        'status' => 'unknown',
+        'summary' => "Could not check: Imunify360's bot check answered instead of the site",
+    ]);
+});
+
 test('files that did not answer are left out of the count', function () {
     $result = evaluate_exposed(probes(['.env' => probe(0, '', CURLE_OPERATION_TIMEDOUT)]), probe(404, SHOP_PAGE), 10);
     expect($result['status'])->toBe('ok')

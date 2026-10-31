@@ -11,6 +11,13 @@ if ($path !== '/' && is_file(__DIR__ . $path)) return false;
 
 if (isset($_GET['sleep'])) sleep((int) $_GET['sleep']);
 
+// Under /botcheck a host's bot protection answers every path, with 200, instead of the site
+if (str_starts_with($path, '/botcheck')) {
+    header('Content-Type: text/html');
+    readfile(__DIR__ . '/../../bot-check.html');
+    exit;
+}
+
 switch ($path) {
     case '/redirect':
         header('Location: /', true, 301);

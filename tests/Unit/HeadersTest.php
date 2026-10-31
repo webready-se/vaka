@@ -104,6 +104,12 @@ test('an error page or no answer is not graded', function () {
         ->and(evaluate_headers(answered([], 'https://shop.example/', 0, CURLE_OPERATION_TIMEDOUT), 10)['summary'])->toBe('Could not check: no answer within 10 s');
 });
 
+test('a bot check is not graded as the site', function () {
+    // Imunify360's page has none of the site's headers: graded, every protection would look removed
+    expect(evaluate_headers(['body' => bot_check_page()] + answered([]), 10))->toMatchArray(['status' => 'unknown', 'summary' => "Could not check: Imunify360's bot check answered instead of the site", 'details' => []])
+        ->and(evaluate_headers(answered(['cf-mitigated' => 'challenge'], 'https://shop.example/', 403), 10)['summary'])->toBe("Could not check: Cloudflare's bot check answered instead of the site");
+});
+
 /** A graded result with these levels (in SECURITY_HEADERS order). */
 function graded(string ...$levels): array
 {

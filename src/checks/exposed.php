@@ -96,6 +96,11 @@ function evaluate_exposed(array $responses, array $baseline, int $timeout): arra
     if ($baseline['errno']) {
         return ['status' => 'unknown', 'summary' => 'Could not check: ' . lcfirst(connection_problem($baseline['errno'], $baseline['error'], $timeout)), 'details' => ['found' => [], 'checked' => 0, 'problem' => '']];
     }
+    // The made-up page answered with a bot check: so does every file, and none of them was really looked at
+    $by = bot_check($baseline);
+    if ($by !== '') {
+        return ['status' => 'unknown', 'summary' => 'Could not check: ' . bot_check_words($by), 'details' => ['found' => [], 'checked' => 0, 'problem' => '']];
+    }
 
     $found = [];
     $checked = 0;

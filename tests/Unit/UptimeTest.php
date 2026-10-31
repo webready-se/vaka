@@ -14,6 +14,8 @@ test('a 200 answer is up', function () {
         'ip' => '192.0.2.10',
         'cdn' => '',
         'problem' => '',
+        'blocked' => '',
+        'from_ip' => '',
     ]);
 });
 
@@ -70,6 +72,7 @@ test('advice_for says in plain words what to look at', function (string $problem
     'certificate' => ['certificate', 0, 'Browsers will refuse the site too'],
     'tls' => ['tls', 0, 'The secure connection fails'],
     'redirects' => ['redirects', 0, 'The site redirects in a loop'],
+    'bot check' => ['blocked', 200, 'While a bot check answers instead of the site'],
 ]);
 
 test('advice_for has nothing to add when there is no problem', function () {
@@ -102,6 +105,72 @@ test('detect_cdn names the CDN from its response headers', function (array $head
     'bunny' => [['server' => ['BunnyCDN-DE1-123']], 'Bunny'],
     'none' => [['server' => ['nginx']], ''],
 ]);
+
+test('bot_check names the bot protection that answered instead of the site', function () {
+    expect(bot_check(response(['body' => bot_check_page()])))->toBe('Imunify360')
+        ->and(bot_check(response(['status' => 403, 'headers' => ['cf-mitigated' => ['challenge']], 'body' => '<title>Just a moment...</title>'])))->toBe('Cloudflare')
+        ->and(bot_check(response()))->toBe('')
+        // A page that only asks for a moment is the site's own
+        ->and(bot_check(response(['body' => '<title>One moment, please...</title>'])))->toBe('');
+});
+
+test('a bot check is neither up nor down, and the keyword is not looked for on it', function () {
+    $imunify = evaluate_uptime(response(['body' => bot_check_page(), 'local_ip' => '203.0.113.5']), 'Welcome', 10);
+    expect($imunify)->toMatchArray([
+        'ok' => false,
+        'summary' => "Imunify360's bot check answered instead of the site",
+        'problem' => 'blocked',
+        'blocked' => 'Imunify360',
+        'from_ip' => '203.0.113.5',
+    ]);
+
+    // Cloudflare's answers 403, which is not the site refusing Vaka
+    $cloudflare = evaluate_uptime(response(['status' => 403, 'headers' => ['cf-mitigated' => ['challenge']], 'body' => '']), '', 10);
+    expect($cloudflare)->toMatchArray(['problem' => 'blocked', 'blocked' => 'Cloudflare', 'summary' => "Cloudflare's bot check answered instead of the site"]);
+});
+
+test('Vaka\'s own address is given only when it is one the host can let through', function () {
+    $from = fn (string $ip) => evaluate_uptime(response(['body' => bot_check_page(), 'local_ip' => $ip]), '', 10)['from_ip'];
+    expect($from('2001:db8::5'))->toBe('2001:db8::5')
+        ->and($from('10.0.0.5'))->toBe('')
+        ->and($from('192.168.1.20'))->toBe('')
+        ->and($from(''))->toBe('');
+});
+
+test('a bot check changes nothing about the site: no event, the same status, and when it began', function () {
+    $blocked = evaluate_uptime(response(['body' => bot_check_page(), 'local_ip' => '203.0.113.5']), '', 10);
+    $up = ['status' => 'ok', 'fail_count' => 0, 'changed_at' => '2026-10-25T08:00:00Z', 'details' => ['status_code' => 200, 'ms' => 231]];
+
+    $first = next_uptime_state($up, $blocked, 2, '2026-10-25T12:00:00Z');
+    expect($first['state'])->toMatchArray(['status' => 'ok', 'fail_count' => 0, 'changed_at' => '2026-10-25T08:00:00Z', 'summary' => "Imunify360's bot check answered instead of the site"])
+        ->and($first['state']['details'])->toMatchArray(['blocked' => 'Imunify360', 'blocked_since' => '2026-10-25T12:00:00Z', 'from_ip' => '203.0.113.5', 'ms' => 231])
+        ->and($first['event'])->toBeNull();
+
+    // Still blocked: it began when it began
+    $later = next_uptime_state($first['state'], $blocked, 2, '2026-10-25T12:05:00Z');
+    expect($later['state']['details']['blocked_since'])->toBe('2026-10-25T12:00:00Z');
+
+    // The site again: the bot check is forgotten, and nothing happened to tell
+    $seen = next_uptime_state($later['state'], evaluate_uptime(response(), '', 10), 2, '2026-10-25T12:10:00Z');
+    expect($seen['state']['details'])->not->toHaveKey('blocked')
+        ->and($seen['state']['details'])->not->toHaveKey('blocked_since')
+        ->and($seen['event'])->toBeNull();
+});
+
+test('a site that is down stays down behind a bot check, so no recovery is told that nobody saw', function () {
+    $blocked = evaluate_uptime(response(['body' => bot_check_page()]), '', 10);
+
+    $down = ['status' => 'fail', 'fail_count' => 3, 'changed_at' => '2026-10-25T12:00:00Z', 'details' => ['failing_since' => '2026-10-25T12:00:00Z']];
+    $next = next_uptime_state($down, $blocked, 2, '2026-10-25T12:30:00Z');
+    expect($next['state'])->toMatchArray(['status' => 'fail', 'fail_count' => 3, 'changed_at' => '2026-10-25T12:00:00Z'])
+        ->and($next['state']['details']['failing_since'])->toBe('2026-10-25T12:00:00Z')
+        ->and($next['event'])->toBeNull();
+
+    // And a site never seen stays pending, with no first check to record
+    $pending = next_uptime_state(['status' => 'pending', 'fail_count' => 0, 'changed_at' => null, 'details' => []], $blocked, 2, '2026-10-25T12:00:00Z');
+    expect($pending['state']['status'])->toBe('pending')
+        ->and($pending['event'])->toBeNull();
+});
 
 test('the first successful check is a baseline event', function () {
     $next = next_uptime_state(['status' => 'pending', 'fail_count' => 0, 'changed_at' => null, 'details' => []], evaluate_uptime(response(), '', 10), 2, '2026-10-25T12:00:00Z');
@@ -202,6 +271,8 @@ test('only a failure that could be the server\'s has the other sites on it check
     // The server was never asked, or answered as it should: the site's own trouble
     expect(server_failure($failed('dns')))->toBeFalse()
         ->and(server_failure($failed('keyword', 200)))->toBeFalse()
+        // A bot check is the server answering
+        ->and(server_failure($failed('blocked', 200)))->toBeFalse()
         // Anything else could be the whole server: no answer, refused, a broken gateway, a firewall that blocks Vaka
         ->and(server_failure($failed('timeout')))->toBeTrue()
         ->and(server_failure($failed('refused')))->toBeTrue()

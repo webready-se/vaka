@@ -94,6 +94,13 @@ function md_attention(array $site, array $config): array
     } elseif ($site['unstable']) {
         $items[] = ['rank' => 1, 'title' => 'Keeps going down and coming back', 'summary' => $site['summary'], 'advice' => '', 'lines' => $quiet];
     }
+    // Vaka cannot see the site at all, so an outage would go unnoticed
+    $blocked = $site['blocked'] ?? null;
+    if ($blocked !== null) {
+        $since = $blocked['since'] !== null ? ' since ' . md_when($blocked['since'], $config) : '';
+        $items[] = ['rank' => 1, 'title' => "Hidden behind a bot check{$since}", 'summary' => bot_check_words($blocked['by']), 'advice' => advice_for('blocked', 0),
+            'lines' => $blocked['from_ip'] !== null ? ["Vaka's server asks from " . md_code($blocked['from_ip']) . ': the address to let through.'] : []];
+    }
 
     $rank = fn (array $check) => $check['status'] === 'fail' ? 2 : 3;
     $exposed = $site['exposed'];

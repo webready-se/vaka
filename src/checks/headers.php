@@ -342,6 +342,9 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     if ($response['errno']) {
         return ['status' => 'unknown', 'summary' => 'Could not check: ' . lcfirst(connection_problem($response['errno'], $response['error'], $timeout)), 'details' => []];
     }
+    // Its page has none of the site's headers: graded, every protection would look removed
+    $by = bot_check($response);
+    if ($by !== '') return ['status' => 'unknown', 'summary' => 'Could not check: ' . bot_check_words($by), 'details' => []];
     if ($response['status'] >= 400) {
         return ['status' => 'unknown', 'summary' => 'Could not check: the site answered ' . trim($response['status'] . ' ' . status_text($response['status'])), 'details' => []];
     }

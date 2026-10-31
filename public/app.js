@@ -335,6 +335,11 @@
     });
   }
 
+  /** Sites where a bot check answers instead of the site: Vaka cannot see them. */
+  function blockedIssues() {
+    return allSites().filter(function (site) { return site.blocked; });
+  }
+
   function render() {
     renderRunState();
     renderBanner();
@@ -555,7 +560,8 @@
     var certs = certIssues().sort(function (a, b) { return (a.ssl.status === 'fail' ? 0 : 1) - (b.ssl.status === 'fail' ? 0 : 1) || (a.ssl.days_left || 0) - (b.ssl.days_left || 0); });
     var domains = domainIssues();
     var exposed = exposedIssues();
-    node.hidden = problems.length + certs.length + domains.length + exposed.length === 0;
+    var blocked = blockedIssues();
+    node.hidden = problems.length + certs.length + domains.length + exposed.length + blocked.length === 0;
     if (node.hidden) return;
 
     var rank = function (site) { return site.status === 'failing' ? 1 : 0; };
@@ -578,8 +584,10 @@
     var outages = items.filter(function (item) { return item.sites[0].status === 'down'; });
     state.autoOpen = outages.length === 1 ? itemKey(outages[0]) : null;
 
-    // Certificates and exposed files after the outages: what is broken now before what is about to be
-    var checks = certs.map(function (site) { return { rank: site.ssl.status === 'fail' ? 0 : 1, row: certIncident(site) }; })
+    // Certificates and exposed files after the outages: what is broken now before what is about to be.
+    // A site Vaka cannot see leads the warnings: an outage there would go unnoticed.
+    var checks = blocked.map(function (site) { return { rank: 1, row: blockedIncident(site) }; })
+      .concat(certs.map(function (site) { return { rank: site.ssl.status === 'fail' ? 0 : 1, row: certIncident(site) }; }))
       .concat(domains.map(function (item) { return { rank: item.domain.status === 'fail' ? 0 : 1, row: domainIncident(item) }; }))
       .concat(exposed.map(function (site) { return { rank: site.exposed.status === 'fail' ? 0 : 1, row: exposedIncident(site) }; }))
       .sort(function (a, b) { return a.rank - b.rank; });
@@ -710,6 +718,18 @@
       ]);
   }
 
+  /** A bot check answers instead of the site: what that means, and the address to let through. */
+  function blockedIncident(site) {
+    var blocked = site.blocked;
+    return incident('blocked:' + site.id, 'warn', 'failing', site.label, 'is hidden behind a bot check', blocked.by + '\'s bot check answers instead of the site',
+      timeBox(blocked.since ? shortDuration(secondsSince(blocked.since)) : '–', 'Hidden for'), [
+        h('p', { class: 'incident-meta' }, [site.group || 'No group', blocked.since ? ' · since ' + clock(blocked.since) : null]),
+        advice(site.advice),
+        blocked.from_ip ? h('p', { class: 'incident-meta' }, ['Vaka\'s server asks from ', h('code', {}, blocked.from_ip), ': the address to let through.']) : null,
+        h('div', { class: 'actions' }, siteActions(site, false))
+      ]);
+  }
+
   /** Snoozed and maintenance outages, folded into one row: known, and quiet for now. */
   function quietGroup(sites) {
     var snoozed = sites.filter(function (site) { return site.snoozed_until; }).length;
@@ -726,6 +746,7 @@
     if (site.snoozed_until && !inCard) list.push(h('li', { class: 'badge' }, [icon('quiet'), 'Snoozed until ' + clock(site.snoozed_until)]));
     if (site.maintenance) list.push(h('li', { class: 'badge' }, [icon('quiet'), 'In a maintenance window: not alerted']));
     if (site.unstable) list.push(h('li', { class: 'badge is-warn' }, [icon('failing'), 'Unstable: went down several times lately']));
+    if (site.blocked && !inCard) list.push(h('li', { class: 'badge is-warn' }, [icon('failing'), 'Behind a bot check: Vaka cannot see the site']));
     return list.length ? h('ul', { class: 'badges' }, list) : null;
   }
 
@@ -907,7 +928,8 @@
     var cert = site.ssl && site.ssl.status !== 'ok' ? h('span', { class: site.ssl.status === 'fail' ? 'is-down' : 'is-warn' }, certificateWords(site.ssl)) : null;
     var registration = site.domain && (site.domain.status === 'warn' || site.domain.status === 'fail') ? h('span', { class: site.domain.status === 'fail' ? 'is-down' : 'is-warn' }, domainWords(site.domain)) : null;
     var files = site.exposed && site.exposed.status !== 'ok' ? h('span', { class: site.exposed.status === 'fail' ? 'is-down' : 'is-warn' }, exposedWords(site.exposed)) : null;
-    var small = [subtitle, cert, registration, files].filter(Boolean).reduce(function (list, part) { return list.length ? list.concat([' · ', part]) : [part]; }, []);
+    var hidden = site.blocked ? h('span', { class: 'is-warn' }, 'hidden behind a bot check') : null;
+    var small = [subtitle, hidden, cert, registration, files].filter(Boolean).reduce(function (list, part) { return list.length ? list.concat([' · ', part]) : [part]; }, []);
     var grade = site.headers && site.headers.grade ? site.headers.grade : null;
 
     return h('li', {}, h('button', {
