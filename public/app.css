@@ -645,7 +645,8 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .drawer-hint { margin: 22px 0 0; color: var(--text-3); font-size: 13.5px; }
 
 /* Toast */
-.toast { position: fixed; left: 50%; bottom: 22px; z-index: 30; transform: translate(-50%, 8px); margin: 0; padding: 11px 16px; border-radius: 12px; background: var(--night); color: var(--night-text); font-weight: 650; box-shadow: 0 12px 30px -12px rgb(15 23 42 / 0.6); opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s; }
+/* A popover (above the site detail, which is a modal dialog): inset, border and overflow undo the browser's popover style */
+.toast { position: fixed; inset: auto auto 22px 50%; z-index: 30; transform: translate(-50%, 8px); margin: 0; padding: 11px 16px; border: 0; overflow: visible; border-radius: 12px; background: var(--night); color: var(--night-text); font-weight: 650; box-shadow: 0 12px 30px -12px rgb(15 23 42 / 0.6); opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s; }
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 
 /* ===================================================================
