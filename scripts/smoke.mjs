@@ -352,6 +352,8 @@ async function main() {
       q('dialog.drawer [data-action="recheck"]').click();
       await waitFor(() => /Checking/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || '') && q('dialog.drawer [data-action="recheck"]').disabled, 'Check again to say it is checking');
       expect(/Checking shop\.example again/.test(q('.toast')?.textContent || ''), 'Check again says when the results come');
+      // The detail is a modal dialog in the top layer; only a popover shown after it lies above it (and hit tests cannot tell, since all outside a modal is inert)
+      expect(q('.toast').matches(':popover-open') && q('dialog.drawer').matches(':modal'), 'the message shows above the open site detail, not behind it');
       expect(/^Checked \d/.test(q('dialog.drawer .fact-when')?.textContent || ''), 'the response time says when uptime was checked');
       // As if the next run had come: first one check has run again, then all of them
       const realFetch = window.fetch;

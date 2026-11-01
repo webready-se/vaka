@@ -2010,10 +2010,19 @@
 
   function toast(message) {
     var node = regions.toast;
+    // A popover shown after the open site detail lies above it: the detail is a modal dialog, in the top layer
+    if (node.showPopover) {
+      if (node.matches(':popover-open')) node.hidePopover();
+      node.showPopover();
+    }
+    // The text after it shows, so a screen reader hears the change
     node.textContent = message;
     node.classList.add('is-visible');
     clearTimeout(toast.timer);
-    toast.timer = setTimeout(function () { node.classList.remove('is-visible'); }, 4000);
+    toast.timer = setTimeout(function () {
+      node.classList.remove('is-visible');
+      toast.timer = setTimeout(function () { if (node.hidePopover && node.matches(':popover-open')) node.hidePopover(); }, 200);
+    }, 4000);
   }
 
   function snooze(ids, body, button) {
