@@ -9,6 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
+- **The CSP advice names the inline scripts it would block, by their start.** So they can be found in the site's code: in the site detail (one click away), the report and the read API (`inline` on the CSP item), the first five, 60 characters each. The tip also says CSP is the one that can break a site, so it is fine to do it last.
 - **A site hidden behind a bot check says so, with what to do.** The dashboard (a row in "Needs your attention" and a note in the list), the read API (`blocked`), the report, `php vaka check` and `status` name the bot check and give the address of Vaka's server to let through. See "Behind a bot check" in `docs/checks.md`.
 - **Vaka can be added to a phone's home screen, with its own icon.** It opens there on its own, like an app. The login page and the dashboard link a web app manifest (`/?manifest`, which needs no login, since browsers fetch it without cookies) and an icon for iOS, and the CSP allows the manifest (`manifest-src 'self'`).
 - **Every check says when it ran and when it runs next.** Headers are graded every 6 hours, so right after a fix the grade could be hours old without saying so. The dashboard's tiles and the Markdown report say "Checked 13:05", and the read API's `ssl`, `domain`, `exposed`, `headers` and `dns` have `checked_at` and `next_at`, as the site has `next_at` for uptime.
@@ -23,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **The security headers in a site's detail start with what to add, the safest first and CSP last.** What each one does and how to add it is one click away, what is in place is one line, and so is the nginx tip. The read API and the report list the protections in the same order: nosniff, Referrer-Policy, frame protection, HSTS, Permissions-Policy, CSP.
 - **Vaka's requests call it `VakaBot/<version> (+<APP_URL>)`, where it was `Vaka/<version>`.** "Bot" in the name is what analytics, log filters and web server bot rules look for, so the checks are counted as a robot's without anyone knowing Vaka; as `Vaka/` they were counted as an unknown visitor. A firewall rule or robots.txt that names `Vaka/` needs the new name; `USER_AGENT` still sets another one.
 - **The dashboard's overview is about four times faster.** It took some 880 ms on a small server with 50 sites: it read the time of each of the last day's 14 000 response-time samples in PHP, and of each uptime event once for every one of the 30 days. SQLite now counts the hourly buckets, and each event's time is read once.
 - **While the dashboard loads, it shows the page in the shape it will have.** The night panel with the owl and the moon, and the list of sites, with bars that breathe slowly where the words and numbers will come, instead of a line of text over an empty page. Nothing jumps when the overview arrives, and the bars stand still for people who prefer reduced motion.

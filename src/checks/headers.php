@@ -11,7 +11,7 @@ const HEADERS_SITES_PER_BATCH = 20;
 /** HSTS shorter than this (six months) is weak. */
 const HSTS_MIN_SECONDS = 15552000;
 
-/** The protections that are graded, in the order they are shown: what each does, the header that adds it, and a tip. */
+/** The protections that are graded: what each does, the header that adds it, and a tip. */
 const SECURITY_HEADERS = [
     'hsts' => ['label' => 'HSTS', 'what' => 'Makes browsers always use https for the site', 'fix' => 'Strict-Transport-Security: max-age=31536000', 'tip' => 'Add it once every page works over https.'],
     'csp' => ['label' => 'CSP', 'what' => 'Limits which scripts may run: the main defence against injected scripts', 'fix' => "Content-Security-Policy-Report-Only: default-src 'self'", 'tip' => "Report-Only blocks nothing, so it is safe to try: open a few pages with the browser's console open, and it lists what the policy would block. Allow what the site needs (another host's scripts go in script-src, for example), then rename the header to Content-Security-Policy."],
@@ -20,6 +20,15 @@ const SECURITY_HEADERS = [
     'referrer' => ['label' => 'Referrer-Policy', 'what' => 'Keeps full addresses, with search terms and tokens, from leaking to other sites', 'fix' => 'Referrer-Policy: strict-origin-when-cross-origin', 'tip' => ''],
     'permissions' => ['label' => 'Permissions-Policy', 'what' => 'Turns off browser features the site does not use, such as the camera and microphone', 'fix' => 'Permissions-Policy: camera=(), microphone=(), geolocation=()', 'tip' => ''],
 ];
+
+/**
+ * The order to add the protections in, as the site detail, the read API and
+ * the report list them: the safest first. nosniff and Referrer-Policy break
+ * nothing; frame protection breaks only a site that others embed; HSTS keeps
+ * browsers on https for a year once sent; Permissions-Policy adds little;
+ * CSP is the one that can break a site.
+ */
+const HEADERS_FIX_ORDER = ['nosniff', 'referrer', 'frames', 'hsts', 'permissions', 'csp'];
 
 /** A CSP sent only as Report-Only: tried, not enforced. */
 const CSP_REPORT_ONLY_NOTE = 'only as Report-Only, which blocks nothing';
@@ -195,24 +204,37 @@ function page_files(string $html, string $pageUrl): array
  * one) and the hosts of scripts from anywhere but the page's own host (a
  * host under it too, unlike own_host(): 'self' is the page's host only).
  * Read from the page's HTML, so scripts it adds later are not seen.
+ * `excerpts` starts the first five inline scripts (see script_excerpt()),
+ * to find them by in the site's code.
  *
- * @return array{inline: int, hosts: list<string>}
+ * @return array{inline: int, hosts: list<string>, excerpts: list<string>}
  */
 function page_scripts(string $html, string $pageUrl): array
 {
     preg_match_all('/<script\b([^>]*)>(.*?)<\/script\s*>/is', (string) preg_replace('/<!--.*?-->/s', '', $html), $scripts, PREG_SET_ORDER);
     $inline = 0;
     $hosts = [];
+    $excerpts = [];
     foreach ($scripts as [, $source, $body]) {
         $attributes = html_attributes($source);
         if (isset($attributes['src'])) {
             $url = resolve_url($attributes['src'], $pageUrl);
             if ($url !== null && url_host($url) !== url_host($pageUrl)) $hosts[url_host($url)] = true;
-        } elseif ($body !== '' && preg_match('/^(?:|module|importmap|speculationrules|.*(?:java|ecma)script.*)$/', strtolower(trim($attributes['type'] ?? '')))) {
+        } elseif (trim($body) !== '' && preg_match('/^(?:|module|importmap|speculationrules|.*(?:java|ecma)script.*)$/', strtolower(trim($attributes['type'] ?? '')))) {
             $inline++;
+            if (count($excerpts) < 5) $excerpts[] = script_excerpt($body);
         }
     }
-    return ['inline' => $inline, 'hosts' => array_keys($hosts)];
+    return ['inline' => $inline, 'hosts' => array_keys($hosts), 'excerpts' => $excerpts];
+}
+
+/** The start of a script on one line: at most 60 characters, and "…" when there is more. */
+function script_excerpt(string $body): string
+{
+    // Without /u for text that is not UTF-8
+    $line = trim(preg_replace('/\s+/u', ' ', $body) ?? (string) preg_replace('/\s+/', ' ', $body));
+    $start = preg_match('/^.{0,60}/su', $line, $match) ? $match[0] : substr($line, 0, 60);
+    return strlen($start) < strlen($line) ? rtrim($start) . '…' : $line;
 }
 
 /** An HTML tag's attributes, name (lowercase) => value with entities decoded; the first of a name counts, as in browsers. */
@@ -457,8 +479,8 @@ function header_items(array $details): array
 {
     if (!isset($details['headers'])) return [];
     $items = [];
-    foreach (SECURITY_HEADERS as $key => $header) {
-        $item = ['key' => $key] + $header + ($details['headers'][$key] ?? ['level' => 'missing', 'note' => '']);
+    foreach (HEADERS_FIX_ORDER as $key) {
+        $item = ['key' => $key] + SECURITY_HEADERS[$key] + ($details['headers'][$key] ?? ['level' => 'missing', 'note' => '']);
         if ($key === 'nosniff' && $item['level'] === 'good' && isset($details['files'])) {
             $missing = $details['files']['missing'];
             $item = $missing
@@ -493,10 +515,12 @@ function csp_item(array $item, ?array $scripts): array
         $hosts !== [] => "the page loads scripts from {$from}",
         default => '',
     };
+    $excerpts = $scripts['excerpts'] ?? [];
     return [
         'note' => $note !== '' ? "{$note}, which default-src 'self' would block" : $item['note'],
-        'tip' => $item['tip'] . ($inline ? " Inline scripts need a 'sha256-...' hash each in script-src, or a nonce: let the site's build add them, since a hash changes whenever the script does." : ''),
-    ] + $item;
+        'tip' => 'This is the one that can break a site, so it is fine to do it last. ' . $item['tip']
+            . ($inline ? " Inline scripts need a 'sha256-...' hash each in script-src, or a nonce: let the site's build add them, since a hash changes whenever the script does." : ''),
+    ] + ($excerpts ? ['inline' => $excerpts] : []) + $item;
 }
 
 /**

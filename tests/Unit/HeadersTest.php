@@ -361,11 +361,15 @@ test('a header alert for the scripts and styles says where to look', function ()
     ]);
 });
 
+test('the protections come in the order to add them: the safest first, CSP last', function () {
+    expect(array_column(header_items(evaluate_headers(answered([]), 10)['details']), 'key'))->toBe(['nosniff', 'referrer', 'frames', 'hsts', 'permissions', 'csp']);
+});
+
 // =====================================================================
 // CSP: Report-Only first, and what the page has that it would block
 // =====================================================================
 
-test('page_scripts counts the inline scripts that would run and names the hosts other scripts come from', function () {
+test('page_scripts counts the inline scripts that would run, starts each, and names the hosts other scripts come from', function () {
     $html = '<!-- <script>old()</script> -->'
         . '<script>document.documentElement.dataset.theme = localStorage.theme || "light"</script>'
         . '<script type="module">import "/app.js"; if (a < b) start()</script>'
@@ -376,10 +380,22 @@ test('page_scripts counts the inline scripts that would run and names the hosts 
         . '<script src="//analytics.example/b.js"></script>'
         . '<script src="https://static.shop.example/x.js"></script>'
         . '<SCRIPT TYPE="text/javascript">track()</SCRIPT>';
-    expect(page_scripts($html, 'https://shop.example/'))->toBe(['inline' => 3, 'hosts' => ['analytics.example', 'static.shop.example']])
-        ->and(page_scripts('<script src="/app.js"></script><script src="https://shop.example/b.js"></script>', 'https://shop.example/'))->toBe(['inline' => 0, 'hosts' => []])
-        ->and(page_scripts('<script>a()</script>', 'http://127.0.0.1:8794/'))->toBe(['inline' => 1, 'hosts' => []])
-        ->and(page_scripts('<script src="http://127.0.0.1:5173/app.js"></script>', 'http://127.0.0.1:8794/'))->toBe(['inline' => 0, 'hosts' => ['127.0.0.1:5173']]);
+    expect(page_scripts($html, 'https://shop.example/'))->toBe([
+        'inline' => 3,
+        'hosts' => ['analytics.example', 'static.shop.example'],
+        // The start of each, to find it by in the site's code
+        'excerpts' => ['document.documentElement.dataset.theme = localStorage.theme…', 'import "/app.js"; if (a < b) start()', 'track()'],
+    ])
+        ->and(page_scripts('<script src="/app.js"></script><script src="https://shop.example/b.js"></script>', 'https://shop.example/'))->toBe(['inline' => 0, 'hosts' => [], 'excerpts' => []])
+        ->and(page_scripts('<script>a()</script>', 'http://127.0.0.1:8794/'))->toBe(['inline' => 1, 'hosts' => [], 'excerpts' => ['a()']])
+        ->and(page_scripts('<script src="http://127.0.0.1:5173/app.js"></script>', 'http://127.0.0.1:8794/'))->toBe(['inline' => 0, 'hosts' => ['127.0.0.1:5173'], 'excerpts' => []]);
+});
+
+test('page_scripts starts at most five inline scripts, on one line each', function () {
+    $html = "<script>\n    window.dataLayer = window.dataLayer || [];\n    gtag('js', new Date());\n</script>" . str_repeat('<script>b()</script>', 6);
+    $scripts = page_scripts($html, 'https://shop.example/');
+    expect($scripts['inline'])->toBe(7)
+        ->and($scripts['excerpts'])->toBe(["window.dataLayer = window.dataLayer || []; gtag('js', new Da…", 'b()', 'b()', 'b()', 'b()']);
 });
 
 test('without a CSP, the suggestion is Report-Only, and the note says what default-src self would block on the page', function () {
@@ -391,10 +407,15 @@ test('without a CSP, the suggestion is Report-Only, and the note says what defau
         ->and($plain['note'])->toBe('')
         ->and($plain['tip'])->toContain("open a few pages with the browser's console open")
         ->and($plain['tip'])->toContain('rename the header to Content-Security-Policy')
-        ->and($plain['tip'])->not->toContain('sha256');
+        ->and($plain['tip'])->not->toContain('sha256')
+        // The one that can break a site
+        ->and($plain['tip'])->toContain('fine to do it last');
 
     $both = $csp($page('<script>theme()</script><script type="module">go()</script><script src="https://analytics.example/a.js"></script>'));
     expect($both['note'])->toBe("the page has 2 inline scripts and scripts from analytics.example, which default-src 'self' would block")
+        // Which ones, by their start
+        ->and($both['inline'])->toBe(['theme()', 'go()'])
+        ->and($plain)->not->toHaveKey('inline')
         ->and($both['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'")
         ->and($both['tip'])->toContain("'sha256-...'")
         ->and($both['tip'])->toContain('changes whenever the script does');

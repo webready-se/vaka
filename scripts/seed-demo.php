@@ -165,7 +165,13 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             'https://shop.example' => ['checked' => $paths = ['/build/assets/site-4f2a9c.css', isset($opts['hostile']) ? '/build/<img src=x onerror="window.__xss=4">.js' : '/build/assets/app-81d3e0.js'], 'missing' => $paths],
             default => null,
         };
-        $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => $url . '/', 'headers' => $sent], 10, $files);
+        // Without a CSP, the page's inline scripts and another host's are named (one with markup in it with --hostile)
+        $body = $url === 'https://shop.example'
+            ? '<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date());</script>'
+                . '<script>document.documentElement.dataset.theme = localStorage.theme || "light"</script><script src="https://analytics.example/a.js"></script>'
+                . (isset($opts['hostile']) ? '<script>document.write("<img src=x onerror=window.__xss=5>")</script>' : '')
+            : '';
+        $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => $url . '/', 'headers' => $sent, 'body' => $body], 10, $files);
         $confirmed = confirm_headers(null, $graded)['details'];
         save_check_state($db, $id, 'headers', ['status' => $graded['status'], 'summary' => $graded['summary'], 'details' => $confirmed, 'fail_count' => 0, 'changed_at' => utc_now($month)], utc_now($now - 2 * 3600), utc_now($now + 4 * 3600));
         $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_snapshot = ? WHERE site_id = ? AND check_name = 'headers'")

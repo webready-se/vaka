@@ -117,7 +117,8 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [ ] Tags on sites, if one group per site proves too narrow
 - [ ] Snooze straight from Slack (needs a Slack app instead of an incoming webhook)
 - [ ] Connect sibling tools: each tool keeps its own small JSON API with a token; paste another tool's URL and token in Settings, e.g. to show Puls traffic next to a site's uptime. No shared database, no shared code library
-- [ ] CSP report endpoint (`report-to` / `report-uri`) that collects violations from the sites
+- [ ] CSP report endpoint (`report-to` / `report-uri`) that collects violations from the sites. It fits what Vaka is for, but not now: it is a public intake on the watcher's own server that grows with the sites' visitors, with data Vaka cannot vouch for. If ever, a collection in Report-Only that ends by itself: a token per site, its own file and SQLite database, rate limits, and counts only, never the reports themselves
+- [ ] Compare the page's inline scripts (a sha256 of each) and script hosts with the site's own CSP, enforced or Report-Only, and say what it would block. Shown on the CSP item first; an alert only once it has proven itself, so a deploy that changes a script does not alert by mistake. `page_scripts()` already reads the scripts
 - [ ] Read-only share link per group (like Puls share tokens), e.g. for a customer
 - [ ] Public status pages
 - [ ] DKIM (selectors are site specific)

@@ -595,7 +595,23 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .header-list .records code { margin-top: 6px; }
 .header-list .records code + code { margin-top: 0; }
 .header-list .header-tip { margin-top: 4px; color: var(--text-3); font-size: 13px; }
+.headers-lead { margin: 4px 0 0; color: var(--text-3); font-size: 13px; }
+.headers-done { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 0; color: var(--text-2); font-size: 14px; }
+.headers-done .icon { flex: none; width: 16px; height: 16px; margin-top: 2px; stroke-width: 2.4; color: var(--up); }
+/* What each does and how to add it, one click away: the browser's own disclosure, so keys and screen readers work as they do anywhere */
+.header-more { margin-top: 6px; }
 .headers-tip { margin: 14px 0 0 26px; color: var(--text-3); font-size: 13px; }
+.header-more > summary, .headers-tip > summary { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-size: 13px; font-weight: 600; cursor: pointer; list-style: none; border-radius: 4px; }
+.header-more > summary::-webkit-details-marker, .headers-tip > summary::-webkit-details-marker { display: none; }
+.header-more > summary:focus-visible, .headers-tip > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
+.header-list .header-more > summary .icon, .headers-tip > summary .icon { width: 14px; height: 14px; margin: 0; color: inherit; transform: rotate(-90deg); transition: transform 0.15s; }
+.header-list .header-more[open] > summary .icon, .headers-tip[open] > summary .icon { transform: none; }
+.header-more > p { margin-top: 6px; }
+.headers-tip > p { margin: 6px 0 0; }
+.header-scripts > p { margin-top: 8px; color: var(--text-2); font-size: 13px; }
+.header-scripts ul { display: grid; gap: 4px; margin: 4px 0 0; padding: 0; list-style: none; }
+.header-list .header-scripts li { display: block; }
+.header-list .header-scripts code { margin-top: 0; font-size: 12.5px; }
 .header-list .fix-label { margin-top: 6px; color: var(--text-2); font-size: 13px; }
 .header-list .fix-label + code { margin-top: 2px; }
 /* What Vaka sees: a tile per check, the words first, tinted when something needs a look */

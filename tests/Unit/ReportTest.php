@@ -120,6 +120,14 @@ test('one site: every protection and mail record that is not in place is worth i
         ->and($md)->not->toContain('**Referrer-Policy** is');
 });
 
+test('one site: the CSP item names the inline scripts it would block by their start, as text from the site', function () {
+    $csp = ['key' => 'csp', 'label' => 'CSP', 'level' => 'missing', 'note' => "the page has 2 inline scripts, which default-src 'self' would block", 'what' => 'Limits which scripts may run', 'fix' => "Content-Security-Policy-Report-Only: default-src 'self'", 'tip' => 'Do it last.',
+        'inline' => ['window.dataLayer = window.dataLayer || [];…', 'document.write("<b>`x`</b>")']];
+    $md = read_api_markdown_site(report_about(), report_detail(['headers' => ['status' => 'warn', 'grade' => 'D', 'summary' => 'Grade D', 'items' => [$csp], 'tip' => '']]), REPORT_CONFIG);
+
+    expect($md)->toContain("Add `Content-Security-Policy-Report-Only: default-src 'self'`. Do it last. The inline scripts start: " . md_code('window.dataLayer = window.dataLayer || [];…') . ', ' . md_code('document.write("<b>`x`</b>")') . '.');
+});
+
 test('one site: the last 30 days, response times, maintenance and the latest changes', function () {
     $detail = report_detail(['keyword' => 'Add to cart'], [
         'samples' => [['checked_at' => '2026-10-28T12:00:00Z', 'status_code' => 200, 'ms' => 200, 'ok' => true], ['checked_at' => '2026-10-28T12:05:00Z', 'status_code' => 200, 'ms' => 300, 'ok' => true], ['checked_at' => '2026-10-28T12:10:00Z', 'status_code' => 200, 'ms' => 900, 'ok' => true], ['checked_at' => '2026-10-28T12:15:00Z', 'status_code' => 503, 'ms' => 50, 'ok' => false]],
