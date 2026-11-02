@@ -236,7 +236,7 @@ test('the overview lists sites with their state, and a restricted user only sees
     save_check_state($this->db, $shop, 'ssl', ['status' => 'warn', 'summary' => 'The certificate expires in 6 days (31 Oct 2026)', 'details' => ['days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z', 'problem' => 'expiring'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
     $env = ['label' => '.env', 'what' => 'the environment file, often with database passwords and API keys', 'severity' => 'fail', 'url' => 'https://shop.example/.env'];
     save_check_state($this->db, $shop, 'domain', ['status' => 'warn', 'summary' => 'shop.example expires in 12 days (6 Nov 2026)', 'details' => ['domain' => 'shop.example', 'days_left' => 12, 'expires' => '2026-11-06T00:00:00Z', 'registrar' => 'Example Registrar AB', 'problem' => 'domain_expiring'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 86400));
-    $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => 'https://shop.example/', 'headers' => ['x-frame-options' => ['SAMEORIGIN'], 'x-content-type-options' => ['nosniff']]], 10);
+    $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => 'https://shop.example/', 'headers' => ['server' => ['nginx'], 'x-frame-options' => ['SAMEORIGIN'], 'x-content-type-options' => ['nosniff']]], 10);
     save_check_state($this->db, $shop, 'headers', ['status' => $graded['status'], 'summary' => $graded['summary'], 'details' => $graded['details'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
     save_check_state($this->db, $shop, 'exposed', ['status' => 'fail', 'summary' => '.env is public: the environment file, often with database passwords and API keys', 'details' => ['found' => [$env], 'checked' => 17, 'problem' => 'exposed'], 'fail_count' => 0, 'changed_at' => utc_now($now - 3600)], utc_now($now), utc_now($now + 3600));
     set_meta($this->db, 'last_run_at', utc_now($now - 30));
@@ -266,10 +266,10 @@ test('the overview lists sites with their state, and a restricted user only sees
         // In the order to add them: the safest first, CSP last
         ->and(array_column($detail['site']['headers']['items'], 'level', 'key'))->toBe(['nosniff' => 'good', 'referrer' => 'missing', 'frames' => 'good', 'hsts' => 'missing', 'permissions' => 'missing', 'csp' => 'missing'])
         ->and($detail['site']['headers']['items'][5])->toMatchArray(['label' => 'CSP', 'fix' => SECURITY_HEADERS['csp']['fix'], 'what' => SECURITY_HEADERS['csp']['what']])
-        // Once for all six: how to add them in nginx without a location dropping them
-        ->and($detail['site']['headers']['tip'])->toBe(HEADERS_NGINX_TIP);
+        // Once for all six: how to add them in nginx and in Apache without losing them, and which one the site runs
+        ->and($detail['site']['headers'])->toMatchArray(['server' => 'nginx', 'tip' => HEADERS_NGINX_TIP, 'tip_apache' => HEADERS_APACHE_TIP]);
     $token = create_share_token($this->db, $shop, null, '', utc_now(time() + 86400), time())['token'];
-    expect(http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['headers']['tip'])->toBe(HEADERS_NGINX_TIP);
+    expect(http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['headers'])->toMatchArray(['server' => 'nginx', 'tip' => HEADERS_NGINX_TIP, 'tip_apache' => HEADERS_APACHE_TIP]);
     expect($admin['groups'][1]['sites'][0]['advice'])->toBe('');
 
     $anna = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('anna', 'anna password')['jar']])['json'];

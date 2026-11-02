@@ -336,6 +336,21 @@ async function main() {
       expect(todo.map((li) => li.querySelector('b')?.textContent).join(', ') === 'X-Content-Type-Options, HSTS, CSP', `what to add comes first, the safest first and CSP last (got ${todo.map((li) => li.querySelector('b')?.textContent).join(', ')})`);
       expect(/^In place: Referrer-Policy, .*Permissions-Policy$/.test(q('dialog.drawer .headers-done')?.textContent || ''), 'what is in place is one line');
       expect([...(headerList?.querySelectorAll('code') || [])].some((c) => /^Content-Security-Policy-Report-Only:/.test(c.textContent)), 'a missing protection comes with the line that adds it (a CSP to try first)');
+      // The lines in the web server's own form, so they paste in as they are; the header itself when the server is not known
+      const formats = all('dialog.drawer .header-format button');
+      expect(formats.map((b) => b.textContent).join(', ') === 'Header, nginx, Apache' && formats[0].getAttribute('aria-pressed') === 'true', `the lines come as a header, for nginx or for Apache, as a header when the server is not known (got ${formats.map((b) => b.textContent + ':' + b.getAttribute('aria-pressed')).join(', ')})`);
+      expect(all('dialog.drawer .header-list .header-fix [data-action="copy"]').length === 3, 'every line has its Copy');
+      formats[1].click();
+      const nginxLines = all('dialog.drawer .header-list .header-fix code').map((c) => c.textContent);
+      expect(nginxLines.includes(`add_header Content-Security-Policy-Report-Only "default-src 'self'" always;`) && nginxLines.every((l) => /^add_header \S+ ".*" always;$/.test(l)), `for nginx the lines are add_header lines (got "${nginxLines[2]}")`);
+      expect(document.activeElement === q('dialog.drawer .header-format [data-format="nginx"]') && document.activeElement.getAttribute('aria-pressed') === 'true', 'the choice keeps the focus and shows as pressed');
+      expect(q('dialog.drawer .header-list .header-fix [data-action="copy"]')?.getAttribute('data-copy') === nginxLines[0], 'Copy copies the line as shown');
+      q('dialog.drawer .header-format [data-format="apache"]').click();
+      expect(all('dialog.drawer .header-list .header-fix code').every((c) => /^Header always set \S+ ".*"$/.test(c.textContent)), 'for Apache the lines are Header lines');
+      expect(q('dialog.drawer .headers-tip summary')?.textContent === 'Adding them in Apache' && /^Put the Header lines/.test(q('dialog.drawer .headers-tip p')?.textContent || ''), 'the tip under the list follows the choice');
+      expect(localStorage.getItem('vaka-header-format') === 'apache', 'the choice is kept for the next site');
+      q('dialog.drawer .header-format [data-format="header"]').click();
+      expect(all('dialog.drawer .header-list .header-fix code')[2]?.textContent === `Content-Security-Policy-Report-Only: default-src 'self'`, 'back to the header as sent');
       expect(all('dialog.drawer .header-more').length === 3 && all('dialog.drawer .header-more').every((d) => !d.open), 'what each does and how to add it is one click away, closed at first');
       const csp = todo[2];
       expect(/do it last, it can break the site/.test(csp?.querySelector('p')?.textContent || ''), 'CSP says to do it last');
