@@ -287,6 +287,24 @@ const CSP_TAG_MANAGERS = ['googletagmanager.com' => 'Google Tag Manager'];
  * The honest word on a page that loads a tag manager: a strict CSP needs
  * nonces from the site's own code, or stays weak. Empty for other pages.
  */
+/** The tag manager's name when the page loads one, or ''. */
+function tag_manager(array $page): string
+{
+    foreach ($page['hosts'] ?? [] as $host) {
+        foreach (CSP_TAG_MANAGERS as $domain => $name) {
+            if ($host === $domain || str_ends_with($host, ".{$domain}")) return $name;
+        }
+    }
+    return '';
+}
+
+/** In the note itself, in sight: a strict policy takes more than a line here. The why is in tag_manager_tip(). */
+function tag_manager_note(array $page): string
+{
+    $name = tag_manager($page);
+    return $name !== '' ? ". It loads {$name}, so a strict policy takes more than a line" : '';
+}
+
 function tag_manager_tip(array $page): string
 {
     foreach ($page['hosts'] ?? [] as $host) {
@@ -941,7 +959,7 @@ function csp_item(array $item, array $details): array
             $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
             default => '. Enforced, it would block nothing on the page, so it is safe to rename',
         };
-        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
+        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
     }
     // No CSP at all: what default-src 'self' would stop on the page, and a draft that allows it (old data: the scripts only)
     $scripts = $details['scripts'] ?? [];
@@ -951,7 +969,7 @@ function csp_item(array $item, array $details): array
     $excerpts = $scripts['excerpts'] ?? [];
     return [
         'blocks' => false,
-        'note' => $has !== '' ? "the page has {$has}: " . ($draft !== '' ? 'the line below allows what is there today' : "default-src 'self' would block it") : $item['note'],
+        'note' => $has !== '' ? "the page has {$has}: " . ($draft !== '' ? 'the line below allows what is there today' : "default-src 'self' would block it") . tag_manager_note($scripts) : $item['note'],
         'fix' => $draft !== '' ? "Content-Security-Policy-Report-Only: {$draft}" : $item['fix'],
         'tip' => 'This is the one that can break a site, so it is fine to do it last. ' . $item['tip']
             . ($draft !== '' ? " The line is drafted from this page: the hashes are of its inline scripts and styles as they are today and change with them, so let the build add them or move the code to files. Other pages may need more; Report-Only shows it all in the console." : '')

@@ -793,6 +793,9 @@ test('a page with a tag manager is told that a strict CSP needs nonces, or stays
     $csp = fn (array $h, string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered($h + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
     $gtm = '<script>dataLayer = []</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script>';
     expect($csp([], $gtm)['tip'])->toContain('Google Tag Manager, which loads more later')
+        // Said in the note itself, in sight, not only one click away
+        ->and($csp([], $gtm)['note'])->toEndWith(': the line below allows what is there today. It loads Google Tag Manager, so a strict policy takes more than a line')
+        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['note'])->toEndWith(' on the page. It loads Google Tag Manager, so a strict policy takes more than a line')
         ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['tip'])->toContain('Google Tag Manager, which loads more later')
         ->and($csp([], '<script src="https://analytics.example/a.js"></script>')['tip'])->not->toContain('Tag Manager');
 });
