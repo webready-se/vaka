@@ -1939,7 +1939,7 @@
       todo.length ? h('ul', { class: 'header-list' }, todo.map(function (item) {
         // The one that can break a site, said where it is not the only thing to do
         var last = item.key === 'csp' && item.level === 'missing' && todo.length > 1;
-        var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks scripts on the page' : 'In place, but it blocks scripts on the page') : words[item.level];
+        var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks scripts on the page' : 'In place, but it blocks scripts on the page') : item.report_only ? 'Sent as Report-Only, not in force' : words[item.level];
         // What the item names: what the CSP blocks, what a Report-Only one would, or what the page has that a first one would
         var would = item.blocks ? 'it blocks' : item.blocked || /would block/.test(item.note || '') ? 'it would block' : null;
         return h('li', { class: 'is-' + (item.blocks ? 'weak' : item.level) }, [

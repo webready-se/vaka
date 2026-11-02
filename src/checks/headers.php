@@ -501,6 +501,8 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     $headers = [];
     foreach (array_keys(SECURITY_HEADERS) as $key) $headers[$key] = header_level($key, $response['headers'], $https);
     $details = ['headers' => $headers];
+    // The policy tried as Report-Only, as sent: the line to add is that policy under the name that enforces it
+    if (isset($response['headers']['content-security-policy-report-only'])) $details['csp_report_only'] = mb_substr(trim((string) $response['headers']['content-security-policy-report-only'][0]), 0, 1000);
     // For the lines the dashboard offers to paste in, never the grade
     if (($server = web_server($response['headers'])) !== '') $details['server'] = $server;
     if ($files !== null && $headers['nosniff']['level'] === 'good') $details['files'] = $files;
@@ -687,7 +689,7 @@ function csp_item(array $item, array $details): array
             $blocks => '; enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
             default => '; enforced, it would block nothing on the page, so it is safe to rename',
         };
-        return ['blocks' => false, 'note' => CSP_REPORT_ONLY_NOTE . $would, 'fix' => 'Content-Security-Policy: <the same policy>', 'tip' => "Rename Content-Security-Policy-Report-Only to Content-Security-Policy, keeping its policy, once the browser's console shows nothing it would block that the site needs."] + $named + $item;
+        return ['blocks' => false, 'report_only' => true, 'note' => CSP_REPORT_ONLY_NOTE . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line."] + $named + $item;
     }
     $scripts = $details['scripts'] ?? null;
     $inline = $scripts['inline'] ?? 0;

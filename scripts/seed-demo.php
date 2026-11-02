@@ -155,7 +155,8 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             'https://www.example.com', 'https://example.org' => $strong,
             'https://store.example', 'https://docs.example' => ['content-security-policy' => ["script-src 'self' 'unsafe-inline'; frame-ancestors 'self'"]] + $strong,
             'https://shop.example', 'https://blog.example' => ['referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=()']] + $forge,
-            'https://builder.example' => [],
+            // A CSP tried as Report-Only: the page loads a script it would block once enforced
+            'https://builder.example' => ['content-security-policy-report-only' => ["default-src 'self'"]],
             'https://example.net' => ['referrer-policy' => ['no-referrer']] + $forge,
             default => $forge,
         };
@@ -172,6 +173,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
                 . (isset($opts['hostile']) ? '<script>document.write("<img src=x onerror=window.__xss=5>")</script>' : ''),
             // A CSP in force that blocks a script the page loads: the policy has no cdn.example
             'https://docs.example' => '<script src="https://cdn.example/widget.js"></script>',
+            'https://builder.example' => '<script src="https://widgets.example/chat.js"></script>',
             default => '',
         };
         $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => $url . '/', 'headers' => $sent, 'body' => $body], 10, $files);

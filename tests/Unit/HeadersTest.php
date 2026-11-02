@@ -427,8 +427,9 @@ test('without a CSP, the suggestion is Report-Only, and the note says what defau
     // Already there as Report-Only: the step after is to enforce it
     $trying = $csp($page('<script>theme()</script>', ['Content-Security-Policy-Report-Only' => "default-src 'self'"]));
     expect($trying['note'])->toBe('only as Report-Only, which blocks nothing; enforced, it would block 1 inline script on the page')
-        ->and($trying['fix'])->toBe('Content-Security-Policy: <the same policy>')
-        ->and($trying['tip'])->toContain("once the browser's console shows nothing it would block that the site needs");
+        ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'")
+        ->and($trying['report_only'])->toBeTrue()
+        ->and($trying['tip'])->toContain("show nothing it would block that the site needs");
 
     // A CSP in place says nothing about the page's scripts, and stores none
     $enforced = evaluate_headers($page('<script>theme()</script>', ['Content-Security-Policy' => "script-src 'self' 'sha256-abc'"]), 10);
@@ -583,7 +584,9 @@ test('the site detail says what the CSP blocks, or what a Report-Only one would,
         ->and($trying['note'])->toBe('only as Report-Only, which blocks nothing; enforced, it would block 2 inline scripts and a script from cdn.example on the page')
         ->and($trying['inline'])->toBe(['theme()', 'go()'])
         ->and($trying['blocked'])->toBe(['https://cdn.example/w.js'])
-        ->and($trying['fix'])->toBe('Content-Security-Policy: <the same policy>');
+        ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'")
+        ->and($trying['report_only'])->toBeTrue()
+        ->and($blocking)->not->toHaveKey('report_only');
 
     $ready = $csp(evaluate_headers($page($body, ['Content-Security-Policy-Report-Only' => "script-src 'self' 'unsafe-inline' https://cdn.example"]), 10));
     expect($ready['note'])->toBe('only as Report-Only, which blocks nothing; enforced, it would block nothing on the page, so it is safe to rename')
