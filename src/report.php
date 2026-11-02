@@ -134,7 +134,8 @@ function md_improvements(array $site, array $config, int $now): array
             // The inline scripts a CSP would block, by their start: text from the site
             . (($item['inline'] ?? []) ? ' The inline scripts start: ' . implode(', ', array_map('md_code', $item['inline'])) . '.' : '')
             // The scripts a CSP blocks, or would, by their address: text from the site
-            . (($item['blocked'] ?? []) ? ' The scripts it blocks: ' . implode(', ', array_map('md_code', $item['blocked'])) . '.' : ''), $weak)];
+            . (($item['blocked'] ?? []) ? ' The scripts it blocks: ' . implode(', ', array_map('md_code', $item['blocked'])) . '.' : '')
+            . (($item['blocked_assets'] ?? []) ? ' It also blocks: ' . implode(', ', array_map(fn (array $asset) => md_code($asset['kind'] . ' ' . $asset['url']), $item['blocked_assets'])) . '.' : ''), $weak)];
     }
     $dns = $site['dns'];
     $missing = array_values(array_filter($dns['items'] ?? [], fn (array $item) => in_array($item['level'], ['weak', 'missing'], true)));

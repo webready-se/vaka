@@ -413,9 +413,11 @@ async function main() {
     all('.site-row').find((r) => /docs\.example/.test(r.textContent)).click();
     if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'docs.example', 'the docs site\'s detail to open')) {
       const cspItem = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
-      expect(/Weak, and it blocks scripts on the page/.test(cspItem?.querySelector('.header-level')?.textContent || '') && /\. It blocks a script from cdn\.example on the page\.$/.test(cspItem?.querySelector('.header-why')?.textContent || ''), `a CSP that blocks a script on the page is listed as something to do, with what it blocks (got "${cspItem?.querySelector('.header-why')?.textContent}")`);
+      expect(/Weak, and it blocks parts of the page/.test(cspItem?.querySelector('.header-level')?.textContent || '') && /\. It blocks a script from cdn\.example, 1 inline style and an image from images\.example on the page\.$/.test(cspItem?.querySelector('.header-why')?.textContent || ''), `a CSP that blocks a script on the page is listed as something to do, with what it blocks (got "${cspItem?.querySelector('.header-why')?.textContent}")`);
       expect([...(cspItem?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'https://cdn.example/widget.js') && /The scripts it blocks:/.test(cspItem?.textContent || ''), 'the blocked script is named by its address');
-      expect(/the CSP blocks a script from cdn\.example on the page$/.test(q('dialog.drawer .headers-summary')?.textContent || ''), `the summary says what the CSP blocks (got "${q('dialog.drawer .headers-summary')?.textContent}")`);
+      expect([...(cspItem?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'image https://images.example/a.jpg') && /The styles, images and frames it blocks:/.test(cspItem?.textContent || ''), 'the blocked image is named by kind and address');
+      expect(cspItem?.querySelector('[data-action="show-scripts"]')?.textContent === 'a script from cdn.example, 1 inline style and an image from images.example', `the whole phrase opens the lists (got "${cspItem?.querySelector('[data-action="show-scripts"]')?.textContent}")`);
+      expect(/the CSP blocks a script from cdn\.example, 1 inline style and an image from images\.example on the page$/.test(q('dialog.drawer .headers-summary')?.textContent || ''), `the summary says what the CSP blocks (got "${q('dialog.drawer .headers-summary')?.textContent}")`);
       q('dialog.drawer [data-action="close"]').click();
     }
 

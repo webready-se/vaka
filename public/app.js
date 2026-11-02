@@ -1917,7 +1917,7 @@
    * is Vaka's own words around hosts from the site, all set as text.
    */
   function scriptsNote(note) {
-    var match = /((?:\d+|an?) inline scripts?(?: and (?:a script|scripts) from [^,]+?)?|(?:a script|scripts) from [^,]+?)(?= on the page|, which)/.exec(note);
+    var match = /((?:\d+|an?) (?:inline scripts?|inline styles?|scripts?|stylesheets?|images?|frames?)\b.*?)(?= on the page|, which)/.exec(note);
     if (!match) return [note];
     return [
       note.slice(0, match.index),
@@ -1932,7 +1932,7 @@
    * adds it, labelled with what to do, in the form the site's web server
    * takes; what each does and how to add it one click away. What is in place
    * is one line that opens to show what the site sends. A CSP in place that
-   * blocks scripts on the page is something to do, not in place.
+   * blocks parts of the page is something to do, not in place.
    */
   function headerList(headers) {
     if (!headers) return h('p', { class: 'chart-note' }, 'Not checked yet.');
@@ -1955,10 +1955,10 @@
       todo.length ? h('ul', { class: 'header-list' }, todo.map(function (item) {
         // The one that can break a site, said where it is not the only thing to do
         var last = item.key === 'csp' && item.level === 'missing' && todo.length > 1;
-        var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks scripts on the page' : 'In place, but it blocks scripts on the page') : item.report_only ? 'Sent as Report-Only, not in force' : words[item.level];
+        var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks parts of the page' : 'In place, but it blocks parts of the page') : item.report_only ? 'Sent as Report-Only, not in force' : words[item.level];
         // What the item names: what the CSP blocks, what a Report-Only one would, or what the page has that a first one would
         var would = item.blocks ? 'it blocks' : item.blocked || /would block/.test(item.note || '') ? 'it would block' : null;
-        var named = Boolean(item.inline || item.blocked);
+        var named = Boolean(item.inline || item.blocked || item.blocked_assets);
         var note = item.note ? capitalize(item.note) + '.' : '';
         return h('li', { class: 'is-' + (item.blocks ? 'weak' : item.level) }, [
           icon(item.level === 'weak' || item.blocks ? 'failing' : 'down'),
@@ -1970,11 +1970,12 @@
             item.fix ? h('p', { class: 'fix-label' }, item.fix_label || 'Add this line:') : null,
             item.fix ? pasteLine(headerLine(item.fix, format)) : null,
             h('details', { class: 'header-more' }, [
-              h('summary', {}, [icon('chevron'), item.blocks ? 'What it does, the scripts it blocks, what to do' : named ? 'What it does, the scripts it would block, how to add it' : 'What it does and how to add it']),
+              h('summary', {}, [icon('chevron'), item.blocks ? 'What it does, what it blocks, what to do' : named ? 'What it does, what it would block, how to add it' : 'What it does and how to add it']),
               h('p', { class: 'header-what' }, item.what),
               item.tip ? h('p', { class: 'header-tip' }, item.tip) : null,
               item.inline ? scriptList(would ? 'The inline scripts ' + would + ' start:' : 'The inline scripts on the page start:', item.inline) : null,
-              item.blocked ? scriptList('The scripts ' + would + ':', item.blocked) : null
+              item.blocked ? scriptList('The scripts ' + would + ':', item.blocked) : null,
+              item.blocked_assets ? scriptList('The styles, images and frames ' + would + ':', item.blocked_assets.map(function (asset) { return asset.kind + ' ' + asset.url; })) : null
             ])
           ])
         ]);

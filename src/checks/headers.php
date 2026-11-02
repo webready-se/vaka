@@ -33,8 +33,8 @@ const HEADERS_FIX_ORDER = ['nosniff', 'referrer', 'frames', 'hsts', 'permissions
 /** A CSP sent only as Report-Only: tried, not enforced. */
 const CSP_REPORT_ONLY_NOTE = 'only as Report-Only, which blocks nothing';
 
-/** What to do about a CSP that blocks scripts on the page; the alert adds where they are named. */
-const CSP_BLOCKS_TIP = "Visitors do not get those scripts. Allow what the page needs (a host goes in script-src, an inline script needs a 'sha256-...' hash there or a file of its own), or take them off the page.";
+/** What to do about a CSP that blocks parts of the page; the alert adds where they are named. */
+const CSP_BLOCKS_TIP = "Visitors do not get them: a blocked script stops working, a blocked style makes the page look broken. Allow what the page needs (a host goes in script-src, style-src, img-src or frame-src; an inline script needs a 'sha256-...' hash there or a file of its own; inline styles need 'unsafe-inline' in style-src, or classes instead), or take them off the page.";
 
 /** How strong each level is, to tell worse from better. */
 const HEADER_LEVELS = ['missing' => 0, 'weak' => 1, 'good' => 2];
@@ -186,66 +186,125 @@ function csp_source_allows(string $source, string $url, string $pageUrl): bool
 }
 
 /**
- * What a policy stops of the scripts on the page: external ones whose URL
- * no source allows, and inline ones without a matching hash (or a nonce,
- * when the policy has one: Vaka cannot see the nonce the page was sent
- * with, so a script with a nonce attribute is taken as allowed). Several
- * policies all apply, so what any of them stops is stopped. Only sha256
- * is computed; a policy with other hashes is taken as allowing its inline
- * scripts rather than wrongly blocking them. At most ten URLs and five
- * starts are kept; `inline_total` counts them all.
+ * What a policy stops on the page: scripts (external ones whose URL no
+ * source allows, inline ones without a matching hash), stylesheets and
+ * <style> blocks the same way against style-src, style="..." attributes
+ * (only 'unsafe-inline' lets them through, or 'unsafe-hashes', taken as
+ * hashes given), images against img-src and frames against frame-src or
+ * child-src, each falling back to default-src. A nonce in the policy lets
+ * an element with a nonce attribute through: Vaka cannot see the nonce the
+ * page was sent with. Several policies all apply, so what any of them stops
+ * is stopped. Only sha256 is computed; a policy with other hashes is taken
+ * as allowing its inline code rather than wrongly blocking it. At most ten
+ * addresses of each kind and five script starts are kept; the totals count
+ * them all.
  *
  * @param list<array> $policies  parsed with csp_directives()
- * @return array{scripts: list<string>, inline: list<string>, inline_total: int}
+ * @return array{scripts: list<string>, inline: list<string>, inline_total: int, stylesheets: list<string>, style_blocks: int, style_attributes: int, images: list<string>, frames: list<string>}
  */
-function csp_blocked(array $policies, array $scripts, string $pageUrl): array
+function csp_blocked(array $policies, array $page, string $pageUrl): array
 {
-    $blockedUrls = [];
-    $blockedStarts = [];
-    $total = 0;
-    $external = $scripts['external'] ?? [];
-    $inline = $scripts['inline_scripts'] ?? [];
-    foreach ($policies as $directives) {
-        $sources = $directives['script-src-elem'] ?? $directives['script-src'] ?? $directives['default-src'] ?? null;
-        if ($sources === null) continue;
-        $nonced = (bool) array_filter($sources, fn ($source) => str_starts_with($source, "'nonce-"));
-        $hashes = array_filter($sources, fn ($source) => preg_match("/^'sha(256|384|512)-/", $source));
-        $strictDynamic = in_array("'strict-dynamic'", $sources, true);
-        $otherHashes = (bool) array_filter($hashes, fn ($source) => !str_starts_with($source, "'sha256-"));
-        $inlineAllowed = in_array("'unsafe-inline'", $sources, true) && !$nonced && !$hashes && !$strictDynamic;
-
-        foreach ($external as $script) {
-            if ($script['nonce'] && $nonced) continue;
-            $allowed = !$strictDynamic && (bool) array_filter($sources, fn ($source) => csp_source_allows($source, $script['url'], $pageUrl));
-            if (!$allowed) $blockedUrls[$script['url']] = true;
+    $blocked = ['scripts' => [], 'inline' => [], 'stylesheets' => [], 'style_blocks' => [], 'images' => [], 'frames' => []];
+    $attributesBlocked = false;
+    $sources = fn (array $directives, string ...$names) => array_reduce($names, fn ($found, $name) => $found ?? ($directives[$name] ?? null));
+    $allows = fn (array $sources, string $url) => (bool) array_filter($sources, fn ($source) => csp_source_allows($source, $url, $pageUrl));
+    $nonced = fn (array $sources) => (bool) array_filter($sources, fn ($source) => str_starts_with($source, "'nonce-"));
+    $hashes = fn (array $sources) => array_filter($sources, fn ($source) => preg_match("/^'sha(256|384|512)-/", $source));
+    // Inline code against a source list: allowed by 'unsafe-inline' (ignored next to a nonce or hash, as browsers do), a nonce, or its hash
+    $inlineBlocked = function (array $sources, array $items, bool $strictDynamic = false) use ($nonced, $hashes): array {
+        $found = $hashes($sources);
+        $otherHashes = (bool) array_filter($found, fn ($source) => !str_starts_with($source, "'sha256-"));
+        $allowed = in_array("'unsafe-inline'", $sources, true) && !$nonced($sources) && !$found && !$strictDynamic;
+        $blocked = [];
+        foreach ($items as $i => $item) {
+            if ($allowed || $otherHashes || ($item['nonce'] && $nonced($sources))) continue;
+            if (in_array("'" . strtolower($item['hash']) . "'", $sources, true)) continue;
+            $blocked[$i] = $item;
         }
-        foreach ($inline as $i => $script) {
-            if ($inlineAllowed || $otherHashes || ($script['nonce'] && $nonced)) continue;
-            if (in_array("'" . strtolower($script['hash']) . "'", $sources, true)) continue;
-            $blockedStarts[$i] = $script['start'];
+        return $blocked;
+    };
+
+    foreach ($policies as $directives) {
+        $scriptSources = $sources($directives, 'script-src-elem', 'script-src', 'default-src');
+        if ($scriptSources !== null) {
+            $strictDynamic = in_array("'strict-dynamic'", $scriptSources, true);
+            foreach ($page['external'] ?? [] as $script) {
+                if ($script['nonce'] && $nonced($scriptSources)) continue;
+                if ($strictDynamic || !$allows($scriptSources, $script['url'])) $blocked['scripts'][$script['url']] = true;
+            }
+            foreach ($inlineBlocked($scriptSources, $page['inline_scripts'] ?? [], $strictDynamic) as $i => $script) $blocked['inline'][$i] = $script['start'];
+        }
+        $styleSources = $sources($directives, 'style-src-elem', 'style-src', 'default-src');
+        if ($styleSources !== null) {
+            foreach ($page['stylesheets'] ?? [] as $sheet) {
+                if ($sheet['nonce'] && $nonced($styleSources)) continue;
+                if (!$allows($styleSources, $sheet['url'])) $blocked['stylesheets'][$sheet['url']] = true;
+            }
+            foreach ($inlineBlocked($styleSources, $page['style_blocks'] ?? []) as $i => $block) $blocked['style_blocks'][$i] = true;
+        }
+        $attrSources = $sources($directives, 'style-src-attr', 'style-src', 'default-src');
+        if ($attrSources !== null && ($page['style_attributes'] ?? 0) > 0) {
+            $allowed = (in_array("'unsafe-inline'", $attrSources, true) && !$nonced($attrSources) && !$hashes($attrSources)) || in_array("'unsafe-hashes'", $attrSources, true);
+            if (!$allowed) $attributesBlocked = true;
+        }
+        $imageSources = $sources($directives, 'img-src', 'default-src');
+        if ($imageSources !== null) {
+            foreach ($page['images'] ?? [] as $image) if (!$allows($imageSources, $image)) $blocked['images'][$image] = true;
+        }
+        $frameSources = $sources($directives, 'frame-src', 'child-src', 'default-src');
+        if ($frameSources !== null) {
+            foreach ($page['frames'] ?? [] as $frame) if (!$allows($frameSources, $frame)) $blocked['frames'][$frame] = true;
         }
     }
     return [
-        'scripts' => array_slice(array_keys($blockedUrls), 0, 10),
-        'inline' => array_slice(array_values($blockedStarts), 0, 5),
-        'inline_total' => count($blockedStarts),
+        'scripts' => array_slice(array_keys($blocked['scripts']), 0, 10),
+        'inline' => array_slice(array_values($blocked['inline']), 0, 5),
+        'inline_total' => count($blocked['inline']),
+        'stylesheets' => array_slice(array_keys($blocked['stylesheets']), 0, 10),
+        'style_blocks' => count($blocked['style_blocks']),
+        'style_attributes' => $attributesBlocked ? (int) ($page['style_attributes'] ?? 0) : 0,
+        'images' => array_slice(array_keys($blocked['images']), 0, 10),
+        'frames' => array_slice(array_keys($blocked['frames']), 0, 10),
     ];
 }
 
-/** What a policy blocks, in words: "2 inline scripts and a script from cdn.example", or '' for nothing. */
+/**
+ * What a policy blocks, in words: "2 inline scripts, a script from
+ * cdn.example, 15 inline styles and images from cdn.example", or '' for
+ * nothing. Inline styles are the <style> blocks and the style attributes.
+ */
 function csp_blocked_words(array $blocked): string
 {
-    $hosts = array_values(array_unique(array_map('url_host', $blocked['scripts'] ?? [])));
-    $parts = [];
-    if (($blocked['inline_total'] ?? 0) > 0) $parts[] = plural($blocked['inline_total'], 'inline script', 'inline scripts');
-    if ($hosts) $parts[] = (count($hosts) === 1 ? 'a script from ' : 'scripts from ') . list_words($hosts);
-    return implode(' and ', $parts);
+    $hosts = fn (string $key) => array_values(array_unique(array_map('url_host', $blocked[$key] ?? [])));
+    $from = fn (string $key, string $one, string $many) => ($hosts($key) ? [(count($hosts($key)) === 1 && count($blocked[$key]) === 1 ? "{$one} from " : "{$many} from ") . list_words($hosts($key))] : []);
+    $styles = ($blocked['style_blocks'] ?? 0) + ($blocked['style_attributes'] ?? 0);
+    $parts = [
+        ...(($blocked['inline_total'] ?? 0) > 0 ? [plural($blocked['inline_total'], 'inline script', 'inline scripts')] : []),
+        ...$from('scripts', 'a script', 'scripts'),
+        ...($styles > 0 ? [plural($styles, 'inline style', 'inline styles')] : []),
+        ...$from('stylesheets', 'a stylesheet', 'stylesheets'),
+        ...$from('images', 'an image', 'images'),
+        ...$from('frames', 'a frame', 'frames'),
+    ];
+    return list_words($parts);
 }
 
 /** Whether a policy blocks anything on the page. */
 function csp_blocks_anything(?array $blocked): bool
 {
-    return $blocked !== null && ($blocked['scripts'] !== [] || $blocked['inline_total'] > 0);
+    if ($blocked === null) return false;
+    return $blocked['scripts'] !== [] || $blocked['inline_total'] > 0 || ($blocked['stylesheets'] ?? []) !== [] || ($blocked['style_blocks'] ?? 0) > 0
+        || ($blocked['style_attributes'] ?? 0) > 0 || ($blocked['images'] ?? []) !== [] || ($blocked['frames'] ?? []) !== [];
+}
+
+/** The blocked stylesheets, images and frames as a list to show, kind and address. */
+function csp_blocked_assets(array $blocked): array
+{
+    $assets = [];
+    foreach (['stylesheets' => 'stylesheet', 'images' => 'image', 'frames' => 'frame'] as $key => $kind) {
+        foreach ($blocked[$key] ?? [] as $url) $assets[] = ['kind' => $kind, 'url' => $url];
+    }
+    return $assets;
 }
 
 /**
@@ -321,14 +380,18 @@ function page_files(string $html, string $pageUrl): array
  * to find them by in the site's code.
  *
  * `inline_scripts` (a sha256 hash of each as sent, its start, whether it has a nonce)
- * and `external` (URL, nonce) are what csp_blocked() compares with a policy;
- * at most 50 of each.
+ * and `external` (URL, nonce) are what csp_blocked() compares with a policy, as
+ * are the `stylesheets`, the `style_blocks` (hashed), the number of
+ * `style_attributes`, the `images` (src and srcset) and the `frames`; at most
+ * 50 of each (100 images).
  *
- * @return array{inline: int, hosts: list<string>, excerpts: list<string>, inline_scripts: list<array{hash: string, start: string, nonce: bool}>, external: list<array{url: string, nonce: bool}>}
+ * @return array{inline: int, hosts: list<string>, excerpts: list<string>, inline_scripts: list<array{hash: string, start: string, nonce: bool}>, external: list<array{url: string, nonce: bool}>, stylesheets: list<array{url: string, nonce: bool}>, style_blocks: list<array{hash: string, nonce: bool}>, style_attributes: int, images: list<string>, frames: list<string>}
  */
 function page_scripts(string $html, string $pageUrl): array
 {
-    preg_match_all('/<script\b([^>]*)>(.*?)<\/script\s*>/is', (string) preg_replace('/<!--.*?-->/s', '', $html), $scripts, PREG_SET_ORDER);
+    $html = (string) preg_replace('/<!--.*?-->/s', '', $html);
+    $url = fn (string $ref) => resolve_url(html_entity_decode($ref, ENT_QUOTES | ENT_HTML5), $pageUrl);
+    preg_match_all('/<script\b([^>]*)>(.*?)<\/script\s*>/is', $html, $scripts, PREG_SET_ORDER);
     $hosts = [];
     $inline = [];
     $external = [];
@@ -336,14 +399,51 @@ function page_scripts(string $html, string $pageUrl): array
         $attributes = html_attributes($source);
         $nonce = ($attributes['nonce'] ?? '') !== '';
         if (isset($attributes['src'])) {
-            $url = resolve_url($attributes['src'], $pageUrl);
-            if ($url === null) continue;
-            if (url_host($url) !== url_host($pageUrl)) $hosts[url_host($url)] = true;
-            if (count($external) < 50) $external[] = ['url' => $url, 'nonce' => $nonce];
+            $resolved = resolve_url($attributes['src'], $pageUrl);
+            if ($resolved === null) continue;
+            if (url_host($resolved) !== url_host($pageUrl)) $hosts[url_host($resolved)] = true;
+            if (count($external) < 50) $external[] = ['url' => $resolved, 'nonce' => $nonce];
         } elseif (trim($body) !== '' && preg_match('/^(?:|module|importmap|speculationrules|.*(?:java|ecma)script.*)$/', strtolower(trim($attributes['type'] ?? '')))) {
             // The hash is of the script exactly as sent, as browsers take it
             if (count($inline) < 50) $inline[] = ['hash' => 'sha256-' . base64_encode(hash('sha256', $body, true)), 'start' => script_excerpt($body), 'nonce' => $nonce];
         }
+    }
+    // Styles: the stylesheets linked, the <style> blocks (hashed as scripts are) and how many style="..." attributes
+    $stylesheets = [];
+    preg_match_all('/<link\b([^>]*)>/i', $html, $links);
+    foreach ($links[1] as $source) {
+        $attributes = html_attributes($source);
+        if (!isset($attributes['href']) || !preg_match('/(?:^|\s)stylesheet(?:\s|$)/i', $attributes['rel'] ?? '')) continue;
+        $resolved = resolve_url($attributes['href'], $pageUrl);
+        if ($resolved !== null && count($stylesheets) < 50) $stylesheets[] = ['url' => $resolved, 'nonce' => ($attributes['nonce'] ?? '') !== ''];
+    }
+    $blocks = [];
+    preg_match_all('/<style\b([^>]*)>(.*?)<\/style\s*>/is', $html, $styles, PREG_SET_ORDER);
+    foreach ($styles as [, $source, $body]) {
+        if (count($blocks) < 50) $blocks[] = ['hash' => 'sha256-' . base64_encode(hash('sha256', $body, true)), 'nonce' => (html_attributes($source)['nonce'] ?? '') !== ''];
+    }
+    $attributes = preg_match_all('/<[a-z][^>]*\sstyle\s*=/i', $html);
+    // Images (src and every srcset candidate) and frames, by address
+    $images = [];
+    preg_match_all('/<img\b([^>]*)>/i', $html, $imgs);
+    foreach ($imgs[1] as $source) {
+        $attrs = html_attributes($source);
+        $refs = isset($attrs['src']) ? [$attrs['src']] : [];
+        foreach (explode(',', $attrs['srcset'] ?? '') as $candidate) {
+            $ref = preg_split('/\s+/', trim($candidate))[0] ?? '';
+            if ($ref !== '') $refs[] = $ref;
+        }
+        foreach ($refs as $ref) {
+            $resolved = resolve_url($ref, $pageUrl);
+            if ($resolved !== null && count($images) < 100) $images[$resolved] = true;
+        }
+    }
+    $frames = [];
+    preg_match_all('/<iframe\b([^>]*)>/i', $html, $iframes);
+    foreach ($iframes[1] as $source) {
+        $attrs = html_attributes($source);
+        $resolved = isset($attrs['src']) ? resolve_url($attrs['src'], $pageUrl) : null;
+        if ($resolved !== null && count($frames) < 50) $frames[$resolved] = true;
     }
     return [
         'inline' => count($inline),
@@ -351,6 +451,11 @@ function page_scripts(string $html, string $pageUrl): array
         'excerpts' => array_column(array_slice($inline, 0, 5), 'start'),
         'inline_scripts' => $inline,
         'external' => $external,
+        'stylesheets' => $stylesheets,
+        'style_blocks' => $blocks,
+        'style_attributes' => $attributes,
+        'images' => array_keys($images),
+        'frames' => array_keys($frames),
     ];
 }
 
@@ -540,7 +645,7 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     return ['status' => headers_status($grade, $blocks), 'summary' => $summary, 'details' => ['grade' => $grade] + $details];
 }
 
-/** A grade's status: ok for A or B, warn below, and warn while the CSP blocks scripts on the page. */
+/** A grade's status: ok for A or B, warn below, and warn while the CSP blocks parts of the page. */
 function headers_status(string $grade, bool $blocks = false): string
 {
     return in_array($grade, ['A', 'B'], true) && !$blocks ? 'ok' : 'warn';
@@ -608,8 +713,8 @@ function headers_change(array $from, array $to): string
     if ($files === ['missing', 'good']) $parts[] = 'X-Content-Type-Options added to scripts and styles';
     // The CSP against the page: whether it started or stopped blocking scripts
     $blocks = [$from['csp_blocks'] ?? null, $to['csp_blocks'] ?? null];
-    if ($blocks[1] === 'weak' && $blocks[0] !== 'weak') $parts[] = 'CSP blocks scripts on the page';
-    if ($blocks[0] === 'weak' && $blocks[1] === 'good') $parts[] = 'CSP no longer blocks scripts on the page';
+    if ($blocks[1] === 'weak' && $blocks[0] !== 'weak') $parts[] = 'CSP blocks parts of the page';
+    if ($blocks[0] === 'weak' && $blocks[1] === 'good') $parts[] = 'CSP no longer blocks parts of the page';
     if (!$parts) return '';
 
     $old = headers_grade($from);
@@ -726,7 +831,7 @@ function csp_item(array $item, array $details): array
 {
     $blocked = $details['csp_blocks'] ?? $details['csp_would_block'] ?? null;
     $blocks = csp_blocks_anything($blocked);
-    $named = $blocks ? array_filter(['inline' => $blocked['inline'], 'blocked' => $blocked['scripts']]) : [];
+    $named = $blocks ? array_filter(['inline' => $blocked['inline'], 'blocked' => $blocked['scripts'], 'blocked_assets' => csp_blocked_assets($blocked)]) : [];
     if ($item['level'] !== 'missing') {
         if (!$blocks) return ['blocks' => false] + $item;
         return ['blocks' => true, 'note' => ($item['note'] !== '' ? $item['note'] . '. It blocks ' : 'it blocks ') . csp_blocked_words($blocked) . ' on the page', 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
@@ -737,7 +842,7 @@ function csp_item(array $item, array $details): array
             $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
             default => '. Enforced, it would block nothing on the page, so it is safe to rename',
         };
-        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line."] + $named + $item;
+        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it."] + $named + $item;
     }
     $scripts = $details['scripts'] ?? null;
     $inline = $scripts['inline'] ?? 0;

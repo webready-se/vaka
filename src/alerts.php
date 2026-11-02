@@ -679,7 +679,7 @@ function alert_text(array $item): array
             'headers_worse' => [
                 'headline' => "{$who}: security headers got worse" . ($site['from'] !== $site['to'] ? ", grade {$site['from']} to {$site['to']}" : ''),
                 'details' => [
-                    ...array_map(fn (array $header) => ucfirst($header['label']) . match ($header['change']) { 'removed' => ' was removed', 'blocks' => ' blocks scripts on the page', default => ' is weaker' } . ($header['note'] !== '' ? ": {$header['note']}" : ''), $site['worse']),
+                    ...array_map(fn (array $header) => ucfirst($header['label']) . match ($header['change']) { 'removed' => ' was removed', 'blocks' => ' blocks parts of the page', default => ' is weaker' } . ($header['note'] !== '' ? ": {$header['note']}" : ''), $site['worse']),
                     ...(in_array('nosniff_files', array_column($site['worse'], 'key'), true)
                         ? ['A web server rule for those files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Set the headers once for the whole site and keep add_header out of such rules: for caching, nginx\'s expires sets Cache-Control without it.']
                         : []),
