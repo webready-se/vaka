@@ -1912,11 +1912,27 @@
   }
 
   /**
+   * A CSP item's note with the scripts it names ("2 inline scripts and a script
+   * from cdn.example") as a button that opens the list of them below. The note
+   * is Vaka's own words around hosts from the site, all set as text.
+   */
+  function scriptsNote(note) {
+    var match = /((?:\d+|an?) inline scripts?(?: and (?:a script|scripts) from [^,]+?)?|(?:a script|scripts) from [^,]+?)(?= on the page|, which)/.exec(note);
+    if (!match) return [note];
+    return [
+      note.slice(0, match.index),
+      h('button', { type: 'button', class: 'link-button', 'data-action': 'show-scripts' }, match[1]),
+      note.slice(match.index + match[1].length)
+    ];
+  }
+
+  /**
    * The six protections, in the order to add them (the safest first, CSP last):
-   * what is missing or weak, with why and the line that adds it, in the form
-   * the site's web server takes; what each does and how to add it one click
-   * away. What is in place is one line. A CSP in place that blocks scripts on
-   * the page is something to do, not in place.
+   * what is missing or weak, with why, what the site sends and the line that
+   * adds it, labelled with what to do, in the form the site's web server
+   * takes; what each does and how to add it one click away. What is in place
+   * is one line that opens to show what the site sends. A CSP in place that
+   * blocks scripts on the page is something to do, not in place.
    */
   function headerList(headers) {
     if (!headers) return h('p', { class: 'chart-note' }, 'Not checked yet.');
@@ -1942,14 +1958,19 @@
         var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks scripts on the page' : 'In place, but it blocks scripts on the page') : item.report_only ? 'Sent as Report-Only, not in force' : words[item.level];
         // What the item names: what the CSP blocks, what a Report-Only one would, or what the page has that a first one would
         var would = item.blocks ? 'it blocks' : item.blocked || /would block/.test(item.note || '') ? 'it would block' : null;
+        var named = Boolean(item.inline || item.blocked);
+        var note = item.note ? capitalize(item.note) + '.' : '';
         return h('li', { class: 'is-' + (item.blocks ? 'weak' : item.level) }, [
           icon(item.level === 'weak' || item.blocks ? 'failing' : 'down'),
           h('div', {}, [
             h('p', {}, [h('b', {}, capitalize(item.label)), h('span', { class: 'header-level' }, ' · ' + word + (last ? ' · do it last, it can break the site' : ''))]),
-            item.note ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
+            note ? h('p', { class: 'header-why' }, named ? scriptsNote(note) : note) : null,
+            // A weak one: what the site sends, so the change below can be read against it
+            item.level === 'weak' && item.value ? h('p', { class: 'header-sent' }, ['The site sends: ', h('code', {}, item.value)]) : null,
+            item.fix ? h('p', { class: 'fix-label' }, item.fix_label || 'Add this line:') : null,
             item.fix ? pasteLine(headerLine(item.fix, format)) : null,
             h('details', { class: 'header-more' }, [
-              h('summary', {}, [icon('chevron'), item.blocks ? 'What it does, the scripts it blocks, what to do' : item.inline || item.blocked ? 'What it does, the scripts it would block, how to add it' : 'What it does and how to add it']),
+              h('summary', {}, [icon('chevron'), item.blocks ? 'What it does, the scripts it blocks, what to do' : named ? 'What it does, the scripts it would block, how to add it' : 'What it does and how to add it']),
               h('p', { class: 'header-what' }, item.what),
               item.tip ? h('p', { class: 'header-tip' }, item.tip) : null,
               item.inline ? scriptList(would ? 'The inline scripts ' + would + ' start:' : 'The inline scripts on the page start:', item.inline) : null,
@@ -1958,7 +1979,13 @@
           ])
         ]);
       })) : null,
-      done.length ? h('p', { class: 'headers-done' }, [icon('up'), h('span', {}, 'In place: ' + done.map(function (item) { return item.label; }).join(', '))]) : null,
+      // What is in place, one line, and what the site sends for each one click away
+      done.length ? h('details', { class: 'headers-done' }, [
+        h('summary', {}, [icon('up'), h('span', {}, 'In place: ' + done.map(function (item) { return item.label; }).join(', ')), icon('chevron')]),
+        h('ul', { class: 'header-values' }, done.map(function (item) {
+          return h('li', {}, [h('b', {}, capitalize(item.label)), item.value ? h('code', {}, item.value) : h('span', { class: 'header-sent' }, item.note ? capitalize(item.note) : 'In place')]);
+        }))
+      ]) : null,
       // Once under the list, while there is something to add, for the server the lines are for
       tip && todo.length ? h('details', { class: 'headers-tip' }, [
         h('summary', {}, [icon('chevron'), 'Adding them in ' + where]),
@@ -2214,6 +2241,14 @@
     if (action === 'snooze') snooze(target.getAttribute('data-sites').split(','), { 'for': target.getAttribute('data-for') }, target);
     if (action === 'unsnooze') snooze(target.getAttribute('data-sites').split(','), { action: 'unsnooze' }, target);
     if (action === 'recheck') recheck(target.getAttribute('data-site'), target);
+    if (action === 'show-scripts') {
+      // "2 inline scripts" opens the list of them, under "What it does"
+      var more = target.closest('li').querySelector('.header-more');
+      more.open = true;
+      var list = more.querySelector('.header-scripts');
+      if (list) { list.setAttribute('tabindex', '-1'); list.focus(); list.scrollIntoView({ block: 'nearest' }); }
+      return;
+    }
     if (action === 'header-format' && state.detail) {
       // Only the list is drawn again, and the choice follows to the next site
       state.headerFormat = target.getAttribute('data-format');

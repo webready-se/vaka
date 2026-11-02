@@ -426,7 +426,7 @@ test('without a CSP, the suggestion is Report-Only, and the note says what defau
 
     // Already there as Report-Only: the step after is to enforce it
     $trying = $csp($page('<script>theme()</script>', ['Content-Security-Policy-Report-Only' => "default-src 'self'"]));
-    expect($trying['note'])->toBe('only as Report-Only, which blocks nothing; enforced, it would block 1 inline script on the page')
+    expect($trying['note'])->toBe('it blocks nothing yet. Enforced, it would block 1 inline script on the page')
         ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'")
         ->and($trying['report_only'])->toBeTrue()
         ->and($trying['tip'])->toContain("show nothing it would block that the site needs");
@@ -581,7 +581,7 @@ test('the site detail says what the CSP blocks, or what a Report-Only one would,
     $trying = $csp(evaluate_headers($page($body, ['Content-Security-Policy-Report-Only' => "default-src 'self'"]), 10));
     expect($trying['level'])->toBe('missing')
         ->and($trying['blocks'])->toBeFalse()
-        ->and($trying['note'])->toBe('only as Report-Only, which blocks nothing; enforced, it would block 2 inline scripts and a script from cdn.example on the page')
+        ->and($trying['note'])->toBe('it blocks nothing yet. Enforced, it would block 2 inline scripts and a script from cdn.example on the page')
         ->and($trying['inline'])->toBe(['theme()', 'go()'])
         ->and($trying['blocked'])->toBe(['https://cdn.example/w.js'])
         ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'")
@@ -589,7 +589,7 @@ test('the site detail says what the CSP blocks, or what a Report-Only one would,
         ->and($blocking)->not->toHaveKey('report_only');
 
     $ready = $csp(evaluate_headers($page($body, ['Content-Security-Policy-Report-Only' => "script-src 'self' 'unsafe-inline' https://cdn.example"]), 10));
-    expect($ready['note'])->toBe('only as Report-Only, which blocks nothing; enforced, it would block nothing on the page, so it is safe to rename')
+    expect($ready['note'])->toBe('it blocks nothing yet. Enforced, it would block nothing on the page, so it is safe to rename')
         ->and($ready)->not->toHaveKey('blocked');
 });
 
@@ -631,4 +631,28 @@ test('a CSP starting or stopping to block scripts is a change, confirmed like th
             'If that was not on purpose, look at the last deploy, the web server or the CDN settings.',
         ],
     ]);
+});
+
+test('each item says what the site sends and what to do with its line, so the list reads like the mail records', function () {
+    $headers = ['Strict-Transport-Security' => 'max-age=86400', 'X-Content-Type-Options' => 'nosniff', 'Content-Security-Policy' => "script-src 'self' 'unsafe-inline'; frame-ancestors 'self'", 'Referrer-Policy' => 'no-referrer'];
+    $sent = sent_headers(answered($headers)['headers']);
+    expect($sent)->toBe(['hsts' => 'max-age=86400', 'csp' => "script-src 'self' 'unsafe-inline'; frame-ancestors 'self'", 'nosniff' => 'nosniff', 'referrer' => 'no-referrer', 'frames' => "frame-ancestors 'self'"])
+        // X-Frame-Options when there is one, several values joined, long ones cut
+        ->and(sent_headers(answered(['X-Frame-Options' => 'DENY'] + $headers)['headers'])['frames'])->toBe('DENY')
+        ->and(sent_headers(['x-frame-options' => ['DENY', 'SAMEORIGIN']])['frames'])->toBe('DENY, SAMEORIGIN')
+        ->and(strlen(sent_headers(['permissions-policy' => [str_repeat('camera=(), ', 100)]])['permissions']))->toBe(500);
+
+    $items = array_column(header_items(evaluate_headers(answered($headers), 10)['details']), null, 'key');
+    expect($items['hsts'])->toMatchArray(['level' => 'weak', 'value' => 'max-age=86400', 'fix_label' => 'Change it to:'])
+        ->and($items['nosniff'])->toMatchArray(['level' => 'good', 'value' => 'nosniff', 'fix_label' => 'Add this line:'])
+        ->and($items['permissions'])->toMatchArray(['level' => 'missing', 'value' => '', 'fix_label' => 'Add this line:'])
+        ->and($items['frames'])->toMatchArray(['level' => 'good', 'value' => "frame-ancestors 'self'"])
+        ->and($items['csp'])->toMatchArray(['level' => 'weak', 'fix_label' => 'A stricter policy to try first as Report-Only, which blocks nothing:']);
+
+    $csp = fn (array $h, string $body = '') => array_column(header_items(evaluate_headers(['body' => $body] + answered($h + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
+    expect($csp([])['fix_label'])->toBe('Try this line first; as Report-Only it blocks nothing:')
+        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"])['fix_label'])->toBe('Your policy under the name that enforces it:')
+        // A CSP that blocks has no line, so no label
+        ->and($csp(['Content-Security-Policy' => "default-src 'self'"], '<script>a()</script>'))->toMatchArray(['fix' => '', 'fix_label' => '', 'note' => 'it blocks 1 inline script on the page'])
+        ->and($csp(['Content-Security-Policy' => "script-src 'self' 'unsafe-inline'"], '<script src="https://cdn.example/w.js"></script>')['note'])->toBe("it allows inline scripts ('unsafe-inline'). It blocks a script from cdn.example on the page");
 });

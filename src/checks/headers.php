@@ -501,6 +501,8 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     $headers = [];
     foreach (array_keys(SECURITY_HEADERS) as $key) $headers[$key] = header_level($key, $response['headers'], $https);
     $details = ['headers' => $headers];
+    // What the site sends, for the detail to show
+    $details['sent'] = sent_headers($response['headers']);
     // The policy tried as Report-Only, as sent: the line to add is that policy under the name that enforces it
     if (isset($response['headers']['content-security-policy-report-only'])) $details['csp_report_only'] = mb_substr(trim((string) $response['headers']['content-security-policy-report-only'][0]), 0, 1000);
     // For the lines the dashboard offers to paste in, never the grade
@@ -642,6 +644,50 @@ function headers_advice(array $details): array
 }
 
 /**
+ * What the site sends for each protection, as text, for the site detail to
+ * show under "In place" and next to a weak one: the first 500 characters,
+ * several values joined. Frame protection from a CSP shows its
+ * frame-ancestors directive when there is no X-Frame-Options.
+ *
+ * @return array<string, string>  protection key => the header as sent
+ */
+function sent_headers(array $headers): array
+{
+    $names = ['hsts' => 'strict-transport-security', 'csp' => 'content-security-policy', 'nosniff' => 'x-content-type-options', 'frames' => 'x-frame-options', 'referrer' => 'referrer-policy', 'permissions' => 'permissions-policy'];
+    $sent = [];
+    foreach ($names as $key => $name) {
+        if (isset($headers[$name])) $sent[$key] = mb_substr(trim(implode(', ', array_map('trim', $headers[$name]))), 0, 500);
+    }
+    if (!isset($sent['frames'])) {
+        foreach ($headers['content-security-policy'] ?? [] as $policy) {
+            if (preg_match('/(?:^|;)\s*(frame-ancestors[^;]*)/i', $policy, $m)) {
+                $sent['frames'] = trim($m[1]);
+                break;
+            }
+        }
+    }
+    return $sent;
+}
+
+/**
+ * What to do with an item's line, said above it, as the mail records say
+ * "Change the TXT record to:". Empty when there is no line.
+ */
+function fix_label(array $item): string
+{
+    if ($item['fix'] === '') return '';
+    if ($item['key'] === 'csp') {
+        return match (true) {
+            $item['report_only'] ?? false => 'Your policy under the name that enforces it:',
+            $item['level'] === 'weak' => 'A stricter policy to try first as Report-Only, which blocks nothing:',
+            default => 'Try this line first; as Report-Only it blocks nothing:',
+        };
+    }
+    if ($item['key'] === 'nosniff' && $item['level'] === 'weak') return 'The line, for those files too:';
+    return $item['level'] === 'weak' ? 'Change it to:' : 'Add this line:';
+}
+
+/**
  * Every protection with what it does, how well it is in place and how to
  * add it, for the site detail. Empty when the site could not be graded.
  *
@@ -660,6 +706,8 @@ function header_items(array $details): array
                 : ['note' => 'also on the scripts and styles the page loads'] + $item;
         }
         if ($key === 'csp') $item = csp_item($item, $details);
+        $item['value'] = $details['sent'][$key] ?? '';
+        $item['fix_label'] = fix_label($item);
         $items[] = $item;
     }
     return $items;
@@ -681,15 +729,15 @@ function csp_item(array $item, array $details): array
     $named = $blocks ? array_filter(['inline' => $blocked['inline'], 'blocked' => $blocked['scripts']]) : [];
     if ($item['level'] !== 'missing') {
         if (!$blocks) return ['blocks' => false] + $item;
-        return ['blocks' => true, 'note' => ($item['note'] !== '' ? $item['note'] . '; ' : '') . 'it blocks ' . csp_blocked_words($blocked) . ' on the page', 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
+        return ['blocks' => true, 'note' => ($item['note'] !== '' ? $item['note'] . '. It blocks ' : 'it blocks ') . csp_blocked_words($blocked) . ' on the page', 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
     }
     if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
         $would = match (true) {
             $blocked === null => '',
-            $blocks => '; enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
-            default => '; enforced, it would block nothing on the page, so it is safe to rename',
+            $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
+            default => '. Enforced, it would block nothing on the page, so it is safe to rename',
         };
-        return ['blocks' => false, 'report_only' => true, 'note' => CSP_REPORT_ONLY_NOTE . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line."] + $named + $item;
+        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line."] + $named + $item;
     }
     $scripts = $details['scripts'] ?? null;
     $inline = $scripts['inline'] ?? 0;

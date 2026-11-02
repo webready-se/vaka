@@ -596,8 +596,21 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .header-list .records code + code { margin-top: 0; }
 .header-list .header-tip { margin-top: 4px; color: var(--text-3); font-size: 13px; }
 .headers-lead { margin: 4px 0 0; color: var(--text-3); font-size: 13px; }
-.headers-done { display: flex; gap: 10px; align-items: flex-start; margin: 14px 0 0; color: var(--text-2); font-size: 14px; }
+/* What is in place: one line that opens to what the site sends for each */
+.headers-done { margin: 14px 0 0; color: var(--text-2); font-size: 14px; }
+.headers-done > summary { display: flex; gap: 10px; align-items: flex-start; cursor: pointer; list-style: none; border-radius: 4px; }
+.headers-done > summary::-webkit-details-marker { display: none; }
+.headers-done > summary:focus-visible { outline: 3px solid var(--focus); outline-offset: 2px; }
 .headers-done .icon { flex: none; width: 16px; height: 16px; margin-top: 2px; stroke-width: 2.4; color: var(--up); }
+.headers-done > summary .icon:last-child { width: 14px; height: 14px; margin-top: 3px; color: var(--accent); transform: rotate(-90deg); transition: transform 0.15s; }
+.headers-done[open] > summary .icon:last-child { transform: none; }
+.header-values { display: grid; gap: 8px; margin: 10px 0 0 26px; padding: 0; list-style: none; font-size: 13.5px; }
+.header-values li { display: grid; gap: 3px; justify-items: start; }
+.header-values b { font-weight: 650; color: var(--text); }
+.header-values code, .header-sent code { overflow-wrap: anywhere; }
+.header-list .header-sent { margin-top: 4px; color: var(--text-3); font-size: 13px; }
+.header-list .header-sent code { margin-top: 0; }
+.header-why .link-button { font-size: inherit; font-weight: inherit; color: inherit; }
 /* What each does and how to add it, one click away: the browser's own disclosure, so keys and screen readers work as they do anywhere */
 .header-more { margin-top: 6px; }
 .headers-tip { margin: 14px 0 0 26px; color: var(--text-3); font-size: 13px; }
