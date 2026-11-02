@@ -72,6 +72,14 @@ function header_level(string $key, array $headers, bool $https): array
     $result = fn (string $level, string $note = '') => ['level' => $level, 'note' => $note];
     $first = fn (string $name) => isset($headers[$name]) ? trim((string) $headers[$name][0]) : null;
     $policies = array_map('csp_directives', $headers['content-security-policy'] ?? []);
+    // Sent twice with different values: the application and the web server both add it (Forge's nginx adds
+    // X-Frame-Options SAMEORIGIN on top of the app's), and browsers may take either. Not a CSP: those all apply
+    $names = ['hsts' => 'strict-transport-security', 'nosniff' => 'x-content-type-options', 'frames' => 'x-frame-options', 'referrer' => 'referrer-policy', 'permissions' => 'permissions-policy'];
+    if (isset($names[$key]) && !($key === 'hsts' && !$https)) {
+        $values = [];
+        foreach ($headers[$names[$key]] ?? [] as $value) $values[strtolower(trim((string) $value))] ??= trim((string) $value);
+        if (count($values) > 1) return $result('weak', 'sent twice, ' . list_words(array_map(fn ($value) => "\"{$value}\"", array_values($values))) . ': the application and the web server both add it, so browsers may take either; keep one');
+    }
 
     switch ($key) {
         case 'hsts':
@@ -853,8 +861,11 @@ function csp_item(array $item, array $details): array
     $blocks = csp_blocks_anything($blocked);
     $named = $blocks ? array_filter(['inline' => $blocked['inline'], 'blocked' => $blocked['scripts'], 'blocked_assets' => csp_blocked_assets($blocked)]) : [];
     if ($item['level'] !== 'missing') {
-        if (!$blocks) return ['blocks' => false] + $item;
-        return ['blocks' => true, 'note' => ($item['note'] !== '' ? $item['note'] . '. It blocks ' : 'it blocks ') . csp_blocked_words($blocked) . ' on the page', 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
+        // A Report-Only next to the policy in force adds nothing: said, since the one in force may come from somewhere else than the line just added
+        $also = isset($details['csp_report_only']) ? 'also sent as Report-Only, which adds nothing next to a policy in force: if that line was meant to be the only one, something else sets the first (the application, or another server rule)' : '';
+        $join = fn (string ...$parts) => implode('. ', array_map(fn ($part, $i) => $i > 0 ? ucfirst($part) : $part, $filtered = array_values(array_filter($parts)), array_keys($filtered)));
+        if (!$blocks) return ['blocks' => false, 'note' => $join($item['note'], $also)] + $item;
+        return ['blocks' => true, 'note' => $join($item['note'], 'it blocks ' . csp_blocked_words($blocked) . ' on the page', $also), 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
     }
     if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
         $would = match (true) {
