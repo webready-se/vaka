@@ -719,3 +719,25 @@ test('the summary, the item and the alert name blocked styles and images as well
     $fine = array_column(header_items(evaluate_headers($page($body, ['Content-Security-Policy' => "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.example"]), 10)['details']), null, 'key')['csp'];
     expect($fine['blocks'])->toBeFalse()->and($fine)->not->toHaveKey('blocked_assets');
 });
+
+test('the site\'s icons count as images, and a data: address is allowed only by the data: source', function () {
+    $page = 'https://shop.example/';
+    $html = '<link rel="icon" href="data:image/svg+xml,<svg xmlns=\'http://www.w3.org/2000/svg\'></svg>"><link rel="apple-touch-icon" href="/icon-180.png"><link rel="shortcut icon" href="https://cdn.example/favicon.ico"><link rel="stylesheet" href="/a.css"><img src="data:image/png;base64,iVBORw0KGgo=" alt="">';
+    $found = page_scripts($html, $page);
+    expect($found['icons'])->toBe(['data:image/svg+xml', 'https://shop.example/icon-180.png', 'https://cdn.example/favicon.ico'])
+        ->and($found['images'])->toBe(['data:image/png'])
+        ->and(csp_source_allows('data:', 'data:image/svg+xml', $page))->toBeTrue()
+        // '*' and 'self' never match data:, as in browsers
+        ->and(csp_source_allows('*', 'data:image/svg+xml', $page))->toBeFalse()
+        ->and(csp_source_allows("'self'", 'data:image/svg+xml', $page))->toBeFalse();
+
+    $blocked = fn (string $policy) => csp_blocked([csp_directives($policy)], $found, $page);
+    expect($blocked("default-src 'self'"))->toMatchArray(['images' => ['data:image/png'], 'icons' => ['data:image/svg+xml', 'https://cdn.example/favicon.ico']])
+        ->and($blocked("default-src 'self'; img-src 'self' data: https://cdn.example"))->toMatchArray(['images' => [], 'icons' => []])
+        ->and(csp_blocked_words($blocked("default-src 'self'")))->toBe('an inline image (data:), the icon as data: and an icon from cdn.example')
+        ->and(csp_blocked_words($blocked("default-src 'self'; img-src 'self' https://cdn.example")))->toBe('an inline image (data:) and the icon as data:')
+        ->and(csp_blocked_assets($blocked("default-src 'self'")))->toBe([['kind' => 'image', 'url' => 'data:image/png'], ['kind' => 'icon', 'url' => 'data:image/svg+xml'], ['kind' => 'icon', 'url' => 'https://cdn.example/favicon.ico']]);
+
+    $result = evaluate_headers(['body' => '<link rel="icon" href="data:image/svg+xml,<svg/>">'] + answered(['Content-Security-Policy' => "default-src 'self'"] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10);
+    expect($result['summary'])->toBe('Grade A: all 6 in place, the CSP blocks the icon as data: on the page');
+});
