@@ -610,8 +610,8 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .header-values code, .header-sent code { overflow-wrap: anywhere; }
 .header-list .header-sent { margin-top: 4px; color: var(--text-3); font-size: 13px; }
 .header-list .header-sent code { margin-top: 0; }
-/* The scripts a note names are a button, but read as a link in the sentence: inline, so a long phrase wraps with the text */
-.header-why .link-button { display: inline; text-align: inherit; font-size: inherit; font-weight: inherit; color: inherit; }
+/* The scripts a note names are a link in the sentence (a button cannot wrap inside, so a long phrase sat on lines of its own) */
+.header-why .link-button { font-size: inherit; font-weight: inherit; color: inherit; }
 /* What each does and how to add it, one click away: the browser's own disclosure, so keys and screen readers work as they do anywhere */
 .header-more { margin-top: 6px; }
 .headers-tip { margin: 14px 0 0 26px; color: var(--text-3); font-size: 13px; }

@@ -1921,7 +1921,8 @@
     if (!match) return [note];
     return [
       note.slice(0, match.index),
-      h('button', { type: 'button', class: 'link-button', 'data-action': 'show-scripts' }, match[1]),
+      // A link, not a button: a button cannot wrap inside, so a long phrase sat on lines of its own
+      h('a', { href: '#', class: 'link-button', 'data-action': 'show-scripts' }, match[1]),
       note.slice(match.index + match[1].length)
     ];
   }
@@ -2243,7 +2244,8 @@
     if (action === 'unsnooze') snooze(target.getAttribute('data-sites').split(','), { action: 'unsnooze' }, target);
     if (action === 'recheck') recheck(target.getAttribute('data-site'), target);
     if (action === 'show-scripts') {
-      // "2 inline scripts" opens the list of them, under "What it does"
+      // "2 inline scripts" opens the list of them, under "What it does"; the link goes nowhere by itself
+      event.preventDefault();
       var more = target.closest('li').querySelector('.header-more');
       more.open = true;
       var list = more.querySelector('.header-scripts');
