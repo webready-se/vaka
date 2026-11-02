@@ -412,17 +412,16 @@ test('without a CSP, the suggestion is Report-Only, and the note says what defau
         ->and($plain['tip'])->toContain('fine to do it last');
 
     $both = $csp($page('<script>theme()</script><script type="module">go()</script><script src="https://analytics.example/a.js"></script>'));
-    expect($both['note'])->toBe("the page has 2 inline scripts and scripts from analytics.example, which default-src 'self' would block")
+    expect($both['note'])->toBe("the page has 2 inline scripts and a script from analytics.example: the line below allows what is there today")
         // Which ones, by their start
         ->and($both['inline'])->toBe(['theme()', 'go()'])
         ->and($plain)->not->toHaveKey('inline')
-        ->and($both['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'")
-        ->and($both['tip'])->toContain("'sha256-...'")
-        ->and($both['tip'])->toContain('changes whenever the script does');
+        ->and($both['fix'])->toStartWith("Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://analytics.example 'sha256-")
+        ->and($both['tip'])->toContain('as they are today');
 
-    expect($csp($page('<script>theme()</script>'))['note'])->toBe("the page has 1 inline script, which default-src 'self' would block")
+    expect($csp($page('<script>theme()</script>'))['note'])->toBe("the page has 1 inline script: the line below allows what is there today")
         ->and($csp($page('<script src="https://a.example/1.js"></script><script src="https://b.example/2.js"></script><script src="https://c.example/3.js"></script><script src="https://d.example/4.js"></script><script src="https://e.example/5.js"></script>'))['note'])
-        ->toBe("the page loads scripts from a.example, b.example, c.example and 2 more hosts, which default-src 'self' would block");
+        ->toBe("the page has scripts from a.example, b.example, c.example, d.example and e.example: the line below allows what is there today");
 
     // Already there as Report-Only: the step after is to enforce it
     $trying = $csp($page('<script>theme()</script>', ['Content-Security-Policy-Report-Only' => "default-src 'self'"]));
@@ -761,4 +760,31 @@ test('a CSP in force sent next to a Report-Only one says the Report-Only adds no
         ->and($both['blocks'])->toBeFalse()
         ->and($both['note'])->toBe('also sent as Report-Only, which adds nothing next to a policy in force: if that line was meant to be the only one, something else sets the first (the application, or another server rule)')
         ->and($csp(['Content-Security-Policy' => "default-src 'self'"])['note'])->toBe('');
+});
+
+test('a first CSP is drafted from what the page has, to try as Report-Only, and passes its own page', function () {
+    $page = 'https://shop.example/';
+    $draft = fn (string $html) => csp_draft(page_scripts($html, $page), $page);
+    // Nothing beyond the site itself: nothing to draft
+    expect($draft('<script src="/app.js"></script><link rel="stylesheet" href="/site.css"><img src="/a.png">'))->toBe('');
+    $html = '<script>theme()</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">'
+        . '<div style="color:red"></div><img src="https://cdn.example/a.jpg"><link rel="icon" href="data:image/svg+xml,<svg/>"><iframe src="https://www.youtube.com/embed/x"></iframe>';
+    $theme = 'sha256-' . base64_encode(hash('sha256', 'theme()', true));
+    expect($draft($html))->toBe("default-src 'self'; script-src 'self' https://www.googletagmanager.com '{$theme}'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://cdn.example data:; frame-src 'self' https://www.youtube.com; object-src 'none'")
+        // Style blocks without attributes get hashes, as scripts do
+        ->and($draft('<style>p{}</style>'))->toBe("default-src 'self'; style-src 'self' 'sha256-" . base64_encode(hash('sha256', 'p{}', true)) . "'; object-src 'none'")
+        ->and(csp_blocks_anything(csp_blocked([csp_directives($draft($html))], page_scripts($html, $page), $page)))->toBeFalse();
+});
+
+test('without a CSP, the line to try is the draft when the page needs more than itself', function () {
+    $csp = fn (string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered(['X-Frame-Options' => 'DENY'] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0])), 10)['details']), null, 'key')['csp'];
+    $bare = $csp('<script src="/app.js"></script>');
+    expect($bare['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'")->and($bare['note'])->toBe('');
+    $theme = 'sha256-' . base64_encode(hash('sha256', 'theme()', true));
+    $more = $csp('<script>theme()</script><script src="https://analytics.example/a.js"></script><p style="margin:0"></p>');
+    expect($more['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://analytics.example '{$theme}'; style-src 'self' 'unsafe-inline'; object-src 'none'")
+        ->and($more['note'])->toBe('the page has 1 inline script, a script from analytics.example and 1 inline style: the line below allows what is there today')
+        ->and($more['inline'])->toBe(['theme()'])
+        ->and($more['tip'])->toContain('as they are today')
+        ->and($more['tip'])->toContain('A tag manager loads more');
 });
