@@ -588,6 +588,8 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .header-list b { font-weight: 650; }
 .header-list .header-what { color: var(--text-3); font-size: 13px; }
 .header-list .header-level { color: var(--text-3); font-weight: 600; }
+/* A remark after the level word is a warning (it can break the site, a tag manager makes this hard): the warning colour, so it reads apart */
+.header-list .header-remark { color: var(--warn); }
 .header-list .is-weak .header-level, .header-list .is-weak .header-why { color: var(--warn); }
 .header-list .header-why { margin-top: 4px; color: var(--text-2); font-weight: 600; }
 .header-list code { display: inline-block; margin-top: 6px; overflow-wrap: anywhere; }
@@ -595,6 +597,7 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .header-list .records code { margin-top: 6px; }
 .header-list .records code + code { margin-top: 0; }
 .header-list .header-tip { margin-top: 4px; color: var(--text-3); font-size: 13px; }
+.header-tip strong, .headers-tip strong { font-weight: 650; color: var(--text-2); }
 .headers-lead { margin: 4px 0 0; color: var(--text-3); font-size: 13px; }
 /* What is in place: one line that opens to what the site sends for each */
 .headers-done { margin: 14px 0 0; color: var(--text-2); font-size: 14px; }

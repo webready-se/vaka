@@ -812,7 +812,7 @@ function read_api_site(PDO $db, array $config, array $row, int $hours, int $now)
     ];
     if ($site['headers'] !== null) {
         $advice = headers_advice(json_decode((string) $row['headers_details'], true) ?: []);
-        $advice['items'] = array_map(fn ($item) => api_pick($item, ['key', 'label', 'level', 'note', 'what', 'fix', 'tip', 'blocks', 'blocked', 'inline', 'report_only', 'fix_label', 'value', 'blocked_assets']), $advice['items']);
+        $advice['items'] = array_map(fn ($item) => api_pick($item, ['key', 'label', 'level', 'note', 'what', 'fix', 'tip', 'blocks', 'blocked', 'inline', 'report_only', 'fix_label', 'value', 'blocked_assets', 'caution']), $advice['items']);
         $site['headers'] += $advice;
     }
     if ($site['dns'] !== null) {

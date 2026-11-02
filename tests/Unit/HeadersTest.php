@@ -792,7 +792,15 @@ test('without a CSP, the line to try is the draft when the page needs more than 
 test('a page with a tag manager is told that a strict CSP needs nonces, or stays weak', function () {
     $csp = fn (array $h, string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered($h + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
     $gtm = '<script>dataLayer = []</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script>';
-    expect($csp([], $gtm)['tip'])->toContain('Google Tag Manager, which loads more later')
-        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['tip'])->toContain('Google Tag Manager, which loads more later')
+    expect($csp([], $gtm)['tip'])->toContain("**A strict CSP with it needs nonces from the site's own code**")
+        ->and($csp([], $gtm)['caution'])->toBe('a tag manager makes this hard')
+        ->and($csp([], '<script src="https://analytics.example/a.js"></script>')['caution'])->toBe('')
+        // The Report-Only line is labelled by whether it is ready to enforce
+        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['fix_label'])->toBe('Your policy under the name that enforces it, once the list above is empty:')
+        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self' https://www.googletagmanager.com 'unsafe-inline'"], '<script src="https://www.googletagmanager.com/gtm.js"></script>')['fix_label'])->toBe('Your policy under the name that enforces it:')
+        // Said in the note itself, in sight, not only one click away
+        ->and($csp([], $gtm)['note'])->toEndWith(': the line below allows what is there today. It loads Google Tag Manager, so a strict policy takes more than a line')
+        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['note'])->toEndWith(' on the page. It loads Google Tag Manager, so a strict policy takes more than a line')
+        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['tip'])->toContain('Google Tag Manager loads more later')
         ->and($csp([], '<script src="https://analytics.example/a.js"></script>')['tip'])->not->toContain('Tag Manager');
 });
