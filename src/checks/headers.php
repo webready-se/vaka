@@ -280,6 +280,23 @@ function csp_blocked(array $policies, array $page, string $pageUrl): array
     ];
 }
 
+/** Tag managers: they load more later, by what is set up in their own interface, which no policy drawn from the page can know. */
+const CSP_TAG_MANAGERS = ['googletagmanager.com' => 'Google Tag Manager'];
+
+/**
+ * The honest word on a page that loads a tag manager: a strict CSP needs
+ * nonces from the site's own code, or stays weak. Empty for other pages.
+ */
+function tag_manager_tip(array $page): string
+{
+    foreach ($page['hosts'] ?? [] as $host) {
+        foreach (CSP_TAG_MANAGERS as $domain => $name) {
+            if ($host === $domain || str_ends_with($host, ".{$domain}")) return " The page loads {$name}, which loads more later, by what is set up in its own interface, so no line drawn from the page stays complete. A strict CSP with it needs nonces from the site's own code (Google's way); otherwise the policy allows 'unsafe-inline' and Google's hosts, which is weak. Report-Only with reporting is the honest middle: nothing breaks, and what it loads is seen.";
+        }
+    }
+    return '';
+}
+
 /** Hosts whose files load more from another host, which the page never shows: the directive and the host to add. */
 const CSP_COMPANIONS = ['fonts.googleapis.com' => ['font-src', 'https://fonts.gstatic.com']];
 
@@ -924,7 +941,7 @@ function csp_item(array $item, array $details): array
             $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
             default => '. Enforced, it would block nothing on the page, so it is safe to rename',
         };
-        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it."] + $named + $item;
+        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
     }
     // No CSP at all: what default-src 'self' would stop on the page, and a draft that allows it (old data: the scripts only)
     $scripts = $details['scripts'] ?? [];
@@ -937,7 +954,8 @@ function csp_item(array $item, array $details): array
         'note' => $has !== '' ? "the page has {$has}: " . ($draft !== '' ? 'the line below allows what is there today' : "default-src 'self' would block it") : $item['note'],
         'fix' => $draft !== '' ? "Content-Security-Policy-Report-Only: {$draft}" : $item['fix'],
         'tip' => 'This is the one that can break a site, so it is fine to do it last. ' . $item['tip']
-            . ($draft !== '' ? " The line is drafted from this page: the hashes are of its inline scripts and styles as they are today and change with them, so let the build add them or move the code to files. A tag manager loads more hosts later, and other pages may need more; Report-Only shows it all in the console." : ''),
+            . ($draft !== '' ? " The line is drafted from this page: the hashes are of its inline scripts and styles as they are today and change with them, so let the build add them or move the code to files. Other pages may need more; Report-Only shows it all in the console." : '')
+            . tag_manager_tip($scripts),
     ] + ($excerpts ? ['inline' => $excerpts] : []) + $item;
 }
 

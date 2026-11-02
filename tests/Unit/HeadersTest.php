@@ -788,3 +788,11 @@ test('without a CSP, the line to try is the draft when the page needs more than 
         ->and($more['tip'])->toContain('as they are today')
         ->and($more['tip'])->toContain('A tag manager loads more');
 });
+
+test('a page with a tag manager is told that a strict CSP needs nonces, or stays weak', function () {
+    $csp = fn (array $h, string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered($h + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
+    $gtm = '<script>dataLayer = []</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script>';
+    expect($csp([], $gtm)['tip'])->toContain('Google Tag Manager, which loads more later')
+        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['tip'])->toContain('Google Tag Manager, which loads more later')
+        ->and($csp([], '<script src="https://analytics.example/a.js"></script>')['tip'])->not->toContain('Tag Manager');
+});
