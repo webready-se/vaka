@@ -334,7 +334,7 @@ async function main() {
       const [headerList, mailList] = all('dialog.drawer .header-list');
       const todo = [...(headerList?.querySelectorAll(':scope > li') || [])];
       expect(todo.map((li) => li.querySelector('b')?.textContent).join(', ') === 'X-Content-Type-Options, HSTS, CSP', `what to add comes first, the safest first and CSP last (got ${todo.map((li) => li.querySelector('b')?.textContent).join(', ')})`);
-      expect(/^In place: Referrer-Policy, .*Permissions-Policy$/.test(q('dialog.drawer .headers-done')?.textContent || ''), 'what is in place is one line');
+      expect(/^In place: Referrer-Policy, .*Permissions-Policy$/.test(q('dialog.drawer .headers-done summary')?.textContent || ''), 'what is in place is one line');
       expect([...(headerList?.querySelectorAll('code') || [])].some((c) => /^Content-Security-Policy-Report-Only:/.test(c.textContent)), 'a missing protection comes with the line that adds it (a CSP to try first)');
       // The lines in the web server's own form, so they paste in as they are; the header itself when the server is not known
       const formats = all('dialog.drawer .header-format button');
@@ -352,6 +352,12 @@ async function main() {
       q('dialog.drawer .header-format [data-format="header"]').click();
       expect(all('dialog.drawer .header-list .header-fix code')[2]?.textContent === `Content-Security-Policy-Report-Only: default-src 'self'`, 'back to the header as sent');
       expect(all('dialog.drawer .header-more').length === 3 && all('dialog.drawer .header-more').every((d) => !d.open), 'what each does and how to add it is one click away, closed at first');
+      expect(todo[1]?.querySelector('.fix-label')?.textContent === 'Add this line:' && todo[0]?.querySelector('.fix-label')?.textContent === 'The line, for those files too:', 'every line says what to do with it');
+      expect(todo[0]?.querySelector('.header-sent code')?.textContent === 'nosniff', 'a weak protection shows what the site sends');
+      // What is in place opens to what the site sends
+      const done = q('dialog.drawer .headers-done');
+      expect(done?.tagName === 'DETAILS' && !done.open, 'what is in place is one closed line');
+      expect(all('dialog.drawer .headers-done .header-values li').length === 3 && all('dialog.drawer .headers-done .header-values code').some((c) => c.textContent === 'SAMEORIGIN'), `it opens to what the site sends for each (got ${all('dialog.drawer .headers-done .header-values li').length} items)`);
       const csp = todo[2];
       expect(/do it last, it can break the site/.test(csp?.querySelector('p')?.textContent || ''), 'CSP says to do it last');
       const starts = [...(csp?.querySelectorAll('.header-scripts code') || [])].map((c) => c.textContent);
@@ -407,7 +413,7 @@ async function main() {
     all('.site-row').find((r) => /docs\.example/.test(r.textContent)).click();
     if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'docs.example', 'the docs site\'s detail to open')) {
       const cspItem = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
-      expect(/Weak, and it blocks scripts on the page/.test(cspItem?.querySelector('.header-level')?.textContent || '') && /; it blocks a script from cdn\.example on the page\.$/.test(cspItem?.querySelector('.header-why')?.textContent || ''), `a CSP that blocks a script on the page is listed as something to do, with what it blocks (got "${cspItem?.querySelector('.header-why')?.textContent}")`);
+      expect(/Weak, and it blocks scripts on the page/.test(cspItem?.querySelector('.header-level')?.textContent || '') && /\. It blocks a script from cdn\.example on the page\.$/.test(cspItem?.querySelector('.header-why')?.textContent || ''), `a CSP that blocks a script on the page is listed as something to do, with what it blocks (got "${cspItem?.querySelector('.header-why')?.textContent}")`);
       expect([...(cspItem?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'https://cdn.example/widget.js') && /The scripts it blocks:/.test(cspItem?.textContent || ''), 'the blocked script is named by its address');
       expect(/the CSP blocks a script from cdn\.example on the page$/.test(q('dialog.drawer .headers-summary')?.textContent || ''), `the summary says what the CSP blocks (got "${q('dialog.drawer .headers-summary')?.textContent}")`);
       q('dialog.drawer [data-action="close"]').click();
@@ -418,9 +424,15 @@ async function main() {
     if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'builder.example', 'the builder site\'s detail to open')) {
       const tried = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
       expect(/Sent as Report-Only, not in force/.test(tried?.querySelector('.header-level')?.textContent || ''), `a Report-Only CSP is not called missing (got "${tried?.querySelector('.header-level')?.textContent}")`);
-      expect(/enforced, it would block a script from widgets\.example on the page\.$/.test(tried?.querySelector('.header-why')?.textContent || ''), `it says what the policy would block (got "${tried?.querySelector('.header-why')?.textContent}")`);
+      expect(/^It blocks nothing yet\. Enforced, it would block a script from widgets\.example on the page\.$/.test(tried?.querySelector('.header-why')?.textContent || ''), `it says what the policy would block (got "${tried?.querySelector('.header-why')?.textContent}")`);
       expect(tried?.querySelector('.header-fix code')?.textContent === `Content-Security-Policy: default-src 'self'`, `the line to add is the site's own policy under the enforcing name (got "${tried?.querySelector('.header-fix code')?.textContent}")`);
       expect([...(tried?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'https://widgets.example/chat.js'), 'the script it would block is named by its address');
+      expect(tried?.querySelector('.fix-label')?.textContent === 'Your policy under the name that enforces it:', `the line says what it is (got "${tried?.querySelector('.fix-label')?.textContent}")`);
+      // "a script from widgets.example" opens the list of scripts
+      const scriptsLink = tried?.querySelector('.header-why [data-action="show-scripts"]');
+      expect(scriptsLink?.textContent === 'a script from widgets.example' && !tried.querySelector('.header-more').open, 'the scripts named in the note are a button, and the list is closed at first');
+      scriptsLink?.click();
+      expect(tried?.querySelector('.header-more')?.open === true && document.activeElement === tried?.querySelector('.header-scripts'), 'pressing it opens the list and moves there');
       q('dialog.drawer [data-action="close"]').click();
     }
 
