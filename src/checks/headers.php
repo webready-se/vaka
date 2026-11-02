@@ -152,6 +152,8 @@ function csp_script_level(array $directives): array
 function csp_source_allows(string $source, string $url, string $pageUrl): bool
 {
     $source = strtolower($source);
+    // A data: or blob: address is let through by that scheme alone: not by 'self', not by *
+    if (preg_match('/^(data|blob|filesystem|mediastream):/i', $url, $m)) return $source === strtolower($m[1]) . ':';
     $parts = parse_url($url);
     if (!$parts || !isset($parts['scheme'], $parts['host'])) return false;
     $scheme = strtolower($parts['scheme']);
@@ -190,8 +192,8 @@ function csp_source_allows(string $source, string $url, string $pageUrl): bool
  * source allows, inline ones without a matching hash), stylesheets and
  * <style> blocks the same way against style-src, style="..." attributes
  * (only 'unsafe-inline' lets them through, or 'unsafe-hashes', taken as
- * hashes given), images against img-src and frames against frame-src or
- * child-src, each falling back to default-src. A nonce in the policy lets
+ * hashes given), images and the site's icons against img-src (a data: address only
+ * by the data: source) and frames against frame-src or child-src, each falling back to default-src. A nonce in the policy lets
  * an element with a nonce attribute through: Vaka cannot see the nonce the
  * page was sent with. Several policies all apply, so what any of them stops
  * is stopped. Only sha256 is computed; a policy with other hashes is taken
@@ -200,11 +202,11 @@ function csp_source_allows(string $source, string $url, string $pageUrl): bool
  * them all.
  *
  * @param list<array> $policies  parsed with csp_directives()
- * @return array{scripts: list<string>, inline: list<string>, inline_total: int, stylesheets: list<string>, style_blocks: int, style_attributes: int, images: list<string>, frames: list<string>}
+ * @return array{scripts: list<string>, inline: list<string>, inline_total: int, stylesheets: list<string>, style_blocks: int, style_attributes: int, images: list<string>, icons: list<string>, frames: list<string>}
  */
 function csp_blocked(array $policies, array $page, string $pageUrl): array
 {
-    $blocked = ['scripts' => [], 'inline' => [], 'stylesheets' => [], 'style_blocks' => [], 'images' => [], 'frames' => []];
+    $blocked = ['scripts' => [], 'inline' => [], 'stylesheets' => [], 'style_blocks' => [], 'images' => [], 'icons' => [], 'frames' => []];
     $attributesBlocked = false;
     $sources = fn (array $directives, string ...$names) => array_reduce($names, fn ($found, $name) => $found ?? ($directives[$name] ?? null));
     $allows = fn (array $sources, string $url) => (bool) array_filter($sources, fn ($source) => csp_source_allows($source, $url, $pageUrl));
@@ -250,6 +252,7 @@ function csp_blocked(array $policies, array $page, string $pageUrl): array
         $imageSources = $sources($directives, 'img-src', 'default-src');
         if ($imageSources !== null) {
             foreach ($page['images'] ?? [] as $image) if (!$allows($imageSources, $image)) $blocked['images'][$image] = true;
+            foreach ($page['icons'] ?? [] as $icon) if (!$allows($imageSources, $icon)) $blocked['icons'][$icon] = true;
         }
         $frameSources = $sources($directives, 'frame-src', 'child-src', 'default-src');
         if ($frameSources !== null) {
@@ -264,6 +267,7 @@ function csp_blocked(array $policies, array $page, string $pageUrl): array
         'style_blocks' => count($blocked['style_blocks']),
         'style_attributes' => $attributesBlocked ? (int) ($page['style_attributes'] ?? 0) : 0,
         'images' => array_slice(array_keys($blocked['images']), 0, 10),
+        'icons' => array_slice(array_keys($blocked['icons']), 0, 10),
         'frames' => array_slice(array_keys($blocked['frames']), 0, 10),
     ];
 }
@@ -275,15 +279,21 @@ function csp_blocked(array $policies, array $page, string $pageUrl): array
  */
 function csp_blocked_words(array $blocked): string
 {
-    $hosts = fn (string $key) => array_values(array_unique(array_map('url_host', $blocked[$key] ?? [])));
-    $from = fn (string $key, string $one, string $many) => ($hosts($key) ? [(count($hosts($key)) === 1 && count($blocked[$key]) === 1 ? "{$one} from " : "{$many} from ") . list_words($hosts($key))] : []);
+    $hosted = fn (string $key) => array_values(array_filter($blocked[$key] ?? [], fn ($url) => !str_starts_with($url, 'data:')));
+    $hosts = fn (string $key) => array_values(array_unique(array_map('url_host', $hosted($key))));
+    $from = fn (string $key, string $one, string $many) => ($hosts($key) ? [(count($hosts($key)) === 1 && count($hosted($key)) === 1 ? "{$one} from " : "{$many} from ") . list_words($hosts($key))] : []);
     $styles = ($blocked['style_blocks'] ?? 0) + ($blocked['style_attributes'] ?? 0);
+    // Images and icons as data: addresses have no host: said apart
+    $data = fn (string $key) => count(array_filter($blocked[$key] ?? [], fn ($url) => str_starts_with($url, 'data:')));
     $parts = [
         ...(($blocked['inline_total'] ?? 0) > 0 ? [plural($blocked['inline_total'], 'inline script', 'inline scripts')] : []),
         ...$from('scripts', 'a script', 'scripts'),
         ...($styles > 0 ? [plural($styles, 'inline style', 'inline styles')] : []),
         ...$from('stylesheets', 'a stylesheet', 'stylesheets'),
+        ...($data('images') > 0 ? [$data('images') === 1 ? 'an inline image (data:)' : plural($data('images'), 'inline image (data:)', 'inline images (data:)')] : []),
         ...$from('images', 'an image', 'images'),
+        ...($data('icons') > 0 ? ['the icon as data:'] : []),
+        ...$from('icons', 'an icon', 'icons'),
         ...$from('frames', 'a frame', 'frames'),
     ];
     return list_words($parts);
@@ -294,14 +304,14 @@ function csp_blocks_anything(?array $blocked): bool
 {
     if ($blocked === null) return false;
     return $blocked['scripts'] !== [] || $blocked['inline_total'] > 0 || ($blocked['stylesheets'] ?? []) !== [] || ($blocked['style_blocks'] ?? 0) > 0
-        || ($blocked['style_attributes'] ?? 0) > 0 || ($blocked['images'] ?? []) !== [] || ($blocked['frames'] ?? []) !== [];
+        || ($blocked['style_attributes'] ?? 0) > 0 || ($blocked['images'] ?? []) !== [] || ($blocked['icons'] ?? []) !== [] || ($blocked['frames'] ?? []) !== [];
 }
 
 /** The blocked stylesheets, images and frames as a list to show, kind and address. */
 function csp_blocked_assets(array $blocked): array
 {
     $assets = [];
-    foreach (['stylesheets' => 'stylesheet', 'images' => 'image', 'frames' => 'frame'] as $key => $kind) {
+    foreach (['stylesheets' => 'stylesheet', 'images' => 'image', 'icons' => 'icon', 'frames' => 'frame'] as $key => $kind) {
         foreach ($blocked[$key] ?? [] as $url) $assets[] = ['kind' => $kind, 'url' => $url];
     }
     return $assets;
@@ -382,8 +392,8 @@ function page_files(string $html, string $pageUrl): array
  * `inline_scripts` (a sha256 hash of each as sent, its start, whether it has a nonce)
  * and `external` (URL, nonce) are what csp_blocked() compares with a policy, as
  * are the `stylesheets`, the `style_blocks` (hashed), the number of
- * `style_attributes`, the `images` (src and srcset) and the `frames`; at most
- * 50 of each (100 images).
+ * `style_attributes`, the `images` (src and srcset) and `icons` (the favicon links), with a data:
+ * address kept by its type, and the `frames`; at most 50 of each (100 images).
  *
  * @return array{inline: int, hosts: list<string>, excerpts: list<string>, inline_scripts: list<array{hash: string, start: string, nonce: bool}>, external: list<array{url: string, nonce: bool}>, stylesheets: list<array{url: string, nonce: bool}>, style_blocks: list<array{hash: string, nonce: bool}>, style_attributes: int, images: list<string>, frames: list<string>}
  */
@@ -410,7 +420,8 @@ function page_scripts(string $html, string $pageUrl): array
     }
     // Styles: the stylesheets linked, the <style> blocks (hashed as scripts are) and how many style="..." attributes
     $stylesheets = [];
-    preg_match_all('/<link\b([^>]*)>/i', $html, $links);
+    // A quoted attribute may hold a ">", as an inline SVG icon does
+    preg_match_all('/<link\b((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/i', $html, $links);
     foreach ($links[1] as $source) {
         $attributes = html_attributes($source);
         if (!isset($attributes['href']) || !preg_match('/(?:^|\s)stylesheet(?:\s|$)/i', $attributes['rel'] ?? '')) continue;
@@ -423,9 +434,10 @@ function page_scripts(string $html, string $pageUrl): array
         if (count($blocks) < 50) $blocks[] = ['hash' => 'sha256-' . base64_encode(hash('sha256', $body, true)), 'nonce' => (html_attributes($source)['nonce'] ?? '') !== ''];
     }
     $attributes = preg_match_all('/<[a-z][^>]*\sstyle\s*=/i', $html);
-    // Images (src and every srcset candidate) and frames, by address
+    // Images (src and every srcset candidate), the site's icons and frames, by address; a data: address by its type
+    $address = fn (string $ref) => preg_match('/^\s*data:/i', $ref) ? substr('data:' . strtolower((string) preg_replace('/^\s*data:([^;,]*).*/is', '$1', $ref)), 0, 40) : resolve_url($ref, $pageUrl);
     $images = [];
-    preg_match_all('/<img\b([^>]*)>/i', $html, $imgs);
+    preg_match_all('/<img\b((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/i', $html, $imgs);
     foreach ($imgs[1] as $source) {
         $attrs = html_attributes($source);
         $refs = isset($attrs['src']) ? [$attrs['src']] : [];
@@ -434,12 +446,19 @@ function page_scripts(string $html, string $pageUrl): array
             if ($ref !== '') $refs[] = $ref;
         }
         foreach ($refs as $ref) {
-            $resolved = resolve_url($ref, $pageUrl);
+            $resolved = $address($ref);
             if ($resolved !== null && count($images) < 100) $images[$resolved] = true;
         }
     }
+    $icons = [];
+    foreach ($links[1] as $source) {
+        $link = html_attributes($source);
+        if (!isset($link['href']) || !preg_match('/(?:^|\s)(?:apple-touch-|mask-)?icon(?:-precomposed)?(?:\s|$)/i', $link['rel'] ?? '')) continue;
+        $resolved = $address($link['href']);
+        if ($resolved !== null && count($icons) < 20) $icons[$resolved] = true;
+    }
     $frames = [];
-    preg_match_all('/<iframe\b([^>]*)>/i', $html, $iframes);
+    preg_match_all('/<iframe\b((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/i', $html, $iframes);
     foreach ($iframes[1] as $source) {
         $attrs = html_attributes($source);
         $resolved = isset($attrs['src']) ? resolve_url($attrs['src'], $pageUrl) : null;
@@ -455,6 +474,7 @@ function page_scripts(string $html, string $pageUrl): array
         'style_blocks' => $blocks,
         'style_attributes' => $attributes,
         'images' => array_keys($images),
+        'icons' => array_keys($icons),
         'frames' => array_keys($frames),
     ];
 }
