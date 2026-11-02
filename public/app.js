@@ -1965,12 +1965,14 @@
         var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks parts of the page' : 'In place, but it blocks parts of the page') : item.report_only ? 'Sent as Report-Only, not in force' : words[item.level];
         // What the item names: what the CSP blocks, what a Report-Only one would, or what the page has that a first one would
         var would = item.blocks ? 'it blocks' : item.blocked || /would block/.test(item.note || '') ? 'it would block' : null;
+        var remark = item.caution || (last ? 'do it last, it can break the site' : '');
         var named = Boolean(item.inline || item.blocked || item.blocked_assets);
         var note = item.note ? capitalize(item.note) + '.' : '';
         return h('li', { class: 'is-' + (item.blocks ? 'weak' : item.level) }, [
           icon(item.level === 'weak' || item.blocks ? 'failing' : 'down'),
           h('div', {}, [
-            h('p', {}, [h('b', {}, capitalize(item.label)), h('span', { class: 'header-level' }, ' · ' + word + (item.caution ? ' · ' + item.caution : last ? ' · do it last, it can break the site' : ''))]),
+            // The state in the level's weight; a remark after it lighter, so the two read apart
+            h('p', {}, [h('b', {}, capitalize(item.label)), h('span', { class: 'header-level' }, [' · ' + word, remark ? h('span', { class: 'header-remark' }, ' · ' + remark) : null])]),
             note ? h('p', { class: 'header-why' }, named ? scriptsNote(note) : note) : null,
             // A weak one: what the site sends, so the change below can be read against it
             item.level === 'weak' && item.value ? h('p', { class: 'header-sent' }, ['The site sends: ', h('code', {}, item.value)]) : null,
