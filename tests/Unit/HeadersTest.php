@@ -786,7 +786,7 @@ test('without a CSP, the line to try is the draft when the page needs more than 
         ->and($more['note'])->toBe('the page has 1 inline script, a script from analytics.example and 1 inline style: the line below allows what is there today')
         ->and($more['inline'])->toBe(['theme()'])
         ->and($more['tip'])->toContain('as they are today')
-        ->and($more['tip'])->toContain('A tag manager loads more');
+        ->and($more['tip'])->toContain('Other pages may need more');
 });
 
 test('a page with a tag manager is told that a strict CSP needs nonces, or stays weak', function () {
