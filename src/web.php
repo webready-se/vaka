@@ -182,6 +182,7 @@ function show_login(array $config, ?string $error = null): never
 {
     $token = e(csrf_token());
     $version = e(VAKA_VERSION);
+    $asset = asset_version();
     $message = $error === null ? '' : '<p class="login-error" id="login-error" role="alert">' . e($error) . '</p>';
     $described = $error === null ? '' : ' aria-describedby="login-error"';
     $mark = mark_svg('vaka', 'mark');
@@ -220,7 +221,7 @@ function show_login(array $config, ?string $error = null): never
     <meta name="mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-title" content="Vaka">
     <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
-    <link rel="stylesheet" href="app.css?v={$version}">
+    <link rel="stylesheet" href="app.css?v={$asset}">
     </head>
     <body class="login">
     <main class="login-card">
@@ -263,12 +264,25 @@ function footer_credit(array $config): string
     return '<span class="credit">Made by <a href="https://webready.se">Webready</a> in Sweden <span class="credit-marks">' . $marks . '</span></span>';
 }
 
+/**
+ * A short hash of the dashboard's files, for their URLs. The version alone stays
+ * the same between releases, and without a Cache-Control a browser may keep the
+ * last deploy's app.js for hours: new data drawn by old code. A deploy changes
+ * the hash, so the browser fetches the new files at once.
+ */
+function asset_version(): string
+{
+    static $hash = null;
+    return $hash ??= substr(md5(implode('', array_map(fn (string $file) => (string) @md5_file(__DIR__ . '/../public/' . $file), ['app.js', 'app.css', 'theme.js']))), 0, 10);
+}
+
 function show_dashboard(array $config, array $user): never
 {
     $html = (string) file_get_contents(__DIR__ . '/../public/dashboard.html');
     $html = strtr($html, [
         '{{csrf}}' => e(csrf_token()),
         '{{version}}' => e(VAKA_VERSION),
+        '{{asset}}' => asset_version(),
         '{{user}}' => e($user['name']),
         '{{mark}}' => mark_svg('vaka', 'mark'),
         '{{credit}}' => footer_credit($config),
