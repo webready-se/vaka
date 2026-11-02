@@ -434,3 +434,20 @@ test('without a CSP, the suggestion is Report-Only, and the note says what defau
     $enforced = evaluate_headers($page('<script>theme()</script>', ['Content-Security-Policy' => "script-src 'self' 'sha256-abc'"]), 10);
     expect($enforced['details'])->not->toHaveKey('scripts');
 });
+
+test('the web server that answered is kept, so the dashboard offers the lines in its form: nginx, Apache (LiteSpeed reads .htaccess), nothing behind a CDN', function () {
+    expect(web_server(['server' => ['nginx/1.24.0']]))->toBe('nginx')
+        ->and(web_server(['server' => ['openresty']]))->toBe('nginx')
+        ->and(web_server(['server' => ['Apache/2.4.58 (Ubuntu)']]))->toBe('apache')
+        ->and(web_server(['server' => ['LiteSpeed']]))->toBe('apache')
+        ->and(web_server(['server' => ['cloudflare']]))->toBe('')
+        ->and(web_server([]))->toBe('');
+
+    $nginx = evaluate_headers(answered(['Server' => 'nginx'] + STRONG_HEADERS), 10);
+    expect($nginx['details']['server'])->toBe('nginx')
+        ->and(evaluate_headers(answered(STRONG_HEADERS), 10)['details'])->not->toHaveKey('server')
+        // For the site detail and the read API, with how to add them in nginx and in Apache
+        ->and(headers_advice($nginx['details']))->toMatchArray(['server' => 'nginx', 'tip' => HEADERS_NGINX_TIP, 'tip_apache' => HEADERS_APACHE_TIP])
+        ->and(headers_advice($nginx['details'])['items'])->toHaveCount(6)
+        ->and(headers_advice([]))->toBe(['items' => [], 'server' => '', 'tip' => HEADERS_NGINX_TIP, 'tip_apache' => HEADERS_APACHE_TIP]);
+});

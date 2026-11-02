@@ -43,6 +43,8 @@ const FILES_MAX_BYTES = 1024;
 // Once for all six, since adding them in nginx has the same two traps whichever is missing
 const HEADERS_NGINX_TIP = 'Adding them in nginx? Put the add_header lines in the server block, with the always flag, so error pages get them too. A location with an add_header of its own drops all of the server block\'s: keep add_header out of locations, or repeat them all in every such location.';
 
+const HEADERS_APACHE_TIP = 'Adding them in Apache? Put the Header lines in the site\'s configuration, or in a .htaccess file at the site\'s root on shared hosting, with always, so error pages get them too. They need mod_headers (a2enmod headers), which most hosts have on.';
+
 const FILES_NOSNIFF_TIP ='A web server rule for these files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Set the headers once for the whole site and keep add_header out of such rules: for caching, nginx\'s expires sets Cache-Control without it. Otherwise every such rule has to repeat every header.';
 
 /** A Content-Security-Policy as directive => sources, lowercased. */
@@ -375,6 +377,8 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     $headers = [];
     foreach (array_keys(SECURITY_HEADERS) as $key) $headers[$key] = header_level($key, $response['headers'], $https);
     $details = ['headers' => $headers];
+    // For the lines the dashboard offers to paste in, never the grade
+    if (($server = web_server($response['headers'])) !== '') $details['server'] = $server;
     if ($files !== null && $headers['nosniff']['level'] === 'good') $details['files'] = $files;
     // For the advice only, never the grade: what a first CSP would block on the page
     if ($headers['csp']['level'] === 'missing') $details['scripts'] = page_scripts($response['body'] ?? '', $response['url']);
@@ -467,6 +471,32 @@ function headers_change(array $from, array $to): string
     $old = headers_grade($from);
     $new = headers_grade($to);
     return $old !== $new ? "Grade {$old} to {$new}: " . implode(', ', $parts) : ucfirst(implode(', ', $parts)) . " (grade still {$new})";
+}
+
+/**
+ * The web server that answered, from its Server header, when it is one the
+ * dashboard has header lines for: 'nginx', 'apache' or ''. LiteSpeed reads
+ * Apache's .htaccess. Behind a CDN the header is the CDN's, so '', and the
+ * dashboard falls back to the last choice.
+ */
+function web_server(array $headers): string
+{
+    $server = strtolower(implode(' ', $headers['server'] ?? []));
+    if (preg_match('/\b(nginx|openresty)\b/', $server)) return 'nginx';
+    if (preg_match('/\b(apache|litespeed)\b/', $server)) return 'apache';
+    return '';
+}
+
+/**
+ * What the site detail and the read API say about adding the headers: the
+ * items, the web server the lines are offered for ('nginx', 'apache' or ''),
+ * and how to add them in nginx and in Apache without losing them.
+ *
+ * @return array{items: list<array>, server: string, tip: string, tip_apache: string}
+ */
+function headers_advice(array $details): array
+{
+    return ['items' => header_items($details), 'server' => $details['server'] ?? '', 'tip' => HEADERS_NGINX_TIP, 'tip_apache' => HEADERS_APACHE_TIP];
 }
 
 /**

@@ -13,7 +13,7 @@
     regions[node.getAttribute('data-region')] = node;
   });
   var filterInput = document.querySelector('[data-filter]');
-  var state = { data: null, filter: '', detailId: null, detail: null, form: null, timezone: undefined, failed: false, open: {}, autoOpen: null, recheck: null };
+  var state = { data: null, filter: '', detailId: null, detail: null, headerFormat: null, form: null, timezone: undefined, failed: false, open: {}, autoOpen: null, recheck: null };
 
   // =================================================================
   // DOM helpers
@@ -1862,10 +1862,52 @@
     return text.charAt(0).toUpperCase() + text.slice(1);
   }
 
+  /** The forms a header line is offered in: as sent, or as the line that adds it in nginx or Apache. */
+  var HEADER_FORMATS = { header: 'Header', nginx: 'nginx', apache: 'Apache' };
+
+  /**
+   * Which form to show the lines in: the one picked this session, else the web
+   * server the site answered with, else the last choice saved, else the header
+   * as sent. Saved in this browser only, as the theme is.
+   */
+  function headerFormat(headers) {
+    if (state.headerFormat) return state.headerFormat;
+    if (headers.server && HEADER_FORMATS[headers.server]) return headers.server;
+    try {
+      var saved = localStorage.getItem('vaka-header-format');
+      if (HEADER_FORMATS[saved]) return saved;
+    } catch (e) { /* no storage: the header as sent */ }
+    return 'header';
+  }
+
+  /**
+   * A header ("Name: value") as the line that adds it, so it pastes in as it
+   * is: nginx takes the name and the value apart, with always so error pages
+   * get it too, and Apache the same. A header copied as sent into nginx is a
+   * line nginx refuses, and the whole config with it.
+   */
+  function headerLine(fix, format) {
+    var at = fix.indexOf(': ');
+    if (at < 0 || format === 'header') return fix;
+    var name = fix.slice(0, at);
+    var value = fix.slice(at + 2).replace(/"/g, '\\"');
+    if (format === 'nginx') return 'add_header ' + name + ' "' + value + '" always;';
+    return 'Header always set ' + name + ' "' + value + '"';
+  }
+
+  /** A line to paste in, with a button that copies it. */
+  function pasteLine(line) {
+    return h('div', { class: 'header-fix' }, [
+      h('code', {}, line),
+      h('button', { type: 'button', class: 'button is-small', 'data-action': 'copy', 'data-copy': line, 'aria-label': 'Copy ' + line }, [icon('copy'), 'Copy'])
+    ]);
+  }
+
   /**
    * The six protections, in the order to add them (the safest first, CSP last):
-   * what is missing or weak, with why and the line that adds it; what each does
-   * and how to add it one click away. What is in place is one line.
+   * what is missing or weak, with why and the line that adds it, in the form
+   * the site's web server takes; what each does and how to add it one click
+   * away. What is in place is one line.
    */
   function headerList(headers) {
     if (!headers) return h('p', { class: 'chart-note' }, 'Not checked yet.');
@@ -1873,9 +1915,18 @@
     var words = { weak: 'Weak', missing: 'Missing' };
     var todo = headers.items.filter(function (item) { return item.level !== 'good'; });
     var done = headers.items.filter(function (item) { return item.level === 'good'; });
-    return h('div', {}, [
+    var format = headerFormat(headers);
+    var where = format === 'apache' ? 'Apache' : 'nginx';
+    var tip = format === 'apache' ? headers.tip_apache : headers.tip;
+    return h('div', { class: 'headers-block' }, [
       h('p', { class: 'headers-summary' }, headers.summary),
       todo.length > 1 ? h('p', { class: 'headers-lead' }, 'Start at the top: the safest come first.') : null,
+      todo.length ? h('div', { class: 'segmented header-format', role: 'group', 'aria-label': 'Show the lines as' }, [
+        h('span', {}, 'Lines for'),
+        Object.keys(HEADER_FORMATS).map(function (key) {
+          return h('button', { type: 'button', 'data-action': 'header-format', 'data-format': key, 'aria-pressed': key === format ? 'true' : 'false' }, HEADER_FORMATS[key]);
+        })
+      ]) : null,
       todo.length ? h('ul', { class: 'header-list' }, todo.map(function (item) {
         // The one that can break a site, said where it is not the only thing to do
         var last = item.key === 'csp' && item.level === 'missing' && todo.length > 1;
@@ -1884,7 +1935,7 @@
           h('div', {}, [
             h('p', {}, [h('b', {}, capitalize(item.label)), h('span', { class: 'header-level' }, ' · ' + words[item.level] + (last ? ' · do it last, it can break the site' : ''))]),
             item.note ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
-            h('code', {}, item.fix),
+            pasteLine(headerLine(item.fix, format)),
             h('details', { class: 'header-more' }, [
               h('summary', {}, [icon('chevron'), item.inline ? 'What it does, the scripts it would block, how to add it' : 'What it does and how to add it']),
               h('p', { class: 'header-what' }, item.what),
@@ -1898,10 +1949,10 @@
         ]);
       })) : null,
       done.length ? h('p', { class: 'headers-done' }, [icon('up'), h('span', {}, 'In place: ' + done.map(function (item) { return item.label; }).join(', '))]) : null,
-      // Once under the list, while there is something to add
-      headers.tip && todo.length ? h('details', { class: 'headers-tip' }, [
-        h('summary', {}, [icon('chevron'), 'Adding them in nginx']),
-        h('p', {}, headers.tip.replace(/^Adding them in nginx\? /, ''))
+      // Once under the list, while there is something to add, for the server the lines are for
+      tip && todo.length ? h('details', { class: 'headers-tip' }, [
+        h('summary', {}, [icon('chevron'), 'Adding them in ' + where]),
+        h('p', {}, tip.replace(/^Adding them in (nginx|Apache)\? /, ''))
       ]) : null
     ]);
   }
@@ -2153,6 +2204,17 @@
     if (action === 'snooze') snooze(target.getAttribute('data-sites').split(','), { 'for': target.getAttribute('data-for') }, target);
     if (action === 'unsnooze') snooze(target.getAttribute('data-sites').split(','), { action: 'unsnooze' }, target);
     if (action === 'recheck') recheck(target.getAttribute('data-site'), target);
+    if (action === 'header-format' && state.detail) {
+      // Only the list is drawn again, and the choice follows to the next site
+      state.headerFormat = target.getAttribute('data-format');
+      try { localStorage.setItem('vaka-header-format', state.headerFormat); } catch (e) { /* this session only */ }
+      var block = target.closest('.headers-block');
+      var fresh = headerList(state.detail.site.headers);
+      block.replaceWith(fresh);
+      var picked = fresh.querySelector('[data-format="' + state.headerFormat + '"]');
+      if (picked) picked.focus();
+      return;
+    }
     if (action === 'copy') {
       navigator.clipboard.writeText(target.getAttribute('data-copy')).then(function () { toast('Copied'); }, function () { toast('Select the text and copy it'); });
     }

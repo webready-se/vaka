@@ -614,6 +614,13 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .header-list .header-scripts code { margin-top: 0; font-size: 12.5px; }
 .header-list .fix-label { margin-top: 6px; color: var(--text-2); font-size: 13px; }
 .header-list .fix-label + code { margin-top: 2px; }
+/* The lines to paste in, in the form picked above the list, each with its Copy */
+.header-format { margin-top: 10px; }
+.segmented button[aria-pressed="true"] { background: var(--accent-soft); color: var(--accent); }
+.header-fix { display: flex; align-items: flex-start; gap: 8px; margin-top: 6px; }
+.header-list .header-fix code { flex: 1; min-width: 0; margin-top: 0; }
+.button.is-small { flex: none; height: 28px; padding: 0 9px; border-radius: 8px; font-size: 13px; }
+.button.is-small .icon { width: 13px; height: 13px; }
 /* What Vaka sees: a tile per check, the words first, tinted when something needs a look */
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(156px, 1fr)); gap: 10px; margin: 0; padding: 0; list-style: none; }
 .tile { min-width: 0; padding: 12px 14px; border-radius: 14px; background: var(--surface-2); }
