@@ -361,6 +361,7 @@ Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.
 - One logical change per commit. Stage files explicitly (never `git add .` or `-A`).
 - Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. During the MVP (until the first tagged release, 0.1.0), merge a PR to main yourself once CI is green. **After 0.1.0, ask before merging to main.**
 - Feature branches, never push straight to main. Tests must pass before pushing (pre-push hook).
+- Our own production deploys main by itself on every push, so a merge to main is live within minutes: merge only what may go live, and never change production by hand.
 - Before every commit, scan the staged diff, the commit message and the PR text for real names, domains, IPs and URLs.
 
 ## Roadmap
