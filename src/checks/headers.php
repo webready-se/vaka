@@ -14,7 +14,7 @@ const HSTS_MIN_SECONDS = 15552000;
 /** The protections that are graded: what each does, the header that adds it, and a tip. */
 const SECURITY_HEADERS = [
     'hsts' => ['label' => 'HSTS', 'what' => 'Makes browsers always use https for the site', 'fix' => 'Strict-Transport-Security: max-age=31536000', 'tip' => 'Add it once every page works over https.'],
-    'csp' => ['label' => 'CSP', 'what' => 'Limits which scripts may run: the main defence against injected scripts', 'fix' => "Content-Security-Policy-Report-Only: default-src 'self'", 'tip' => "Report-Only blocks nothing, so it is safe to try: open a few pages with the browser's console open, and it lists what the policy would block. Allow what the site needs (another host's scripts go in script-src, for example), then rename the header to Content-Security-Policy."],
+    'csp' => ['label' => 'CSP', 'what' => 'Limits which scripts may run: the main defence against injected scripts', 'fix' => "Content-Security-Policy-Report-Only: default-src 'self'", 'tip' => "**Report-Only blocks nothing, so it is safe to try**: open a few pages with the browser's console open, and it lists what the policy would block. Allow what the site needs (another host's scripts go in script-src, for example), then rename the header to Content-Security-Policy."],
     'nosniff' => ['label' => 'X-Content-Type-Options', 'what' => 'Stops browsers from guessing what a file is', 'fix' => 'X-Content-Type-Options: nosniff', 'tip' => ''],
     'frames' => ['label' => 'frame protection', 'what' => 'Stops other sites from showing this one in a frame to trick visitors into clicking', 'fix' => 'X-Frame-Options: SAMEORIGIN', 'tip' => "Or frame-ancestors 'self' in the CSP."],
     'referrer' => ['label' => 'Referrer-Policy', 'what' => 'Keeps full addresses, with search terms and tokens, from leaking to other sites', 'fix' => 'Referrer-Policy: strict-origin-when-cross-origin', 'tip' => ''],
@@ -44,7 +44,7 @@ const FILES_MAX_BYTES = 1024;
 
 /** Why scripts and styles can lack nosniff when the page has it, and where the line goes. */
 // Once for all six, since adding them in nginx has the same two traps whichever is missing
-const HEADERS_NGINX_TIP = 'Adding them in nginx? Put the add_header lines in the server block, with the always flag, so error pages get them too. A location with an add_header of its own drops all of the server block\'s: keep add_header out of locations, or repeat them all in every such location.';
+const HEADERS_NGINX_TIP = 'Adding them in nginx? Put the add_header lines in the server block, with the always flag, so error pages get them too. **A location with an add_header of its own drops all of the server block\'s**: keep add_header out of locations, or repeat them all in every such location.';
 
 const HEADERS_APACHE_TIP = 'Adding them in Apache? Put the Header lines in the site\'s configuration, or in a .htaccess file at the site\'s root on shared hosting, with always, so error pages get them too. They need mod_headers (a2enmod headers), which most hosts have on.';
 
@@ -305,11 +305,17 @@ function tag_manager_note(array $page): string
     return $name !== '' ? ". It loads {$name}, so a strict policy takes more than a line" : '';
 }
 
+/** For the status line, next to the level word: the one thing to know before reading on. Empty for other pages. */
+function tag_manager_caution(array $page): string
+{
+    return tag_manager($page) !== '' ? 'a tag manager makes this hard' : '';
+}
+
 function tag_manager_tip(array $page): string
 {
     foreach ($page['hosts'] ?? [] as $host) {
         foreach (CSP_TAG_MANAGERS as $domain => $name) {
-            if ($host === $domain || str_ends_with($host, ".{$domain}")) return " The page loads {$name}, which loads more later, by what is set up in its own interface, so no line drawn from the page stays complete. A strict CSP with it needs nonces from the site's own code (Google's way); otherwise the policy allows 'unsafe-inline' and Google's hosts, which is weak. Report-Only with reporting is the honest middle: nothing breaks, and what it loads is seen.";
+            if ($host === $domain || str_ends_with($host, ".{$domain}")) return " {$name} loads more later, by what is set up in its own interface, so no line drawn from the page stays complete. **A strict CSP with it needs nonces from the site's own code**; otherwise it stays weak with 'unsafe-inline'. Report-Only with reporting is the middle.";
         }
     }
     return '';
@@ -897,6 +903,7 @@ function fix_label(array $item): string
     if ($item['fix'] === '') return '';
     if ($item['key'] === 'csp') {
         return match (true) {
+            ($item['report_only'] ?? false) && !($item['ready'] ?? true) => 'Your policy under the name that enforces it, once the list above is empty:',
             $item['report_only'] ?? false => 'Your policy under the name that enforces it:',
             $item['level'] === 'weak' => 'A stricter policy to try first as Report-Only, which blocks nothing:',
             default => 'Try this line first; as Report-Only it blocks nothing:',
@@ -959,7 +966,7 @@ function csp_item(array $item, array $details): array
             $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
             default => '. Enforced, it would block nothing on the page, so it is safe to rename',
         };
-        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
+        return ['blocks' => false, 'report_only' => true, 'ready' => $blocked !== null && !$blocks, 'caution' => tag_manager_caution($details['scripts'] ?? []), 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. **Add it once the browser's console, and the list above, show nothing it would block that the site needs**, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
     }
     // No CSP at all: what default-src 'self' would stop on the page, and a draft that allows it (old data: the scripts only)
     $scripts = $details['scripts'] ?? [];
@@ -969,10 +976,11 @@ function csp_item(array $item, array $details): array
     $excerpts = $scripts['excerpts'] ?? [];
     return [
         'blocks' => false,
+        'caution' => tag_manager_caution($scripts),
         'note' => $has !== '' ? "the page has {$has}: " . ($draft !== '' ? 'the line below allows what is there today' : "default-src 'self' would block it") . tag_manager_note($scripts) : $item['note'],
         'fix' => $draft !== '' ? "Content-Security-Policy-Report-Only: {$draft}" : $item['fix'],
         'tip' => 'This is the one that can break a site, so it is fine to do it last. ' . $item['tip']
-            . ($draft !== '' ? " The line is drafted from this page: the hashes are of its inline scripts and styles as they are today and change with them, so let the build add them or move the code to files. Other pages may need more; Report-Only shows it all in the console." : '')
+            . ($draft !== '' ? " The line is drafted from this page: **the hashes are of its inline scripts and styles as they are today and change with them**, so let the build add them or move the code to files. Other pages may need more; Report-Only shows it all in the console." : '')
             . tag_manager_tip($scripts),
     ] + ($excerpts ? ['inline' => $excerpts] : []) + $item;
 }

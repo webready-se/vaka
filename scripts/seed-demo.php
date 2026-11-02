@@ -173,7 +173,8 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
                 . (isset($opts['hostile']) ? '<script>document.write("<img src=x onerror=window.__xss=5>")</script>' : ''),
             // A CSP in force that blocks a script the page loads: the policy has no cdn.example
             'https://docs.example' => '<script src="https://cdn.example/widget.js"></script><p style="margin:0">x</p><img src="https://images.example/a.jpg" alt="">',
-            'https://builder.example' => '<script src="https://widgets.example/chat.js"></script>',
+            // A tag manager and Google Fonts: the case a drafted policy cannot finish
+            'https://builder.example' => '<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({"gtm.start":new Date().getTime(),event:"gtm.js"})})(window,document,"script","dataLayer","GTM-XXXX")</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-XXXX"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter"><p style="margin:0">x</p><script src="https://widgets.example/chat.js"></script>',
             default => '',
         };
         $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => $url . '/', 'headers' => $sent, 'body' => $body], 10, $files);

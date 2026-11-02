@@ -426,15 +426,17 @@ async function main() {
     if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'builder.example', 'the builder site\'s detail to open')) {
       const tried = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
       expect(/Sent as Report-Only, not in force/.test(tried?.querySelector('.header-level')?.textContent || ''), `a Report-Only CSP is not called missing (got "${tried?.querySelector('.header-level')?.textContent}")`);
-      expect(/^It blocks nothing yet\. Enforced, it would block a script from widgets\.example on the page\.$/.test(tried?.querySelector('.header-why')?.textContent || ''), `it says what the policy would block (got "${tried?.querySelector('.header-why')?.textContent}")`);
+      expect(/a tag manager makes this hard$/.test(tried?.querySelector('.header-level')?.textContent || ''), `a tag manager is said on the status line (got "${tried?.querySelector('.header-level')?.textContent}")`);
+      expect(/^It blocks nothing yet\. Enforced, it would block 1 inline script, scripts from www\.googletagmanager\.com and widgets\.example, 1 inline style and a stylesheet from fonts\.googleapis\.com on the page\. It loads Google Tag Manager, so a strict policy takes more than a line\.$/.test(tried?.querySelector('.header-why')?.textContent || ''), `it says what the policy would block (got "${tried?.querySelector('.header-why')?.textContent}")`);
       expect(tried?.querySelector('.header-fix code')?.textContent === `Content-Security-Policy: default-src 'self'`, `the line to add is the site's own policy under the enforcing name (got "${tried?.querySelector('.header-fix code')?.textContent}")`);
       expect([...(tried?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'https://widgets.example/chat.js'), 'the script it would block is named by its address');
-      expect(tried?.querySelector('.fix-label')?.textContent === 'Your policy under the name that enforces it:', `the line says what it is (got "${tried?.querySelector('.fix-label')?.textContent}")`);
-      // "a script from widgets.example" opens the list of scripts
+      expect(tried?.querySelector('.fix-label')?.textContent === 'Your policy under the name that enforces it, once the list above is empty:', `the line says what it is (got "${tried?.querySelector('.fix-label')?.textContent}")`);
+      // The phrase opens the list of scripts; the tip marks its takeaway in bold
       const scriptsLink = tried?.querySelector('.header-why [data-action="show-scripts"]');
-      expect(scriptsLink?.textContent === 'a script from widgets.example' && !tried.querySelector('.header-more').open, 'the scripts named in the note are a button, and the list is closed at first');
+      expect(scriptsLink?.textContent === '1 inline script, scripts from www.googletagmanager.com and widgets.example, 1 inline style and a stylesheet from fonts.googleapis.com' && !tried.querySelector('.header-more').open, 'the scripts named in the note are a button, and the list is closed at first');
       scriptsLink?.click();
       expect(tried?.querySelector('.header-more')?.open === true && document.activeElement === tried?.querySelector('.header-scripts'), 'pressing it opens the list and moves there');
+      expect([...(tried?.querySelectorAll('.header-tip strong') || [])].some((b) => b.textContent === "A strict CSP with it needs nonces from the site's own code"), 'the tip marks its takeaway in bold, built as a node, not markup');
       q('dialog.drawer [data-action="close"]').click();
     }
 
