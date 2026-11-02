@@ -33,6 +33,9 @@ const HEADERS_FIX_ORDER = ['nosniff', 'referrer', 'frames', 'hsts', 'permissions
 /** A CSP sent only as Report-Only: tried, not enforced. */
 const CSP_REPORT_ONLY_NOTE = 'only as Report-Only, which blocks nothing';
 
+/** What to do about a CSP that blocks scripts on the page; the alert adds where they are named. */
+const CSP_BLOCKS_TIP = "Visitors do not get those scripts. Allow what the page needs (a host goes in script-src, an inline script needs a 'sha256-...' hash there or a file of its own), or take them off the page.";
+
 /** How strong each level is, to tell worse from better. */
 const HEADER_LEVELS = ['missing' => 0, 'weak' => 1, 'good' => 2];
 
@@ -139,6 +142,113 @@ function csp_script_level(array $directives): array
 }
 
 /**
+ * Whether one CSP source expression allows a script at `url`, as browsers
+ * read it: 'self' is the page's origin (https allowed from an http page),
+ * a scheme alone matches the scheme (http: allows https too), a host may
+ * start with `*.` for its subdomains and carry a port (`*` for any) and a
+ * path (a prefix when it ends in `/`, otherwise exact). Keywords, nonces
+ * and hashes say nothing about a URL.
+ */
+function csp_source_allows(string $source, string $url, string $pageUrl): bool
+{
+    $source = strtolower($source);
+    $parts = parse_url($url);
+    if (!$parts || !isset($parts['scheme'], $parts['host'])) return false;
+    $scheme = strtolower($parts['scheme']);
+    $host = strtolower($parts['host']);
+    $port = $parts['port'] ?? ($scheme === 'https' ? 443 : 80);
+    $path = $parts['path'] ?? '/';
+
+    if ($source === '*') return true;
+    if ($source === "'self'") {
+        $page = parse_url($pageUrl);
+        if (!$page || !isset($page['host'])) return false;
+        $pageScheme = strtolower($page['scheme'] ?? 'https');
+        $pagePort = $page['port'] ?? ($pageScheme === 'https' ? 443 : 80);
+        $sameScheme = $scheme === $pageScheme || ($pageScheme === 'http' && $scheme === 'https');
+        return $host === strtolower($page['host']) && $sameScheme && ($port === $pagePort || $pagePort === 80 && $port === 443);
+    }
+    if (str_starts_with($source, "'")) return false;
+    if (preg_match('/^([a-z][a-z0-9+.-]*):$/', $source, $m)) return $scheme === $m[1] || ($m[1] === 'http' && $scheme === 'https');
+    if (!preg_match('#^(?:([a-z][a-z0-9+.-]*)://)?(\*\.)?([^/:*]+)(?::(\*|\d+))?(/[^\s]*)?$#', $source, $m)) return false;
+    [, $sourceScheme, $wildcard, $sourceHost, $sourcePort, $sourcePath] = $m + array_fill(0, 6, '');
+    if ($sourceScheme !== '' && $scheme !== $sourceScheme && !($sourceScheme === 'http' && $scheme === 'https')) return false;
+    if ($wildcard !== '' ? !str_ends_with($host, '.' . $sourceHost) : $host !== $sourceHost) return false;
+    if ($sourcePort === '*') {
+        // Any port
+    } elseif ($sourcePort !== '') {
+        if ($port !== (int) $sourcePort) return false;
+    } elseif ($port !== (($sourceScheme ?: $scheme) === 'https' ? 443 : 80) && !($sourceScheme === 'http' && $port === 443)) {
+        return false;
+    }
+    if ($sourcePath !== '' && (str_ends_with($sourcePath, '/') ? !str_starts_with($path, $sourcePath) : $path !== $sourcePath)) return false;
+    return true;
+}
+
+/**
+ * What a policy stops of the scripts on the page: external ones whose URL
+ * no source allows, and inline ones without a matching hash (or a nonce,
+ * when the policy has one: Vaka cannot see the nonce the page was sent
+ * with, so a script with a nonce attribute is taken as allowed). Several
+ * policies all apply, so what any of them stops is stopped. Only sha256
+ * is computed; a policy with other hashes is taken as allowing its inline
+ * scripts rather than wrongly blocking them. At most ten URLs and five
+ * starts are kept; `inline_total` counts them all.
+ *
+ * @param list<array> $policies  parsed with csp_directives()
+ * @return array{scripts: list<string>, inline: list<string>, inline_total: int}
+ */
+function csp_blocked(array $policies, array $scripts, string $pageUrl): array
+{
+    $blockedUrls = [];
+    $blockedStarts = [];
+    $total = 0;
+    $external = $scripts['external'] ?? [];
+    $inline = $scripts['inline_scripts'] ?? [];
+    foreach ($policies as $directives) {
+        $sources = $directives['script-src-elem'] ?? $directives['script-src'] ?? $directives['default-src'] ?? null;
+        if ($sources === null) continue;
+        $nonced = (bool) array_filter($sources, fn ($source) => str_starts_with($source, "'nonce-"));
+        $hashes = array_filter($sources, fn ($source) => preg_match("/^'sha(256|384|512)-/", $source));
+        $strictDynamic = in_array("'strict-dynamic'", $sources, true);
+        $otherHashes = (bool) array_filter($hashes, fn ($source) => !str_starts_with($source, "'sha256-"));
+        $inlineAllowed = in_array("'unsafe-inline'", $sources, true) && !$nonced && !$hashes && !$strictDynamic;
+
+        foreach ($external as $script) {
+            if ($script['nonce'] && $nonced) continue;
+            $allowed = !$strictDynamic && (bool) array_filter($sources, fn ($source) => csp_source_allows($source, $script['url'], $pageUrl));
+            if (!$allowed) $blockedUrls[$script['url']] = true;
+        }
+        foreach ($inline as $i => $script) {
+            if ($inlineAllowed || $otherHashes || ($script['nonce'] && $nonced)) continue;
+            if (in_array("'" . strtolower($script['hash']) . "'", $sources, true)) continue;
+            $blockedStarts[$i] = $script['start'];
+        }
+    }
+    return [
+        'scripts' => array_slice(array_keys($blockedUrls), 0, 10),
+        'inline' => array_slice(array_values($blockedStarts), 0, 5),
+        'inline_total' => count($blockedStarts),
+    ];
+}
+
+/** What a policy blocks, in words: "2 inline scripts and a script from cdn.example", or '' for nothing. */
+function csp_blocked_words(array $blocked): string
+{
+    $hosts = array_values(array_unique(array_map('url_host', $blocked['scripts'] ?? [])));
+    $parts = [];
+    if (($blocked['inline_total'] ?? 0) > 0) $parts[] = plural($blocked['inline_total'], 'inline script', 'inline scripts');
+    if ($hosts) $parts[] = (count($hosts) === 1 ? 'a script from ' : 'scripts from ') . list_words($hosts);
+    return implode(' and ', $parts);
+}
+
+/** Whether a policy blocks anything on the page. */
+function csp_blocks_anything(?array $blocked): bool
+{
+    return $blocked !== null && ($blocked['scripts'] !== [] || $blocked['inline_total'] > 0);
+}
+
+/**
  * The grade for a set of levels: one letter per protection in place (6 A,
  * 5 B, 4 C, 3 D, 2 E, fewer F), and A only when none of them is weak.
  */
@@ -160,6 +270,7 @@ function header_levels(array $details): array
 {
     $levels = array_map(fn ($header) => $header['level'], $details['headers'] ?? []);
     if (isset($details['files'])) $levels['nosniff_files'] = $details['files']['missing'] ? 'missing' : 'good';
+    if (isset($details['csp_blocks'])) $levels['csp_blocks'] = csp_blocks_anything($details['csp_blocks']) ? 'weak' : 'good';
     return $levels;
 }
 
@@ -209,25 +320,38 @@ function page_files(string $html, string $pageUrl): array
  * `excerpts` starts the first five inline scripts (see script_excerpt()),
  * to find them by in the site's code.
  *
- * @return array{inline: int, hosts: list<string>, excerpts: list<string>}
+ * `inline_scripts` (a sha256 hash of each as sent, its start, whether it has a nonce)
+ * and `external` (URL, nonce) are what csp_blocked() compares with a policy;
+ * at most 50 of each.
+ *
+ * @return array{inline: int, hosts: list<string>, excerpts: list<string>, inline_scripts: list<array{hash: string, start: string, nonce: bool}>, external: list<array{url: string, nonce: bool}>}
  */
 function page_scripts(string $html, string $pageUrl): array
 {
     preg_match_all('/<script\b([^>]*)>(.*?)<\/script\s*>/is', (string) preg_replace('/<!--.*?-->/s', '', $html), $scripts, PREG_SET_ORDER);
-    $inline = 0;
     $hosts = [];
-    $excerpts = [];
+    $inline = [];
+    $external = [];
     foreach ($scripts as [, $source, $body]) {
         $attributes = html_attributes($source);
+        $nonce = ($attributes['nonce'] ?? '') !== '';
         if (isset($attributes['src'])) {
             $url = resolve_url($attributes['src'], $pageUrl);
-            if ($url !== null && url_host($url) !== url_host($pageUrl)) $hosts[url_host($url)] = true;
+            if ($url === null) continue;
+            if (url_host($url) !== url_host($pageUrl)) $hosts[url_host($url)] = true;
+            if (count($external) < 50) $external[] = ['url' => $url, 'nonce' => $nonce];
         } elseif (trim($body) !== '' && preg_match('/^(?:|module|importmap|speculationrules|.*(?:java|ecma)script.*)$/', strtolower(trim($attributes['type'] ?? '')))) {
-            $inline++;
-            if (count($excerpts) < 5) $excerpts[] = script_excerpt($body);
+            // The hash is of the script exactly as sent, as browsers take it
+            if (count($inline) < 50) $inline[] = ['hash' => 'sha256-' . base64_encode(hash('sha256', $body, true)), 'start' => script_excerpt($body), 'nonce' => $nonce];
         }
     }
-    return ['inline' => $inline, 'hosts' => array_keys($hosts), 'excerpts' => $excerpts];
+    return [
+        'inline' => count($inline),
+        'hosts' => array_keys($hosts),
+        'excerpts' => array_column(array_slice($inline, 0, 5), 'start'),
+        'inline_scripts' => $inline,
+        'external' => $external,
+    ];
 }
 
 /** The start of a script on one line: at most 60 characters, and "…" when there is more. */
@@ -377,11 +501,23 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     $headers = [];
     foreach (array_keys(SECURITY_HEADERS) as $key) $headers[$key] = header_level($key, $response['headers'], $https);
     $details = ['headers' => $headers];
+    // The policy tried as Report-Only, as sent: the line to add is that policy under the name that enforces it
+    if (isset($response['headers']['content-security-policy-report-only'])) $details['csp_report_only'] = mb_substr(trim((string) $response['headers']['content-security-policy-report-only'][0]), 0, 1000);
     // For the lines the dashboard offers to paste in, never the grade
     if (($server = web_server($response['headers'])) !== '') $details['server'] = $server;
     if ($files !== null && $headers['nosniff']['level'] === 'good') $details['files'] = $files;
-    // For the advice only, never the grade: what a first CSP would block on the page
-    if ($headers['csp']['level'] === 'missing') $details['scripts'] = page_scripts($response['body'] ?? '', $response['url']);
+    // The page's scripts against the CSP, never for the grade: what an enforced one blocks (its own part of the
+    // levels, so it is confirmed and alerted like a change), what a Report-Only one would, or what a first one would
+    $scripts = page_scripts($response['body'] ?? '', $response['url']);
+    $policies = fn (string $name) => array_map('csp_directives', $response['headers'][$name] ?? []);
+    if ($headers['csp']['level'] !== 'missing') {
+        $details['csp_blocks'] = csp_blocked($policies('content-security-policy'), $scripts, $response['url']);
+    } else {
+        $details['scripts'] = $scripts;
+        if (isset($response['headers']['content-security-policy-report-only'])) {
+            $details['csp_would_block'] = csp_blocked($policies('content-security-policy-report-only'), $scripts, $response['url']);
+        }
+    }
     $levels = header_levels($details);
     $grade = headers_grade($levels);
 
@@ -396,14 +532,16 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     };
     if ($weak) $summary .= ', ' . list_words($weak) . (count($weak) === 1 ? ' is weak' : ' are weak');
     if (($levels['nosniff_files'] ?? null) === 'missing') $summary .= ', X-Content-Type-Options is missing on scripts and styles';
+    $blocks = csp_blocks_anything($details['csp_blocks'] ?? null);
+    if ($blocks) $summary .= ', the CSP blocks ' . csp_blocked_words($details['csp_blocks']) . ' on the page';
 
-    return ['status' => headers_status($grade), 'summary' => $summary, 'details' => ['grade' => $grade] + $details];
+    return ['status' => headers_status($grade, $blocks), 'summary' => $summary, 'details' => ['grade' => $grade] + $details];
 }
 
-/** A grade's status: ok for A or B, warn below. */
-function headers_status(string $grade): string
+/** A grade's status: ok for A or B, warn below, and warn while the CSP blocks scripts on the page. */
+function headers_status(string $grade, bool $blocks = false): string
 {
-    return in_array($grade, ['A', 'B'], true) ? 'ok' : 'warn';
+    return in_array($grade, ['A', 'B'], true) && !$blocks ? 'ok' : 'warn';
 }
 
 /**
@@ -413,7 +551,7 @@ function headers_status(string $grade): string
  */
 function headers_confirmed_status(?array $details): ?string
 {
-    return isset($details['confirmed']) ? headers_status(headers_grade($details['confirmed'])) : null;
+    return isset($details['confirmed']) ? headers_status(headers_grade($details['confirmed']), ($details['confirmed']['csp_blocks'] ?? null) === 'weak') : null;
 }
 
 /**
@@ -466,6 +604,10 @@ function headers_change(array $from, array $to): string
     if ($files === ['good', 'missing']) $parts[] = 'X-Content-Type-Options removed from scripts and styles';
     if ($files === [null, 'missing']) $parts[] = 'X-Content-Type-Options not on scripts and styles';
     if ($files === ['missing', 'good']) $parts[] = 'X-Content-Type-Options added to scripts and styles';
+    // The CSP against the page: whether it started or stopped blocking scripts
+    $blocks = [$from['csp_blocks'] ?? null, $to['csp_blocks'] ?? null];
+    if ($blocks[1] === 'weak' && $blocks[0] !== 'weak') $parts[] = 'CSP blocks scripts on the page';
+    if ($blocks[0] === 'weak' && $blocks[1] === 'good') $parts[] = 'CSP no longer blocks scripts on the page';
     if (!$parts) return '';
 
     $old = headers_grade($from);
@@ -517,25 +659,39 @@ function header_items(array $details): array
                 ? ['level' => 'weak', 'note' => 'not on the scripts and styles the page loads: ' . list_words($missing), 'tip' => FILES_NOSNIFF_TIP] + $item
                 : ['note' => 'also on the scripts and styles the page loads'] + $item;
         }
-        if ($key === 'csp' && $item['level'] === 'missing') $item = csp_item($item, $details['scripts'] ?? null);
+        if ($key === 'csp') $item = csp_item($item, $details);
         $items[] = $item;
     }
     return $items;
 }
 
 /**
- * The CSP item without a CSP in force. Sent only as Report-Only: enforce
- * it once it is clean. Otherwise Report-Only to try first, and what the
- * page has that default-src 'self' would block, so the line is not
- * copied as it is onto a site it would break. No policy is built from
- * the page: Vaka sees one page, and a hash for an inline script changes
- * whenever the script does.
+ * The CSP item against the page. In force: whether it blocks scripts on the
+ * page (`blocks`), and which (`blocked` URLs, `inline` starts), with what to
+ * do. Sent only as Report-Only: what it would block, or that it is safe to
+ * rename. Without one: Report-Only to try first, and what the page has that
+ * default-src 'self' would block, so the line is not copied as it is onto a
+ * site it would break. No policy is built from the page: Vaka sees one page,
+ * and a hash for an inline script changes whenever the script does.
  */
-function csp_item(array $item, ?array $scripts): array
+function csp_item(array $item, array $details): array
 {
-    if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
-        return ['fix' => 'Content-Security-Policy: <the same policy>', 'tip' => "Rename Content-Security-Policy-Report-Only to Content-Security-Policy, keeping its policy, once the browser's console shows nothing it would block that the site needs."] + $item;
+    $blocked = $details['csp_blocks'] ?? $details['csp_would_block'] ?? null;
+    $blocks = csp_blocks_anything($blocked);
+    $named = $blocks ? array_filter(['inline' => $blocked['inline'], 'blocked' => $blocked['scripts']]) : [];
+    if ($item['level'] !== 'missing') {
+        if (!$blocks) return ['blocks' => false] + $item;
+        return ['blocks' => true, 'note' => ($item['note'] !== '' ? $item['note'] . '; ' : '') . 'it blocks ' . csp_blocked_words($blocked) . ' on the page', 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
     }
+    if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
+        $would = match (true) {
+            $blocked === null => '',
+            $blocks => '; enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
+            default => '; enforced, it would block nothing on the page, so it is safe to rename',
+        };
+        return ['blocks' => false, 'report_only' => true, 'note' => CSP_REPORT_ONLY_NOTE . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line."] + $named + $item;
+    }
+    $scripts = $details['scripts'] ?? null;
     $inline = $scripts['inline'] ?? 0;
     $hosts = $scripts['hosts'] ?? [];
     $from = count($hosts) > 3 ? implode(', ', array_slice($hosts, 0, 3)) . ' and ' . (count($hosts) - 3) . ' more hosts' : list_words($hosts);
@@ -547,6 +703,7 @@ function csp_item(array $item, ?array $scripts): array
     };
     $excerpts = $scripts['excerpts'] ?? [];
     return [
+        'blocks' => false,
         'note' => $note !== '' ? "{$note}, which default-src 'self' would block" : $item['note'],
         'tip' => 'This is the one that can break a site, so it is fine to do it last. ' . $item['tip']
             . ($inline ? " Inline scripts need a 'sha256-...' hash each in script-src, or a nonce: let the site's build add them, since a hash changes whenever the script does." : ''),
@@ -567,11 +724,15 @@ function headers_notice(array $state, ?array $group): array
     $told = json_decode($state['alerted_snapshot'] ?: '[]', true) ?: [];
     $worse = [];
     foreach ($levels ?? [] as $key => $level) {
-        // A part not told before (the files, the first time they are checked) is a baseline
-        if (!isset($told[$key]) || HEADER_LEVELS[$level] >= HEADER_LEVELS[$told[$key]]) continue;
-        $worse[] = $key === 'nosniff_files'
-            ? ['key' => $key, 'label' => 'X-Content-Type-Options on scripts and styles', 'change' => 'removed', 'note' => list_words($state['details']['files']['missing'] ?? [])]
-            : ['key' => $key, 'label' => SECURITY_HEADERS[$key]['label'], 'change' => $level === 'missing' ? 'removed' : 'weaker', 'note' => $state['details']['headers'][$key]['note'] ?? ''];
+        // A part not told before (the files, the first time they are checked) is a baseline. Not the CSP blocking
+        // scripts: before it, nothing was blocked, so a new CSP that blocks the page's scripts is told
+        $before = $told[$key] ?? ($key === 'csp_blocks' && $told ? 'good' : null);
+        if ($before === null || HEADER_LEVELS[$level] >= HEADER_LEVELS[$before]) continue;
+        $worse[] = match ($key) {
+            'nosniff_files' => ['key' => $key, 'label' => 'X-Content-Type-Options on scripts and styles', 'change' => 'removed', 'note' => list_words($state['details']['files']['missing'] ?? [])],
+            'csp_blocks' => ['key' => $key, 'label' => 'CSP', 'change' => 'blocks', 'note' => csp_blocked_words($state['details']['csp_blocks'] ?? [])],
+            default => ['key' => $key, 'label' => SECURITY_HEADERS[$key]['label'], 'change' => $level === 'missing' ? 'removed' : 'weaker', 'note' => $state['details']['headers'][$key]['note'] ?? ''],
+        };
     }
     $result = fn (string $action, ?string $kind = null) => [
         'action' => $action,

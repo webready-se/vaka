@@ -403,6 +403,27 @@ async function main() {
       q('dialog.drawer [data-action="close"]').click();
     }
 
+    // A CSP in force that blocks a script on the page is something to do, said with the script
+    all('.site-row').find((r) => /docs\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'docs.example', 'the docs site\'s detail to open')) {
+      const cspItem = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
+      expect(/Weak, and it blocks scripts on the page/.test(cspItem?.querySelector('.header-level')?.textContent || '') && /; it blocks a script from cdn\.example on the page\.$/.test(cspItem?.querySelector('.header-why')?.textContent || ''), `a CSP that blocks a script on the page is listed as something to do, with what it blocks (got "${cspItem?.querySelector('.header-why')?.textContent}")`);
+      expect([...(cspItem?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'https://cdn.example/widget.js') && /The scripts it blocks:/.test(cspItem?.textContent || ''), 'the blocked script is named by its address');
+      expect(/the CSP blocks a script from cdn\.example on the page$/.test(q('dialog.drawer .headers-summary')?.textContent || ''), `the summary says what the CSP blocks (got "${q('dialog.drawer .headers-summary')?.textContent}")`);
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
+    // A CSP sent only as Report-Only: said so, with what it would block and the policy itself as the line to add
+    all('.site-row').find((r) => /builder\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'builder.example', 'the builder site\'s detail to open')) {
+      const tried = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
+      expect(/Sent as Report-Only, not in force/.test(tried?.querySelector('.header-level')?.textContent || ''), `a Report-Only CSP is not called missing (got "${tried?.querySelector('.header-level')?.textContent}")`);
+      expect(/enforced, it would block a script from widgets\.example on the page\.$/.test(tried?.querySelector('.header-why')?.textContent || ''), `it says what the policy would block (got "${tried?.querySelector('.header-why')?.textContent}")`);
+      expect(tried?.querySelector('.header-fix code')?.textContent === `Content-Security-Policy: default-src 'self'`, `the line to add is the site's own policy under the enforcing name (got "${tried?.querySelector('.header-fix code')?.textContent}")`);
+      expect([...(tried?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'https://widgets.example/chat.js'), 'the script it would block is named by its address');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // Adding, changing and removing a site in the dashboard
     q('[data-add-site]').click();
     if (await waitFor(() => q('dialog.drawer[open] [data-form="site"]'), 'the add-site form to open')) {

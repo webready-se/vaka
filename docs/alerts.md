@@ -54,6 +54,12 @@ When `nosniff` disappears from the scripts and styles the page loads (see [Check
 > ⚠️ **shop.example: security headers got worse**
 > X-Content-Type-Options on scripts and styles was removed: /build/site.css and /build/app.js
 > A web server rule for those files that adds headers of its own, such as Cache-Control, drops the ones set for the whole site (in nginx, a location with its own add_header). Set the headers once for the whole site and keep add_header out of such rules: for caching, nginx's expires sets Cache-Control without it.
+
+When a CSP in place blocks scripts on the page (see [Checks](checks.md#security-headers)), the alert names them in words; the site detail lists them by start or address. It is sent once, when the blocking starts (also when the CSP itself is new), and confirmed by a second look first, so a deploy halfway through does not alert:
+
+> ⚠️ **shop.example: security headers got worse**
+> CSP blocks scripts on the page: 2 inline scripts and a script from cdn.example
+> Visitors do not get those scripts. Allow what the page needs (a host goes in script-src, an inline script needs a 'sha256-...' hash there or a file of its own), or take them off the page. The site detail names them.
 > If that was not on purpose, look at the last deploy, the web server or the CDN settings.
 
 The first time Vaka checks the files, what it finds is a starting point, not a change. A change has to show up twice, 15 minutes apart, before it counts. Improvements are recorded in the site's history without a message. Like exposed files, these alerts are not delayed by the `delayed` policy.

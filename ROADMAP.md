@@ -112,13 +112,18 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [ ] Upload `docs/screenshots/social-preview.png` as the social preview (Settings > General); GitHub accepts it only on a public repository
 - [ ] Vaka's own mark in the footer credit, linked to the repository, once it is public (design kit docs/layout.md); Snoka and Hamstra join when they are released
 
+## Milestone 6: A CSP that can be trusted
+
+CSP is the one header whose fix is not a line but a commitment: a script added later is blocked in every visitor's browser, and nothing says so unless someone opens the console (2026-11-02, met on a real site the day it was enforced). Vaka says so before and after, which no free tool does with alert state. Decided 2026-11-02; the first item right away, the second as its own epic with a spec first, after Milestone 5.
+
+- [x] Compare the page's scripts with the site's own CSP, enforced or Report-Only: each `<script src>` host against `script-src` (or `default-src`), each inline script's sha256 against the hashes in it. Shown on the CSP item first ("the CSP blocks 2 inline scripts and a script from new.example", or "Report-Only: it would block ..."); an alert only after a confirming look 15 minutes later, as for the other header changes, so a deploy in between does not alert by mistake. `page_scripts()` already reads the scripts. Limits, said in the docs: one page, and only the scripts in its HTML
+- [ ] A CSP report endpoint (`report-uri` and `report-to`): the policy gets `report-uri https://vaka.example/?csp=TOKEN`, and Vaka keeps counts per site, directive and blocked address (first and last seen, how many visitors), never the reports themselves. The CSP item says "nothing reported in 14 days, safe to enforce" or what was blocked, and a new blocked address alerts once. It is a public intake on the watcher's own server, so: a token per site, reports validated and capped in size, browser extensions filtered out (`chrome-extension://`, `moz-extension://`, `about:blank`), a rate limit per IP, a cap on rows and a short retention. Earlier set aside as "not now" for those reasons; taken up since without it an enforced CSP fails silently for everything beyond the page's own scripts
+
 ## Ideas
 
 - [ ] Tags on sites, if one group per site proves too narrow
 - [ ] Snooze straight from Slack (needs a Slack app instead of an incoming webhook)
 - [ ] Connect sibling tools: each tool keeps its own small JSON API with a token; paste another tool's URL and token in Settings, e.g. to show Puls traffic next to a site's uptime. No shared database, no shared code library
-- [ ] CSP report endpoint (`report-to` / `report-uri`) that collects violations from the sites. It fits what Vaka is for, but not now: it is a public intake on the watcher's own server that grows with the sites' visitors, with data Vaka cannot vouch for. If ever, a collection in Report-Only that ends by itself: a token per site, its own file and SQLite database, rate limits, and counts only, never the reports themselves
-- [ ] Compare the page's inline scripts (a sha256 of each) and script hosts with the site's own CSP, enforced or Report-Only, and say what it would block. Shown on the CSP item first; an alert only once it has proven itself, so a deploy that changes a script does not alert by mistake. `page_scripts()` already reads the scripts
 - [ ] Read-only share link per group (like Puls share tokens), e.g. for a customer
 - [ ] Public status pages
 - [ ] DKIM (selectors are site specific)

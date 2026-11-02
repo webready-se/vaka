@@ -155,7 +155,8 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             'https://www.example.com', 'https://example.org' => $strong,
             'https://store.example', 'https://docs.example' => ['content-security-policy' => ["script-src 'self' 'unsafe-inline'; frame-ancestors 'self'"]] + $strong,
             'https://shop.example', 'https://blog.example' => ['referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=()']] + $forge,
-            'https://builder.example' => [],
+            // A CSP tried as Report-Only: the page loads a script it would block once enforced
+            'https://builder.example' => ['content-security-policy-report-only' => ["default-src 'self'"]],
             'https://example.net' => ['referrer-policy' => ['no-referrer']] + $forge,
             default => $forge,
         };
@@ -166,11 +167,15 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             default => null,
         };
         // Without a CSP, the page's inline scripts and another host's are named (one with markup in it with --hostile)
-        $body = $url === 'https://shop.example'
-            ? '<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date());</script>'
+        $body = match ($url) {
+            'https://shop.example' => '<script>window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date());</script>'
                 . '<script>document.documentElement.dataset.theme = localStorage.theme || "light"</script><script src="https://analytics.example/a.js"></script>'
-                . (isset($opts['hostile']) ? '<script>document.write("<img src=x onerror=window.__xss=5>")</script>' : '')
-            : '';
+                . (isset($opts['hostile']) ? '<script>document.write("<img src=x onerror=window.__xss=5>")</script>' : ''),
+            // A CSP in force that blocks a script the page loads: the policy has no cdn.example
+            'https://docs.example' => '<script src="https://cdn.example/widget.js"></script>',
+            'https://builder.example' => '<script src="https://widgets.example/chat.js"></script>',
+            default => '',
+        };
         $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => $url . '/', 'headers' => $sent, 'body' => $body], 10, $files);
         $confirmed = confirm_headers(null, $graded)['details'];
         save_check_state($db, $id, 'headers', ['status' => $graded['status'], 'summary' => $graded['summary'], 'details' => $confirmed, 'fail_count' => 0, 'changed_at' => utc_now($month)], utc_now($now - 2 * 3600), utc_now($now + 4 * 3600));
