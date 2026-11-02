@@ -501,13 +501,13 @@ test('csp_blocked says which of the page\'s scripts the policy stops: hosts not 
     $scripts = page_scripts('<script>theme()</script><script>go()</script><script src="/app.js"></script><script src="https://puls.example/?js"></script><script src="https://cdn.example/w.js"></script>', $page);
     $blocked = fn (string ...$policies) => csp_blocked(array_map('csp_directives', $policies), $scripts, $page);
 
-    expect($blocked("default-src 'self'; script-src 'self' https://puls.example"))->toBe(['scripts' => ['https://cdn.example/w.js'], 'inline' => ['theme()', 'go()'], 'inline_total' => 2])
+    expect($blocked("default-src 'self'; script-src 'self' https://puls.example"))->toMatchArray(['scripts' => ['https://cdn.example/w.js'], 'inline' => ['theme()', 'go()'], 'inline_total' => 2])
         // A hash lets that inline script through, and then 'unsafe-inline' is ignored, as browsers do
-        ->and($blocked("script-src 'self' https://puls.example https://cdn.example '{$theme}'"))->toBe(['scripts' => [], 'inline' => ['go()'], 'inline_total' => 1])
-        ->and($blocked("script-src 'self' https://puls.example https://cdn.example '{$theme}' 'unsafe-inline'"))->toBe(['scripts' => [], 'inline' => ['go()'], 'inline_total' => 1])
-        ->and($blocked("script-src 'self' 'unsafe-inline' https://puls.example https://cdn.example"))->toBe(['scripts' => [], 'inline' => [], 'inline_total' => 0])
+        ->and($blocked("script-src 'self' https://puls.example https://cdn.example '{$theme}'"))->toMatchArray(['scripts' => [], 'inline' => ['go()'], 'inline_total' => 1])
+        ->and($blocked("script-src 'self' https://puls.example https://cdn.example '{$theme}' 'unsafe-inline'"))->toMatchArray(['scripts' => [], 'inline' => ['go()'], 'inline_total' => 1])
+        ->and($blocked("script-src 'self' 'unsafe-inline' https://puls.example https://cdn.example"))->toMatchArray(['scripts' => [], 'inline' => [], 'inline_total' => 0])
         // No directive for scripts: nothing is stopped. default-src is the fallback, script-src-elem wins over script-src
-        ->and($blocked("img-src 'self'"))->toBe(['scripts' => [], 'inline' => [], 'inline_total' => 0])
+        ->and($blocked("img-src 'self'"))->toMatchArray(['scripts' => [], 'inline' => [], 'inline_total' => 0])
         ->and($blocked("default-src 'none'")['scripts'])->toBe(['https://shop.example/app.js', 'https://puls.example/?js', 'https://cdn.example/w.js'])
         ->and($blocked("default-src 'none'; script-src 'self' 'unsafe-inline' https:")['scripts'])->toBe([])
         ->and($blocked("script-src 'self' 'unsafe-inline' https:; script-src-elem 'self'")['scripts'])->toBe(['https://puls.example/?js', 'https://cdn.example/w.js'])
@@ -515,13 +515,13 @@ test('csp_blocked says which of the page\'s scripts the policy stops: hosts not 
         ->and($blocked("script-src 'self' 'unsafe-inline' https:", "script-src 'self' 'unsafe-inline' https://puls.example")['scripts'])->toBe(['https://cdn.example/w.js'])
         ->and($blocked("script-src 'self' 'unsafe-inline' https:", "script-src 'self' 'unsafe-inline' https://puls.example")['inline_total'])->toBe(0)
         // Hashes Vaka does not compute say nothing: taken as allowed rather than wrongly blocked
-        ->and($blocked("script-src 'self' https://puls.example https://cdn.example 'sha384-abc'"))->toBe(['scripts' => [], 'inline' => [], 'inline_total' => 0]);
+        ->and($blocked("script-src 'self' https://puls.example https://cdn.example 'sha384-abc'"))->toMatchArray(['scripts' => [], 'inline' => [], 'inline_total' => 0]);
 
     // With a nonce in the policy, a script with a nonce attribute is taken as allowed (Vaka cannot see the nonce it was sent with)
     $nonced = page_scripts('<script nonce="x">theme()</script><script>go()</script><script src="https://cdn.example/w.js" nonce="x"></script><script src="https://other.example/o.js"></script>', $page);
-    expect(csp_blocked([csp_directives("script-src 'nonce-abc' 'self'")], $nonced, $page))->toBe(['scripts' => ['https://other.example/o.js'], 'inline' => ['go()'], 'inline_total' => 1])
+    expect(csp_blocked([csp_directives("script-src 'nonce-abc' 'self'")], $nonced, $page))->toMatchArray(['scripts' => ['https://other.example/o.js'], 'inline' => ['go()'], 'inline_total' => 1])
         // strict-dynamic: hosts no longer count, a nonce does
-        ->and(csp_blocked([csp_directives("script-src 'nonce-abc' 'strict-dynamic' https://other.example")], $nonced, $page))->toBe(['scripts' => ['https://other.example/o.js'], 'inline' => ['go()'], 'inline_total' => 1]);
+        ->and(csp_blocked([csp_directives("script-src 'nonce-abc' 'strict-dynamic' https://other.example")], $nonced, $page))->toMatchArray(['scripts' => ['https://other.example/o.js'], 'inline' => ['go()'], 'inline_total' => 1]);
 
     // At most ten URLs and five starts are kept; the total still counts
     $many = page_scripts(str_repeat('<script>a()</script>', 7) . implode('', array_map(fn ($i) => "<script src=\"https://cdn{$i}.example/w.js\"></script>", range(1, 12))), $page);
@@ -529,7 +529,7 @@ test('csp_blocked says which of the page\'s scripts the policy stops: hosts not 
     expect($capped['scripts'])->toHaveCount(10)->and($capped['inline'])->toHaveCount(5)->and($capped['inline_total'])->toBe(7);
 });
 
-test('an enforced CSP that blocks scripts on the page is said in the summary, warns, and is its own part of the levels', function () {
+test('an enforced CSP that blocks parts of the page is said in the summary, warns, and is its own part of the levels', function () {
     $page = fn (string $body, array $headers) => ['body' => $body] + answered($headers + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']);
     $body = '<script>theme()</script><script src="https://cdn.example/w.js"></script><script src="/app.js"></script>';
 
@@ -537,7 +537,7 @@ test('an enforced CSP that blocks scripts on the page is said in the summary, wa
     expect($blocking['details']['grade'])->toBe('A')
         ->and($blocking['status'])->toBe('warn')
         ->and($blocking['summary'])->toBe('Grade A: all 6 in place, the CSP blocks 1 inline script and a script from cdn.example on the page')
-        ->and($blocking['details']['csp_blocks'])->toBe(['scripts' => ['https://cdn.example/w.js'], 'inline' => ['theme()'], 'inline_total' => 1])
+        ->and($blocking['details']['csp_blocks'])->toMatchArray(['scripts' => ['https://cdn.example/w.js'], 'inline' => ['theme()'], 'inline_total' => 1])
         ->and($blocking['details'])->not->toHaveKey('scripts')
         ->and(header_levels($blocking['details'])['csp_blocks'])->toBe('weak')
         ->and(headers_grade(header_levels($blocking['details'])))->toBe('A');
@@ -545,14 +545,14 @@ test('an enforced CSP that blocks scripts on the page is said in the summary, wa
     $fine = evaluate_headers($page($body, ['Content-Security-Policy' => "default-src 'self'; script-src 'self' https://cdn.example 'sha256-" . base64_encode(hash('sha256', 'theme()', true)) . "'"]), 10);
     expect($fine['status'])->toBe('ok')
         ->and($fine['summary'])->toBe('Grade A: all 6 in place')
-        ->and($fine['details']['csp_blocks'])->toBe(['scripts' => [], 'inline' => [], 'inline_total' => 0])
+        ->and($fine['details']['csp_blocks'])->toMatchArray(['scripts' => [], 'inline' => [], 'inline_total' => 0])
         ->and(header_levels($fine['details'])['csp_blocks'])->toBe('good');
 
     // Report-Only: nothing is blocked, but what would be is kept for the advice
     $trying = evaluate_headers($page($body, ['Content-Security-Policy-Report-Only' => "default-src 'self'"]), 10);
     expect($trying['status'])->toBe('ok')
         ->and($trying['summary'])->toBe('Grade B: 5 of 6 in place, missing CSP')
-        ->and($trying['details']['csp_would_block'])->toBe(['scripts' => ['https://cdn.example/w.js'], 'inline' => ['theme()'], 'inline_total' => 1])
+        ->and($trying['details']['csp_would_block'])->toMatchArray(['scripts' => ['https://cdn.example/w.js'], 'inline' => ['theme()'], 'inline_total' => 1])
         ->and(header_levels($trying['details']))->not->toHaveKey('csp_blocks')
         ->and($trying['details']['scripts']['inline'])->toBe(1);
 
@@ -595,9 +595,9 @@ test('the site detail says what the CSP blocks, or what a Report-Only one would,
 
 test('a CSP starting or stopping to block scripts is a change, confirmed like the others, and an alert only when it starts', function () {
     $levels = fn (string $csp, ?string $blocks) => array_combine(array_keys(SECURITY_HEADERS), ['good', $csp, 'good', 'good', 'good', 'good']) + ($blocks ? ['csp_blocks' => $blocks] : []);
-    expect(headers_change($levels('good', 'good'), $levels('good', 'weak')))->toBe('CSP blocks scripts on the page (grade still A)')
-        ->and(headers_change($levels('good', 'weak'), $levels('good', 'good')))->toBe('CSP no longer blocks scripts on the page (grade still A)')
-        ->and(headers_change($levels('missing', null), $levels('good', 'weak')))->toBe('Grade B to A: CSP added, CSP blocks scripts on the page')
+    expect(headers_change($levels('good', 'good'), $levels('good', 'weak')))->toBe('CSP blocks parts of the page (grade still A)')
+        ->and(headers_change($levels('good', 'weak'), $levels('good', 'good')))->toBe('CSP no longer blocks parts of the page (grade still A)')
+        ->and(headers_change($levels('missing', null), $levels('good', 'weak')))->toBe('Grade B to A: CSP added, CSP blocks parts of the page')
         ->and(headers_change($levels('good', 'weak'), $levels('missing', null)))->toBe('Grade A to B: CSP removed')
         ->and(headers_change($levels('good', null), $levels('good', 'good')))->toBe('');
 
@@ -626,8 +626,8 @@ test('a CSP starting or stopping to block scripts is a change, confirmed like th
     expect(alert_text($item))->toBe([
         'headline' => 'shop.example (Customers): security headers got worse, grade B to A',
         'details' => [
-            'CSP blocks scripts on the page: 1 inline script and a script from cdn.example',
-            "Visitors do not get those scripts. Allow what the page needs (a host goes in script-src, an inline script needs a 'sha256-...' hash there or a file of its own), or take them off the page. The site detail names them.",
+            'CSP blocks parts of the page: 1 inline script and a script from cdn.example',
+            CSP_BLOCKS_TIP . ' The site detail names them.',
             'If that was not on purpose, look at the last deploy, the web server or the CDN settings.',
         ],
     ]);
@@ -655,4 +655,67 @@ test('each item says what the site sends and what to do with its line, so the li
         // A CSP that blocks has no line, so no label
         ->and($csp(['Content-Security-Policy' => "default-src 'self'"], '<script>a()</script>'))->toMatchArray(['fix' => '', 'fix_label' => '', 'note' => 'it blocks 1 inline script on the page'])
         ->and($csp(['Content-Security-Policy' => "script-src 'self' 'unsafe-inline'"], '<script src="https://cdn.example/w.js"></script>')['note'])->toBe("it allows inline scripts ('unsafe-inline'). It blocks a script from cdn.example on the page");
+});
+
+test('page_scripts also keeps the stylesheets, style blocks and attributes, images and frames, for the CSP comparison', function () {
+    $html = '<link rel="stylesheet" href="/site.css"><link rel="preload stylesheet" href="https://fonts.example/a.css" nonce="n">'
+        . '<style>body{margin:0}</style><style nonce="n">p{}</style>'
+        . '<div style="color:red"><p STYLE="margin:0">x</p></div>'
+        . '<img src="/a.png"><img src="https://cdn.example/b.jpg" srcset="https://cdn.example/b-2x.jpg 2x, /c.jpg 1x">'
+        . '<iframe src="https://maps.example/embed"></iframe><iframe srcdoc="x"></iframe>';
+    $assets = page_scripts($html, 'https://shop.example/');
+    expect($assets['stylesheets'])->toBe([['url' => 'https://shop.example/site.css', 'nonce' => false], ['url' => 'https://fonts.example/a.css', 'nonce' => true]])
+        ->and($assets['style_blocks'])->toBe([
+            ['hash' => 'sha256-' . base64_encode(hash('sha256', 'body{margin:0}', true)), 'nonce' => false],
+            ['hash' => 'sha256-' . base64_encode(hash('sha256', 'p{}', true)), 'nonce' => true],
+        ])
+        ->and($assets['style_attributes'])->toBe(2)
+        ->and($assets['images'])->toBe(['https://shop.example/a.png', 'https://cdn.example/b.jpg', 'https://cdn.example/b-2x.jpg', 'https://shop.example/c.jpg'])
+        ->and($assets['frames'])->toBe(['https://maps.example/embed']);
+});
+
+test('csp_blocked covers styles, images and frames too: a blocked style makes the site look broken', function () {
+    $page = 'https://shop.example/';
+    $html = '<link rel="stylesheet" href="https://fonts.example/a.css"><style>body{margin:0}</style><div style="color:red"></div><span style="x:y"></span>'
+        . '<img src="https://cdn.example/b.jpg"><img src="/own.png"><iframe src="https://maps.example/embed"></iframe><script src="/app.js"></script>';
+    $assets = page_scripts($html, $page);
+    $blocked = fn (string ...$policies) => csp_blocked(array_map('csp_directives', $policies), $assets, $page);
+    $body = 'sha256-' . base64_encode(hash('sha256', 'body{margin:0}', true));
+
+    $strict = $blocked("default-src 'self'");
+    expect($strict)->toMatchArray(['scripts' => [], 'inline_total' => 0, 'stylesheets' => ['https://fonts.example/a.css'], 'style_blocks' => 1, 'style_attributes' => 2, 'images' => ['https://cdn.example/b.jpg'], 'frames' => ['https://maps.example/embed']])
+        // Styles follow style-src-elem, style-src or default-src; attributes need 'unsafe-inline' (or 'unsafe-hashes', taken as hashes given)
+        ->and($blocked("default-src 'self'; style-src 'self' https://fonts.example 'unsafe-inline'"))->toMatchArray(['stylesheets' => [], 'style_blocks' => 0, 'style_attributes' => 0])
+        ->and($blocked("default-src 'self'; style-src 'self' '{$body}'"))->toMatchArray(['stylesheets' => ['https://fonts.example/a.css'], 'style_blocks' => 0, 'style_attributes' => 2])
+        ->and($blocked("default-src 'self'; style-src 'self' '{$body}' 'unsafe-hashes'"))->toMatchArray(['style_blocks' => 0, 'style_attributes' => 0])
+        ->and($blocked("default-src 'self'; style-src-elem 'self' https://fonts.example; style-src-attr 'unsafe-inline'"))->toMatchArray(['stylesheets' => [], 'style_blocks' => 1, 'style_attributes' => 0])
+        // Images and frames: img-src, frame-src or child-src, then default-src
+        ->and($blocked("default-src 'self'; img-src 'self' https://cdn.example; frame-src https://maps.example"))->toMatchArray(['images' => [], 'frames' => []])
+        ->and($blocked("default-src 'self'; child-src https://maps.example"))->toMatchArray(['frames' => []])
+        ->and($blocked("default-src 'self'; img-src *"))->toMatchArray(['images' => []])
+        // No directive that applies: nothing is stopped
+        ->and($blocked("script-src 'self'"))->toMatchArray(['stylesheets' => [], 'style_blocks' => 0, 'style_attributes' => 0, 'images' => [], 'frames' => []]);
+
+    expect(csp_blocks_anything($strict))->toBeTrue()
+        ->and(csp_blocks_anything($blocked("script-src 'self'")))->toBeFalse()
+        ->and(csp_blocked_words($strict))->toBe('3 inline styles, a stylesheet from fonts.example, an image from cdn.example and a frame from maps.example')
+        ->and(csp_blocked_words(['scripts' => ['https://a.example/1.js'], 'inline_total' => 2, 'stylesheets' => [], 'style_blocks' => 0, 'style_attributes' => 15, 'images' => ['https://i.example/a.png', 'https://i.example/b.png', 'https://j.example/c.png'], 'frames' => []]))
+        ->toBe('2 inline scripts, a script from a.example, 15 inline styles and images from i.example and j.example');
+});
+
+test('the summary, the item and the alert name blocked styles and images as well', function () {
+    $page = fn (string $body, array $headers) => ['body' => $body] + answered($headers + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']);
+    $body = '<div style="color:red"></div><img src="https://cdn.example/b.jpg"><script src="/app.js"></script>';
+    $result = evaluate_headers($page($body, ['Content-Security-Policy' => "default-src 'self'"]), 10);
+    expect($result['summary'])->toBe('Grade A: all 6 in place, the CSP blocks 1 inline style and an image from cdn.example on the page')
+        ->and($result['status'])->toBe('warn');
+    $csp = array_column(header_items($result['details']), null, 'key')['csp'];
+    expect($csp['blocks'])->toBeTrue()
+        ->and($csp['note'])->toBe('it blocks 1 inline style and an image from cdn.example on the page')
+        ->and($csp)->not->toHaveKey('blocked')
+        ->and($csp['blocked_assets'])->toBe([['kind' => 'image', 'url' => 'https://cdn.example/b.jpg']])
+        ->and($csp['tip'])->toContain('inline styles need');
+    // Nothing blocked: no lists at all
+    $fine = array_column(header_items(evaluate_headers($page($body, ['Content-Security-Policy' => "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' https://cdn.example"]), 10)['details']), null, 'key')['csp'];
+    expect($fine['blocks'])->toBeFalse()->and($fine)->not->toHaveKey('blocked_assets');
 });

@@ -153,7 +153,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         $forge = ['x-frame-options' => ['SAMEORIGIN'], 'x-content-type-options' => ['nosniff']];
         $sent = match ($url) {
             'https://www.example.com', 'https://example.org' => $strong,
-            'https://store.example', 'https://docs.example' => ['content-security-policy' => ["script-src 'self' 'unsafe-inline'; frame-ancestors 'self'"]] + $strong,
+            'https://store.example', 'https://docs.example' => ['content-security-policy' => ["default-src 'self'; script-src 'self' 'unsafe-inline'; frame-ancestors 'self'"]] + $strong,
             'https://shop.example', 'https://blog.example' => ['referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=()']] + $forge,
             // A CSP tried as Report-Only: the page loads a script it would block once enforced
             'https://builder.example' => ['content-security-policy-report-only' => ["default-src 'self'"]],
@@ -172,7 +172,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
                 . '<script>document.documentElement.dataset.theme = localStorage.theme || "light"</script><script src="https://analytics.example/a.js"></script>'
                 . (isset($opts['hostile']) ? '<script>document.write("<img src=x onerror=window.__xss=5>")</script>' : ''),
             // A CSP in force that blocks a script the page loads: the policy has no cdn.example
-            'https://docs.example' => '<script src="https://cdn.example/widget.js"></script>',
+            'https://docs.example' => '<script src="https://cdn.example/widget.js"></script><p style="margin:0">x</p><img src="https://images.example/a.jpg" alt="">',
             'https://builder.example' => '<script src="https://widgets.example/chat.js"></script>',
             default => '',
         };
