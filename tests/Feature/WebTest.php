@@ -721,3 +721,16 @@ test('an unknown page or API call is a 404', function () {
     expect(http_request('GET', WEB . '/?api=nope', ['jar' => $jar])['status'])->toBe(404)
         ->and(http_request('GET', WEB . '/?api=site&id=999', ['jar' => $jar])['status'])->toBe(404);
 });
+
+test('the dashboard\'s files are versioned by their contents, so a deploy is never drawn by the last deploy\'s script', function () {
+    $hash = asset_version();
+    expect($hash)->toMatch('/^[a-f0-9]{10}$/')
+        ->and(http_request('GET', WEB . '/?login')['body'])->toContain("app.css?v={$hash}")
+        ->and(http_request('GET', WEB . '/?login')['body'])->not->toContain('?v=' . VAKA_VERSION);
+    $dashboard = http_request('GET', WEB . '/', ['jar' => ($this->login)('admin', 'admin password')['jar']])['body'];
+    expect($dashboard)->toContain("app.js?v={$hash}")
+        ->and($dashboard)->toContain("app.css?v={$hash}")
+        ->and($dashboard)->toContain("theme.js?v={$hash}")
+        // The footer still says the version
+        ->and($dashboard)->toContain('Vaka ' . VAKA_VERSION);
+});
