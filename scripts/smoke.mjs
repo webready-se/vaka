@@ -342,7 +342,7 @@ async function main() {
       expect(all('dialog.drawer .header-list .header-fix [data-action="copy"]').length === 3, 'every line has its Copy');
       formats[1].click();
       const nginxLines = all('dialog.drawer .header-list .header-fix code').map((c) => c.textContent);
-      expect(nginxLines.includes(`add_header Content-Security-Policy-Report-Only "default-src 'self'" always;`) && nginxLines.every((l) => /^add_header \S+ ".*" always;$/.test(l)), `for nginx the lines are add_header lines (got "${nginxLines[2]}")`);
+      expect(nginxLines.some((l) => /^add_header Content-Security-Policy-Report-Only "default-src 'self'; script-src 'self' https:\/\/analytics\.example 'sha256-[^"]+" always;$/.test(l)) && nginxLines.every((l) => /^add_header \S+ ".*" always;$/.test(l)), `for nginx the lines are add_header lines, the CSP one drafted from the page (got "${nginxLines[2]}")`);
       expect(document.activeElement === q('dialog.drawer .header-format [data-format="nginx"]') && document.activeElement.getAttribute('aria-pressed') === 'true', 'the choice keeps the focus and shows as pressed');
       expect(q('dialog.drawer .header-list .header-fix [data-action="copy"]')?.getAttribute('data-copy') === nginxLines[0], 'Copy copies the line as shown');
       q('dialog.drawer .header-format [data-format="apache"]').click();
@@ -350,7 +350,7 @@ async function main() {
       expect(q('dialog.drawer .headers-tip summary')?.textContent === 'Adding them in Apache' && /^Put the Header lines/.test(q('dialog.drawer .headers-tip p')?.textContent || ''), 'the tip under the list follows the choice');
       expect(localStorage.getItem('vaka-header-format') === 'apache', 'the choice is kept for the next site');
       q('dialog.drawer .header-format [data-format="header"]').click();
-      expect(all('dialog.drawer .header-list .header-fix code')[2]?.textContent === `Content-Security-Policy-Report-Only: default-src 'self'`, 'back to the header as sent');
+      expect(/^Content-Security-Policy-Report-Only: default-src 'self'; script-src /.test(all('dialog.drawer .header-list .header-fix code')[2]?.textContent || ''), 'back to the header as sent');
       expect(all('dialog.drawer .header-more').length === 3 && all('dialog.drawer .header-more').every((d) => !d.open), 'what each does and how to add it is one click away, closed at first');
       expect(todo[1]?.querySelector('.fix-label')?.textContent === 'Add this line:' && todo[0]?.querySelector('.fix-label')?.textContent === 'The line, for those files too:', 'every line says what to do with it');
       expect(todo[0]?.querySelector('.header-sent code')?.textContent === 'nosniff', 'a weak protection shows what the site sends');

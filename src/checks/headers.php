@@ -280,6 +280,70 @@ function csp_blocked(array $policies, array $page, string $pageUrl): array
     ];
 }
 
+/** Tag managers: they load more later, by what is set up in their own interface, which no policy drawn from the page can know. */
+const CSP_TAG_MANAGERS = ['googletagmanager.com' => 'Google Tag Manager'];
+
+/**
+ * The honest word on a page that loads a tag manager: a strict CSP needs
+ * nonces from the site's own code, or stays weak. Empty for other pages.
+ */
+function tag_manager_tip(array $page): string
+{
+    foreach ($page['hosts'] ?? [] as $host) {
+        foreach (CSP_TAG_MANAGERS as $domain => $name) {
+            if ($host === $domain || str_ends_with($host, ".{$domain}")) return " The page loads {$name}, which loads more later, by what is set up in its own interface, so no line drawn from the page stays complete. A strict CSP with it needs nonces from the site's own code (Google's way); otherwise the policy allows 'unsafe-inline' and Google's hosts, which is weak. Report-Only with reporting is the honest middle: nothing breaks, and what it loads is seen.";
+        }
+    }
+    return '';
+}
+
+/** Hosts whose files load more from another host, which the page never shows: the directive and the host to add. */
+const CSP_COMPANIONS = ['fonts.googleapis.com' => ['font-src', 'https://fonts.gstatic.com']];
+
+/**
+ * A first policy drafted from what the page has, to try as Report-Only: the
+ * origins its scripts, stylesheets, images, icons and frames come from, a
+ * hash for each inline script and <style> block as they are today, and
+ * 'unsafe-inline' for styles when the page has style="..." attributes, which
+ * nothing else lets through. Known companions are added (Google Fonts loads
+ * from fonts.gstatic.com). Only what the page shows: a tag manager loads
+ * more later, which Report-Only reports in the console. Empty when the page
+ * needs nothing beyond the site itself.
+ */
+function csp_draft(array $page, string $pageUrl): string
+{
+    $origin = function (string $url) use ($pageUrl): ?string {
+        if (str_starts_with($url, 'data:')) return 'data:';
+        if (csp_source_allows("'self'", $url, $pageUrl)) return null;
+        $parts = parse_url($url);
+        return isset($parts['scheme'], $parts['host']) ? strtolower($parts['scheme'] . '://' . $parts['host']) . (isset($parts['port']) ? ':' . $parts['port'] : '') : null;
+    };
+    $origins = fn (array $urls) => array_values(array_unique(array_filter(array_map($origin, $urls))));
+    $hashes = fn (array $items) => array_map(fn ($item) => "'{$item['hash']}'", $items);
+    $directives = [];
+    $scripts = [...$origins(array_column($page['external'] ?? [], 'url')), ...$hashes($page['inline_scripts'] ?? [])];
+    if ($scripts) $directives['script-src'] = $scripts;
+    $styles = $origins(array_column($page['stylesheets'] ?? [], 'url'));
+    if (($page['style_attributes'] ?? 0) > 0) $styles[] = "'unsafe-inline'";
+    elseif ($page['style_blocks'] ?? []) $styles = [...$styles, ...$hashes($page['style_blocks'])];
+    if ($styles) $directives['style-src'] = $styles;
+    foreach ($origins(array_column($page['stylesheets'] ?? [], 'url')) as $host) {
+        $companion = CSP_COMPANIONS[url_host($host)] ?? null;
+        if ($companion) $directives[$companion[0]][] = $companion[1];
+    }
+    $images = $origins([...($page['images'] ?? []), ...($page['icons'] ?? [])]);
+    if ($images) $directives['img-src'] = $images;
+    $frames = $origins($page['frames'] ?? []);
+    if ($frames) $directives['frame-src'] = $frames;
+    if (!$directives) return '';
+    $order = ['script-src', 'style-src', 'font-src', 'img-src', 'frame-src'];
+    uksort($directives, fn ($a, $b) => array_search($a, $order, true) <=> array_search($b, $order, true));
+    $lines = ["default-src 'self'"];
+    foreach ($directives as $name => $sources) $lines[] = "{$name} 'self' " . implode(' ', array_values(array_unique($sources)));
+    $lines[] = "object-src 'none'";
+    return implode('; ', $lines);
+}
+
 /**
  * What a policy blocks, in words: "2 inline scripts, a script from
  * cdn.example, 15 inline styles and images from cdn.example", or '' for
@@ -651,6 +715,10 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
         $details['scripts'] = $scripts;
         if (isset($response['headers']['content-security-policy-report-only'])) {
             $details['csp_would_block'] = csp_blocked($policies('content-security-policy-report-only'), $scripts, $response['url']);
+        } else {
+            // What the simplest first policy would block, and a draft that allows it, to try as Report-Only
+            $details['csp_first'] = csp_blocked([csp_directives("default-src 'self'")], $scripts, $response['url']);
+            $details['csp_draft'] = csp_draft($scripts, $response['url']);
         }
     }
     $levels = header_levels($details);
@@ -873,24 +941,21 @@ function csp_item(array $item, array $details): array
             $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
             default => '. Enforced, it would block nothing on the page, so it is safe to rename',
         };
-        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it."] + $named + $item;
+        return ['blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet' . $would, 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. Add it once the browser's console, and the list above, show nothing it would block that the site needs, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
     }
-    $scripts = $details['scripts'] ?? null;
-    $inline = $scripts['inline'] ?? 0;
-    $hosts = $scripts['hosts'] ?? [];
-    $from = count($hosts) > 3 ? implode(', ', array_slice($hosts, 0, 3)) . ' and ' . (count($hosts) - 3) . ' more hosts' : list_words($hosts);
-    $note = match (true) {
-        $inline && $hosts => 'the page has ' . plural($inline, 'inline script', 'inline scripts') . " and scripts from {$from}",
-        $inline > 0 => 'the page has ' . plural($inline, 'inline script', 'inline scripts'),
-        $hosts !== [] => "the page loads scripts from {$from}",
-        default => '',
-    };
+    // No CSP at all: what default-src 'self' would stop on the page, and a draft that allows it (old data: the scripts only)
+    $scripts = $details['scripts'] ?? [];
+    $first = $details['csp_first'] ?? null;
+    $draft = $details['csp_draft'] ?? '';
+    $has = $first !== null ? csp_blocked_words($first) : (isset($scripts['inline']) ? csp_blocked_words(['inline_total' => $scripts['inline'], 'scripts' => array_map(fn ($host) => "https://{$host}/", $scripts['hosts'] ?? [])]) : '');
     $excerpts = $scripts['excerpts'] ?? [];
     return [
         'blocks' => false,
-        'note' => $note !== '' ? "{$note}, which default-src 'self' would block" : $item['note'],
+        'note' => $has !== '' ? "the page has {$has}: " . ($draft !== '' ? 'the line below allows what is there today' : "default-src 'self' would block it") : $item['note'],
+        'fix' => $draft !== '' ? "Content-Security-Policy-Report-Only: {$draft}" : $item['fix'],
         'tip' => 'This is the one that can break a site, so it is fine to do it last. ' . $item['tip']
-            . ($inline ? " Inline scripts need a 'sha256-...' hash each in script-src, or a nonce: let the site's build add them, since a hash changes whenever the script does." : ''),
+            . ($draft !== '' ? " The line is drafted from this page: the hashes are of its inline scripts and styles as they are today and change with them, so let the build add them or move the code to files. Other pages may need more; Report-Only shows it all in the console." : '')
+            . tag_manager_tip($scripts),
     ] + ($excerpts ? ['inline' => $excerpts] : []) + $item;
 }
 
