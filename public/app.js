@@ -1903,18 +1903,27 @@
     ]);
   }
 
+  /** Scripts named by a CSP item: the start of each inline one, or the address of each external one. */
+  function scriptList(lead, scripts) {
+    return h('div', { class: 'header-scripts' }, [
+      h('p', {}, lead),
+      h('ul', {}, scripts.map(function (script) { return h('li', {}, h('code', {}, script)); }))
+    ]);
+  }
+
   /**
    * The six protections, in the order to add them (the safest first, CSP last):
    * what is missing or weak, with why and the line that adds it, in the form
    * the site's web server takes; what each does and how to add it one click
-   * away. What is in place is one line.
+   * away. What is in place is one line. A CSP in place that blocks scripts on
+   * the page is something to do, not in place.
    */
   function headerList(headers) {
     if (!headers) return h('p', { class: 'chart-note' }, 'Not checked yet.');
     if (!headers.items || !headers.items.length) return h('p', { class: 'chart-note' }, headers.summary);
     var words = { weak: 'Weak', missing: 'Missing' };
-    var todo = headers.items.filter(function (item) { return item.level !== 'good'; });
-    var done = headers.items.filter(function (item) { return item.level === 'good'; });
+    var todo = headers.items.filter(function (item) { return item.level !== 'good' || item.blocks; });
+    var done = headers.items.filter(function (item) { return item.level === 'good' && !item.blocks; });
     var format = headerFormat(headers);
     var where = format === 'apache' ? 'Apache' : 'nginx';
     var tip = format === 'apache' ? headers.tip_apache : headers.tip;
@@ -1930,20 +1939,21 @@
       todo.length ? h('ul', { class: 'header-list' }, todo.map(function (item) {
         // The one that can break a site, said where it is not the only thing to do
         var last = item.key === 'csp' && item.level === 'missing' && todo.length > 1;
-        return h('li', { class: 'is-' + item.level }, [
-          icon(item.level === 'weak' ? 'failing' : 'down'),
+        var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks scripts on the page' : 'In place, but it blocks scripts on the page') : words[item.level];
+        // What the item names: what the CSP blocks, what a Report-Only one would, or what the page has that a first one would
+        var would = item.blocks ? 'it blocks' : item.blocked || /would block/.test(item.note || '') ? 'it would block' : null;
+        return h('li', { class: 'is-' + (item.blocks ? 'weak' : item.level) }, [
+          icon(item.level === 'weak' || item.blocks ? 'failing' : 'down'),
           h('div', {}, [
-            h('p', {}, [h('b', {}, capitalize(item.label)), h('span', { class: 'header-level' }, ' · ' + words[item.level] + (last ? ' · do it last, it can break the site' : ''))]),
+            h('p', {}, [h('b', {}, capitalize(item.label)), h('span', { class: 'header-level' }, ' · ' + word + (last ? ' · do it last, it can break the site' : ''))]),
             item.note ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
-            pasteLine(headerLine(item.fix, format)),
+            item.fix ? pasteLine(headerLine(item.fix, format)) : null,
             h('details', { class: 'header-more' }, [
-              h('summary', {}, [icon('chevron'), item.inline ? 'What it does, the scripts it would block, how to add it' : 'What it does and how to add it']),
+              h('summary', {}, [icon('chevron'), item.blocks ? 'What it does, the scripts it blocks, what to do' : item.inline || item.blocked ? 'What it does, the scripts it would block, how to add it' : 'What it does and how to add it']),
               h('p', { class: 'header-what' }, item.what),
               item.tip ? h('p', { class: 'header-tip' }, item.tip) : null,
-              item.inline ? h('div', { class: 'header-scripts' }, [
-                h('p', {}, 'The inline scripts on the page start:'),
-                h('ul', {}, item.inline.map(function (start) { return h('li', {}, h('code', {}, start)); }))
-              ]) : null
+              item.inline ? scriptList(would ? 'The inline scripts ' + would + ' start:' : 'The inline scripts on the page start:', item.inline) : null,
+              item.blocked ? scriptList('The scripts ' + would + ':', item.blocked) : null
             ])
           ])
         ]);

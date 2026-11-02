@@ -403,6 +403,16 @@ async function main() {
       q('dialog.drawer [data-action="close"]').click();
     }
 
+    // A CSP in force that blocks a script on the page is something to do, said with the script
+    all('.site-row').find((r) => /docs\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'docs.example', 'the docs site\'s detail to open')) {
+      const cspItem = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
+      expect(/Weak, and it blocks scripts on the page/.test(cspItem?.querySelector('.header-level')?.textContent || '') && /; it blocks a script from cdn\.example on the page\.$/.test(cspItem?.querySelector('.header-why')?.textContent || ''), `a CSP that blocks a script on the page is listed as something to do, with what it blocks (got "${cspItem?.querySelector('.header-why')?.textContent}")`);
+      expect([...(cspItem?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'https://cdn.example/widget.js') && /The scripts it blocks:/.test(cspItem?.textContent || ''), 'the blocked script is named by its address');
+      expect(/the CSP blocks a script from cdn\.example on the page$/.test(q('dialog.drawer .headers-summary')?.textContent || ''), `the summary says what the CSP blocks (got "${q('dialog.drawer .headers-summary')?.textContent}")`);
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // Adding, changing and removing a site in the dashboard
     q('[data-add-site]').click();
     if (await waitFor(() => q('dialog.drawer[open] [data-form="site"]'), 'the add-site form to open')) {
