@@ -741,3 +741,24 @@ test('the site\'s icons count as images, and a data: address is allowed only by 
     $result = evaluate_headers(['body' => '<link rel="icon" href="data:image/svg+xml,<svg/>">'] + answered(['Content-Security-Policy' => "default-src 'self'"] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10);
     expect($result['summary'])->toBe('Grade A: all 6 in place, the CSP blocks the icon as data: on the page');
 });
+
+test('a protection sent twice with different values is weak and says who adds it', function () {
+    $both = evaluate_headers(answered(['X-Frame-Options' => ['DENY', 'SAMEORIGIN']] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0])), 10);
+    expect($both['details']['headers']['frames'])->toBe(['level' => 'weak', 'note' => 'sent twice, "DENY" and "SAMEORIGIN": the application and the web server both add it, so browsers may take either; keep one'])
+        ->and($both['summary'])->toContain('frame protection is weak')
+        ->and(array_column(header_items($both['details']), null, 'key')['frames']['value'])->toBe('DENY, SAMEORIGIN');
+    // The same value twice is fine; a CSP twice is no duplicate, since both apply
+    expect(header_level('frames', ['x-frame-options' => ['DENY', 'deny']], true)['level'])->toBe('good')
+        ->and(header_level('hsts', ['strict-transport-security' => ['max-age=300', 'max-age=31536000']], true))->toMatchArray(['level' => 'weak'])
+        ->and(header_level('nosniff', ['x-content-type-options' => ['nosniff', 'nosniff']], true)['level'])->toBe('good')
+        ->and(header_level('csp', ['content-security-policy' => ["default-src 'self'", "script-src 'self'"]], true)['level'])->toBe('good');
+});
+
+test('a CSP in force sent next to a Report-Only one says the Report-Only adds nothing', function () {
+    $csp = fn (array $h) => array_column(header_items(evaluate_headers(answered($h + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
+    $both = $csp(['Content-Security-Policy' => "default-src 'self'", 'Content-Security-Policy-Report-Only' => "default-src 'self'"]);
+    expect($both['level'])->toBe('good')
+        ->and($both['blocks'])->toBeFalse()
+        ->and($both['note'])->toBe('also sent as Report-Only, which adds nothing next to a policy in force: if that line was meant to be the only one, something else sets the first (the application, or another server rule)')
+        ->and($csp(['Content-Security-Policy' => "default-src 'self'"])['note'])->toBe('');
+});
