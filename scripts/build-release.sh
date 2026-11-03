@@ -42,7 +42,8 @@ if [ "$CODE_VERSION" != "$VERSION" ]; then
     echo "Set it to '$VERSION' and give CHANGELOG.md a [$VERSION] section before releasing."
     exit 1
 fi
-if ! git -C "$ROOT" show "$REF:CHANGELOG.md" | grep -qF "## [$VERSION]"; then
+# grep reads it all: with -q it stops at the match, and with pipefail the writer's SIGPIPE would count as no match
+if ! git -C "$ROOT" show "$REF:CHANGELOG.md" | grep -F "## [$VERSION]" > /dev/null; then
     echo "CHANGELOG.md has no [$VERSION] section: the release notes come from it."
     echo "Rename [Unreleased] to [$VERSION] - $(date +%Y-%m-%d) and start a new empty [Unreleased]."
     exit 1
