@@ -43,6 +43,12 @@ All changes must pass the test suite, and new behaviour needs tests. A bug fix s
 ./vendor/bin/pest
 ```
 
+A change to the dashboard extends the smoke test, which walks it in headless Chrome and fails on script errors and CSP violations. It needs Node 22 or newer and Chrome, and no npm packages:
+
+```bash
+node scripts/smoke.mjs
+```
+
 ## Reporting Bugs
 
 Open a [GitHub issue](../../issues) with:

@@ -58,7 +58,7 @@ php vaka alert:test
 4. Add a **scheduled job**, every minute: `php /home/forge/vaka.example.com/current/vaka run` (or `.../vaka.example.com/vaka run` without zero-downtime deployments). The dashboard shows the exact line once you have logged in.
 5. Add the first user over SSH: `php vaka user:add admin`.
 6. Turn on Let's Encrypt for the site.
-7. In the site's Nginx configuration (the site's `…` menu, **Edit Nginx configuration**, the file **General site configuration**), remove the `add_header` lines for `X-Frame-Options "SAMEORIGIN"` and `X-XSS-Protection`, and keep the one for `X-Content-Type-Options "nosniff"`. Nginx adds these to Vaka's own answers too, so `X-Frame-Options` went out as both `DENY` (Vaka) and `SAMEORIGIN` (Forge), which contradict each other, and `X-XSS-Protection` is obsolete. The `nosniff` line is where the files Nginx serves itself (the dashboard's script, styles and fonts) get theirs, since Forge keeps `location /` in a file of its own; on Vaka's own answers it then comes twice with the same value, which does no harm.
+7. In the site's Nginx configuration (the site's `…` menu, **Edit Nginx configuration**, the file **General site configuration**), remove the `add_header` lines for `X-Frame-Options "SAMEORIGIN"` and `X-XSS-Protection`, and keep the one for `X-Content-Type-Options "nosniff"`. Nginx adds these to Vaka's own answers too, so `X-Frame-Options` goes out as both `DENY` (Vaka) and `SAMEORIGIN` (Forge), which contradict each other, and `X-XSS-Protection` is obsolete. The `nosniff` line is where the files Nginx serves itself (the dashboard's script, styles and fonts) get theirs, since Forge keeps `location /` in a file of its own; on Vaka's own answers it then comes twice with the same value, which does no harm.
 
 The deploy script needs nothing beyond pulling the code. Database changes are applied automatically the first time Vaka opens the database after an update.
 
@@ -118,7 +118,7 @@ Three things tell you when Vaka itself stops:
 
 ## Upgrading
 
-Read the [changelog](../CHANGELOG.md) first: it says when something needs your attention. Then copy the files from the new release over the old ones (or pull and deploy), and keep `data/`, `.env` and `users.json`. Database changes are applied on first use.
+Read the [changelog](../CHANGELOG.md) first: Vaka is still 0.x, so a version may need a step of yours, and the changelog says which. Then copy the files from the new release over the old ones (or pull and deploy), and keep `data/`, `.env` and `users.json`. Database changes are applied on first use.
 
 ## Trying it without real sites
 
