@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-11-04
+
 ### Added
 
 - **Without a CSP, the line to try is drafted from the page.** `default-src 'self'` when the page needs nothing beyond the site itself; otherwise the origins its scripts, stylesheets, images, icons and frames come from, a hash for each inline script and style block as they are today, `'unsafe-inline'` for styles when the page has style attributes, known companions (Google Fonts loads from fonts.gstatic.com) and `object-src 'none'`, as a Report-Only line that passes its own page. The item says what the page has and the tip says what a draft is: hashes change with the code, a tag manager loads more later, other pages may need more; Report-Only shows it in the console.
@@ -30,9 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **Vaka's requests call it `VakaBot/<version> (+<APP_URL>)`, where it was `Vaka/<version>`.** "Bot" in the name is what analytics, log filters and web server bot rules look for, so the checks are counted as a robot's without anyone knowing Vaka; as `Vaka/` they were counted as an unknown visitor. A firewall rule or robots.txt that names `Vaka/` needs the new name; `USER_AGENT` still sets another one.
+- **A read token for one site answers `?api` with that site in detail.** As `&site=` does, since it has nothing else to list; `&site=` still works. `?api&format=csv` with such a token gives its response times, where it gave a one-row list.
 - **The security headers list reads like the mail records.** Every line to add says what to do with it ("Add this line:", "Change it to:", "Your policy under the name that enforces it:"); a weak protection shows what the site sends next to the change; "In place" opens to what the site sends for each (`value` in the read API, with `fix_label`); the scripts a CSP item names ("2 inline scripts") open the list of them; and the CSP notes are sentences ("It blocks nothing yet. Enforced, it would block ...").
 - **The security headers in a site's detail start with what to add, the safest first and CSP last.** What each one does and how to add it is one click away, what is in place is one line, and so is the nginx tip. The read API and the report list the protections in the same order: nosniff, Referrer-Policy, frame protection, HSTS, Permissions-Policy, CSP.
-- **Vaka's requests call it `VakaBot/<version> (+<APP_URL>)`, where it was `Vaka/<version>`.** "Bot" in the name is what analytics, log filters and web server bot rules look for, so the checks are counted as a robot's without anyone knowing Vaka; as `Vaka/` they were counted as an unknown visitor. A firewall rule or robots.txt that names `Vaka/` needs the new name; `USER_AGENT` still sets another one.
 - **The dashboard's overview is about four times faster.** It took some 880 ms on a small server with 50 sites: it read the time of each of the last day's 14 000 response-time samples in PHP, and of each uptime event once for every one of the 30 days. SQLite now counts the hourly buckets, and each event's time is read once.
 - **While the dashboard loads, it shows the page in the shape it will have.** The night panel with the owl and the moon, and the list of sites, with bars that breathe slowly where the words and numbers will come, instead of a line of text over an empty page. Nothing jumps when the overview arrives, and the bars stand still for people who prefer reduced motion.
 - **Without a CSP, the suggested line is `Content-Security-Policy-Report-Only: default-src 'self'`.** It was the policy itself, with Report-Only only in the tip, though the line is what gets copied. A site already sending its CSP as Report-Only is told to rename it once the browser's console shows nothing it would block.
@@ -43,7 +46,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The advice for scripts and styles without `nosniff` says to set the headers once for the whole site.** And to keep `add_header` out of the web server's rules for those files (nginx's `expires` sets Cache-Control without it), instead of adding the line to that one rule, which leaves the next such rule in the same trap.
 - **A new read token works for 90 days unless `--expires` gives another last day.** A forgotten one stops working on its own. `share:create` asks with the day filled in (Enter takes it); a token that never expires is a choice of its own, `--expires=never` (or typing `never`). Tokens made before keep what they had.
 - **`share:create` shows the token once, in the two lines for the project's `.env`.** Then how to check that git ignores the file, a warning against the `PUBLIC_`, `VITE_` and `NEXT_PUBLIC_` prefixes (they put a variable in the code sent to browsers), and a curl command that loads the token from `.env`, so an AI assistant that runs it never sees the token.
-- **A read token for one site answers `?api` with that site in detail.** As `&site=` does, since it has nothing else to list; `&site=` still works. `?api&format=csv` with such a token gives its response times, where it gave a one-row list.
 
 ### Fixed
 
@@ -138,6 +140,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `scripts/seed-demo.php` builds a demo database with fake sites; `scripts/smoke.mjs` drives the dashboard in headless Chrome and fails on JavaScript errors, CSP violations and markup from the data.
 - Every release comes as a zip with only the files Vaka needs to run, and its docs: download, unpack, run.
 
-[Unreleased]: https://github.com/webready-se/vaka/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/webready-se/vaka/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/webready-se/vaka/releases/tag/v0.3.0
 [0.2.0]: https://github.com/webready-se/vaka/releases/tag/v0.2.0
 [0.1.0]: https://github.com/webready-se/vaka/releases/tag/v0.1.0
