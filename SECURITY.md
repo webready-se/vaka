@@ -17,7 +17,7 @@ Instead, use [GitHub's private vulnerability reporting](../../security/advisorie
 
 ## Response
 
-We aim to acknowledge reports within 48 hours and provide a fix or mitigation plan within 7 days for confirmed vulnerabilities.
+We aim to acknowledge reports within a few working days and to provide a fix or mitigation plan within two weeks for confirmed vulnerabilities.
 
 ## Scope
 

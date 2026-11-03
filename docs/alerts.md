@@ -62,6 +62,8 @@ When a CSP in place blocks parts of the page (see [Checks](checks.md#security-he
 > Visitors do not get those scripts. Allow what the page needs (a host goes in script-src, an inline script needs a 'sha256-...' hash there or a file of its own), or take them off the page. The site detail names them.
 > If that was not on purpose, look at the last deploy, the web server or the CDN settings.
 
+A header sent twice with different values counts as weaker, and the alert says who sends which when the site's files tell. `X-Frame-Options` is the exception: browsers then allow no frames at all, so nothing is exposed, and it is shown under "In place" without an alert.
+
 The first time Vaka checks the files, what it finds is a starting point, not a change. A change has to show up twice, 15 minutes apart, before it counts. Improvements are recorded in the site's history without a message. Like exposed files, these alerts are not delayed by the `delayed` policy.
 
 ## Mail DNS
@@ -150,7 +152,7 @@ Email goes out through PHP's `mail()`, which hands the message to the server's m
 
 ### JSON webhook
 
-Every message is a `POST` with `Content-Type: application/json`. The fields are stable; new ones may be added.
+Every message is a `POST` with `Content-Type: application/json`. The field names stay the same between versions. New fields may be added; a field is never renamed or removed without a note in the [changelog](../CHANGELOG.md).
 
 ```json
 {

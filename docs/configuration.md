@@ -1,6 +1,6 @@
 # Configuration
 
-Vaka works without any configuration. To change something, copy `.env.example` to `.env` and set what you need; settings from the server's environment (Forge, Docker, CI) win over `.env`.
+Vaka works without any configuration. To change something, copy `.env.example` to `.env` and set what you need; settings from the server's environment (Forge, Docker, CI) win over `.env`. To keep the file somewhere else, point the environment variable `VAKA_ENV_FILE` at it.
 
 ## Settings
 
@@ -55,6 +55,8 @@ Every command asks for what it needs when you leave out its arguments. `php vaka
 |---------|--------------|
 | `php vaka site:add <url>` | Start watching a site. `--group=`, `--name=`, `--keyword=<text that must be on the page>`, `--interval=<minutes>`, `--disable=ssl,...`, `--pause` |
 | `php vaka site:edit <site>` | Change a site: `--url=`, `--group=<name or none>`, `--name=`, `--keyword=`, `--interval=`, `--pause`, `--resume`, `--disable=`, `--enable=`, `--server=<name>` (for a site behind a CDN) |
+| `php vaka site:edit <server> --group=<name or none>` | Move every site on a server to a group, by its IP or name |
+| `php vaka site:edit --group=<name or none>` | Move several sites to a group, picked from a numbered list |
 | `php vaka site:remove <site>` | Stop watching a site and delete its history (`--force` skips the question) |
 | `php vaka site:list [--group=]` | Every site |
 | `php vaka site:import <file.csv> [--dry-run]` | Add sites from a CSV file: a `url` column, and optionally `group`, `enabled`, `name`, `keyword`, `interval` |

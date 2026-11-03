@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **The read API's docs name every field with text from the sites.** `headers.items[].value`, `fix`, `inline`, `blocked` and `blocked_assets` hold such text too, but the summary in `docs/api.md` said every other field was Vaka's own. Treat them as data.
 - **A deploy is never shown by the last deploy's script.** The dashboard's files are versioned by a hash of their contents (`app.js?v=a69e02b9d0`) instead of the release version, which stays the same between releases. Without a `Cache-Control` a browser kept the old `app.js` for hours after a deploy and drew new data with old code: a site detail that said "Missing" where the data said "Report-Only".
 - **A message after an action in a site's detail shows above the detail.** "Checking shop.example again" and the other messages from inside the detail came up behind it: the detail is a modal dialog, which lies above everything else on the page. The message is now a popover, shown above it.
 - **A bot check in front of a site is no longer taken for the site.** A shared host's Imunify360 answered Vaka with its "One moment, please..." page (status 200) for most of each day: the site counted as up whatever it did, and its headers were graded on that page, so "HSTS removed" was alerted every day. Cloudflare's challenge (403) would have made a site look down. Now uptime keeps the status it had, and headers and exposed files say "Could not check".

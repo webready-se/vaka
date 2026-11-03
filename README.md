@@ -6,7 +6,7 @@
 
 **Keeps watch while you sleep.**
 
-Uptime, response times and certificates for every site, plus domains, exposed files and security headers.<br>
+Uptime, response times and certificates for every site, plus domains, exposed files, security headers and mail DNS.<br>
 One cron line, no dependencies, and one alert when a whole server goes down.
 
 [![Tests](https://github.com/webready-se/vaka/actions/workflows/tests.yml/badge.svg)](https://github.com/webready-se/vaka/actions/workflows/tests.yml)
@@ -19,7 +19,7 @@ One cron line, no dependencies, and one alert when a whole server goes down.
   <img alt="The Vaka dashboard: a night-blue panel says one site is down, with the numbers that matter; below, what needs attention (an outage with advice and snooze buttons, a failing check, public files, an expiring certificate and domain), then every site with 30 days of uptime bars, response time, uptime and a security header grade" src="docs/screenshots/dashboard-light.png">
 </picture>
 
-> **Status:** Vaka watches Webready's own and our customers' sites in production. 0.1.0 is the first release: a zip with only the files that run.
+> **Early days.** Vaka watches Webready's own and our customers' sites in production, but it is still 0.x: an upgrade may need a step of yours, and the [changelog](CHANGELOG.md) says which. Try it, and tell us what you think in the [issues](https://github.com/webready-se/vaka/issues).
 
 ## Get started
 
@@ -53,7 +53,7 @@ Run Vaka on a different server than the sites it watches: if that server goes do
 
 - **Snooze, and nothing is forgotten.** Already on it? Snooze the incident for an hour, four hours or a day. A site that stays down is brought up again every four hours, and if it is still down when a snooze ends, you hear about it again.
 - **Rules per group.** Each group has its own Slack channel and alert policy: right away, after a few minutes down, a daily summary, or dashboard only. Maintenance windows (one-off or every night) keep planned work quiet while the checks keep recording.
-- **Watches for things getting worse.** Exposed `.env` files, Git folders and database dumps, security headers that disappear, and mail records that change. Checked every day, with an alert when something changes, not a one-off scan.
+- **Watches for things getting worse.** Exposed `.env` files, Git folders and database dumps, security headers that disappear, a CSP that starts blocking parts of the page, and mail records that change. Checked at least once a day, with an alert when something changes, not a one-off scan.
 - **Plain language.** The dashboard leads with what is wrong right now and what to do about it. Every number is explained; the detail is one click away.
 
 ## Everything it checks
@@ -62,10 +62,10 @@ Run Vaka on a different server than the sites it watches: if that server goes do
 - **SSL certificates**, the way a browser sees them: a warning at 14, 7 and 1 days before they expire, and when they turn invalid.
 - **Domain expiry** through RDAP, the registries' own structured data, and WHOIS for .se and .nu.
 - **Exposed files** like `.env`, `.git/`, database dumps and backup zips, matched on their content, so a site that answers 200 for everything does not cry wolf.
-- **Security headers** graded A to F, with what each one does and the line to add, and `nosniff` checked on the scripts and styles too, where a cache rule often drops it.
+- **Security headers** graded A to F, with what each one does and the line to add for your web server. `nosniff` is checked on the scripts and styles too, where a cache rule often drops it, and the page is compared with its own CSP: what it blocks, or would block.
 - **Mail DNS:** MX, SPF and DMARC, with the record to add when one is missing, and an alert when they change.
 
-Everything is also in a [read API](docs/api.md), as JSON or CSV, with a read-only token per site or group: for your own reports, for a customer, or for the AI assistant in a site's own project.
+Everything is also in a [read API](docs/api.md), as JSON, CSV or a Markdown report, with a read-only token per site or group: for your own reports, for a customer, or for the AI assistant in a site's own project.
 
 Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other CDNs are recognised and alerted on their own, since they share the CDN's addresses with unrelated sites.
 
@@ -89,7 +89,7 @@ Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other C
 ## Why self-host it
 
 - **Copy the files, add a cron line.** PHP 8.3+ and SQLite. No framework, no Composer packages at runtime, no build step, no CDN. It runs on Laravel Forge and on shared hosting.
-- **Stays maintainable.** Nothing to upgrade except PHP itself.
+- **Stays maintainable.** No packages to keep up to date, only PHP itself.
 - **Strict by default.** A strict Content Security Policy, CSRF tokens, login lockout and access per group. Vaka's own headers get an A in its own check.
 - **Stores little.** No personal data; response times are kept for 30 days (`SAMPLES_RETENTION_DAYS`).
 - **Watched itself.** Every run pings a heartbeat URL of your choice, such as Healthchecks.io's free tier, so you hear about it when Vaka stops. `/?health` answers 503 when the runs have stopped, and the dashboard says so too.
@@ -118,7 +118,7 @@ Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other C
 - [Configuration](docs/configuration.md): every `.env` setting and every CLI command
 - [Checks](docs/checks.md): what each check looks at and when it runs
 - [Alerts](docs/alerts.md): when alerts go out, where they go, policies, maintenance, snooze, and the JSON webhook's fields
-- [Read API](docs/api.md): JSON and CSV with a read token, also for [your AI assistant](docs/api.md#use-it-from-an-ai-assistant)
+- [Read API](docs/api.md): JSON, CSV and Markdown with a read token, also for [your AI assistant](docs/api.md#use-it-from-an-ai-assistant)
 - [Changelog](CHANGELOG.md) and [roadmap](ROADMAP.md)
 
 ## License
