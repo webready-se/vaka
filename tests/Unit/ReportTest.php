@@ -57,6 +57,14 @@ test('one site: the guide comes first, and a site with nothing wrong says so', f
         ->and($md)->toContain('**Certificate**: `Valid until 19 Dec 2026 (52 days), issued by Let\'s Encrypt`');
 });
 
+test('a header sent twice is worth improving although it is in place, with where to look', function () {
+    $item = ['key' => 'frames', 'label' => 'frame protection', 'level' => 'good', 'twice' => true, 'note' => 'sent twice: "DENY" from the application and "SAMEORIGIN" from the web server', 'what' => 'Stops other sites from showing this one in a frame', 'fix' => '', 'tip' => '**Search the web server\'s configuration for X-Frame-Options and remove that line.**'];
+    $md = read_api_markdown_site(report_about(), report_detail(['headers' => ['status' => 'ok', 'grade' => 'A', 'summary' => 'Grade A: all 6 in place', 'items' => [$item], 'tip' => '']]), REPORT_CONFIG);
+
+    expect($md)->toContain('**Security headers: grade A**')
+        ->and($md)->toContain('- **frame protection** is in place: `sent twice: "DENY" from the application and "SAMEORIGIN" from the web server`. What it does: stops other sites from showing this one in a frame. **Search the web server\'s configuration for X-Frame-Options and remove that line.**');
+});
+
 test('one site: each check says when it ran and runs next, and the guide says how to look again after a fix', function () {
     $md = read_api_markdown_site(report_about(), report_detail([
         'ssl' => ['status' => 'ok', 'summary' => 'Valid until 19 Dec 2026 (52 days)', 'days_left' => 52, 'valid_to' => '2026-12-19T23:00:00Z', 'renewed_by' => null, 'advice' => '', 'checked_at' => '2026-10-28T10:05:00Z', 'next_at' => '2026-10-28T16:05:00Z'],
