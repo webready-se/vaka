@@ -5,7 +5,7 @@
  * effects, so the CLI, the web front controller and the tests can all require it.
  */
 
-const VAKA_VERSION = '0.2.0';
+const VAKA_VERSION = '0.3.0';
 
 require_once __DIR__ . '/config.php';
 require_once __DIR__ . '/db.php';
