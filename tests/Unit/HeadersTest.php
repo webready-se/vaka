@@ -741,16 +741,123 @@ test('the site\'s icons count as images, and a data: address is allowed only by 
     expect($result['summary'])->toBe('Grade A: all 6 in place, the CSP blocks the icon as data: on the page');
 });
 
-test('a protection sent twice with different values is weak and says who adds it', function () {
-    $both = evaluate_headers(answered(['X-Frame-Options' => ['DENY', 'SAMEORIGIN']] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0])), 10);
-    expect($both['details']['headers']['frames'])->toBe(['level' => 'weak', 'note' => 'sent twice, "DENY" and "SAMEORIGIN": the application and the web server both add it, so browsers may take either; keep one'])
-        ->and($both['summary'])->toContain('frame protection is weak')
-        ->and(array_column(header_items($both['details']), null, 'key')['frames']['value'])->toBe('DENY, SAMEORIGIN');
-    // The same value twice is fine; a CSP twice is no duplicate, since both apply
-    expect(header_level('frames', ['x-frame-options' => ['DENY', 'deny']], true)['level'])->toBe('good')
-        ->and(header_level('hsts', ['strict-transport-security' => ['max-age=300', 'max-age=31536000']], true))->toMatchArray(['level' => 'weak'])
+test('frame protection sent twice stays in place: browsers then allow no frames, so neither the grade nor an alert moves', function () {
+    $noCsp = array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]);
+    $both = evaluate_headers(answered(['X-Frame-Options' => ['DENY', 'SAMEORIGIN']] + $noCsp), 10);
+    expect($both['details']['headers']['frames'])->toBe(['level' => 'good', 'note' => 'sent twice, "DENY" and "SAMEORIGIN". Browsers then allow no frames at all, so nothing is exposed, but one line is left over'])
+        ->and($both['summary'])->toBe('Grade B: 5 of 6 in place, missing CSP');
+
+    // Said with where to look, and no line to add: the line is what is left over
+    $item = array_column(header_items($both['details']), null, 'key')['frames'];
+    expect($item)->toMatchArray(['level' => 'good', 'twice' => true, 'fix' => '', 'fix_label' => '', 'value' => 'DENY, SAMEORIGIN'])
+        ->and($item['tip'])->toBe("**Search for X-Frame-Options in the web server's configuration and in the application's code, and keep one.** Vaka cannot tell from outside which adds which here. On Laravel Forge, the web server's configuration is in the site's … menu: Edit Nginx configuration, General site configuration.");
+
+    // A site that starts sending it twice has not changed level: nothing to confirm, nothing to tell
+    $before = confirm_headers(null, evaluate_headers(answered(['X-Frame-Options' => 'DENY'] + $noCsp), 10))['details'];
+    $after = confirm_headers($before, $both);
+    expect($after['change'])->toBeNull()
+        ->and($after['wait'])->toBe(HEADERS_INTERVAL_SECONDS);
+    expect(headers_notice(['status' => 'ok', 'details' => $after['details'], 'alerted_snapshot' => json_encode($before['confirmed'])], ['policy' => 'immediate'])['action'])->toBe('none');
+
+    // Only one header in place: the plain case has no twice at all
+    expect(array_column(header_items(evaluate_headers(answered(['X-Frame-Options' => 'DENY'] + $noCsp), 10)['details']), null, 'key')['frames'])->not->toHaveKey('twice');
+});
+
+test('with frame-ancestors in force browsers ignore X-Frame-Options, however often it is sent', function () {
+    $both = evaluate_headers(answered(['X-Frame-Options' => ['DENY', 'SAMEORIGIN']] + STRONG_HEADERS), 10);
+    expect($both['details']['headers']['frames'])->toBe(['level' => 'good', 'note' => 'sent twice, "DENY" and "SAMEORIGIN". Browsers follow the CSP\'s frame-ancestors and ignore both, so nothing is exposed, but one line is left over'])
+        ->and($both['details']['grade'])->toBe('A');
+
+    // A frame-ancestors that lets anyone in is the problem then, not the two values
+    $any = evaluate_headers(answered(['X-Frame-Options' => ['DENY', 'SAMEORIGIN'], 'Content-Security-Policy' => "default-src 'self'; frame-ancestors *"] + STRONG_HEADERS), 10);
+    expect($any['details']['headers']['frames'])->toBe(['level' => 'weak', 'note' => 'frame-ancestors lets any site frame it'])
+        ->and(array_column(header_items($any['details']), null, 'key')['frames'])->not->toHaveKey('twice');
+
+    // Report-Only is not in force: its frame-ancestors changes nothing
+    expect(header_level('frames', ['x-frame-options' => ['DENY', 'SAMEORIGIN'], 'content-security-policy-report-only' => ["frame-ancestors 'self'"]], true)['note'])->toContain('allow no frames at all');
+});
+
+test('X-Frame-Options sent twice reads as the HTML standard does', function () {
+    // One value browsers know is enough for them to block every frame
+    expect(header_level('frames', ['x-frame-options' => ['DENY', 'ALLOW-FROM https://a.example']], true)['level'])->toBe('good')
+        ->and(header_level('frames', ['x-frame-options' => ['SAMEORIGIN', 'nonsense']], true)['level'])->toBe('good')
+        // None they know is treated as no header at all
+        ->and(header_level('frames', ['x-frame-options' => ['nonsense', 'ALLOW-FROM https://a.example']], true)['level'])->toBe('missing')
+        // The same value twice is no conflict
+        ->and(header_level('frames', ['x-frame-options' => ['DENY', 'deny']], true))->toBe(['level' => 'good', 'note' => '']);
+});
+
+test('any other protection sent twice stays weak, with where to look instead of a line to add', function () {
+    $both = evaluate_headers(answered(['Referrer-Policy' => ['same-origin', 'no-referrer']] + STRONG_HEADERS), 10);
+    expect($both['details']['headers']['referrer'])->toBe(['level' => 'weak', 'note' => 'sent twice, "same-origin" and "no-referrer", so browsers may take either; keep one'])
+        ->and($both['summary'])->toContain('Referrer-Policy is weak');
+    $item = array_column(header_items($both['details']), null, 'key')['referrer'];
+    expect($item)->toMatchArray(['twice' => true, 'fix' => '', 'fix_label' => '', 'value' => 'same-origin, no-referrer'])
+        ->and($item['tip'])->toStartWith("**Search for Referrer-Policy in the web server's configuration and in the application's code, and keep one.**");
+
+    // The same value twice is fine; a CSP twice is no duplicate, since both apply; HSTS only counts over https
+    expect(header_level('hsts', ['strict-transport-security' => ['max-age=300', 'max-age=31536000']], true))->toMatchArray(['level' => 'weak'])
+        ->and(header_level('hsts', ['strict-transport-security' => ['max-age=300', 'max-age=31536000']], false)['note'])->toBe('the site does not use https')
         ->and(header_level('nosniff', ['x-content-type-options' => ['nosniff', 'nosniff']], true)['level'])->toBe('good')
         ->and(header_level('csp', ['content-security-policy' => ["default-src 'self'", "script-src 'self'"]], true)['level'])->toBe('good');
+});
+
+test('the files the web server serves itself tell who sends which value of a header sent twice', function () {
+    $noCsp = array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]);
+    $files = fn (array $sent) => ['checked' => array_keys($sent), 'missing' => [], 'sent' => ['x-frame-options' => $sent]];
+    $frames = fn (array $page, ?array $with) => array_column(header_items(evaluate_headers(answered($page + ['X-Frame-Options' => ['DENY', 'SAMEORIGIN']] + $noCsp), 10, $with)['details']), null, 'key')['frames'];
+
+    $item = $frames(['Server' => 'nginx'], $files(['/app.css' => ['SAMEORIGIN'], '/app.js' => ['sameorigin']]));
+    expect($item['note'])->toBe('sent twice: "DENY" from the application and "SAMEORIGIN" from the web server. Browsers then allow no frames at all, so nothing is exposed, but one line is left over. Vaka can tell because the files the web server serves itself, such as /app.css, have only "SAMEORIGIN"')
+        ->and($item['tip'])->toBe("**Search the web server's configuration for X-Frame-Options and remove that line.** On Laravel Forge, the web server's configuration is in the site's … menu: Edit Nginx configuration, General site configuration.");
+
+    // Behind a CDN its headers are on the files too; Forge says nothing where the server is known to be Apache
+    $cdn = $frames(['Server' => 'cloudflare'], $files(['/app.css' => ['SAMEORIGIN']]));
+    expect($cdn['note'])->toBe('sent twice: "DENY" from the application and "SAMEORIGIN" from the web server or the CDN. Browsers then allow no frames at all, so nothing is exposed, but one line is left over. Vaka can tell because the files served without the application, such as /app.css, have only "SAMEORIGIN"')
+        ->and($cdn['tip'])->toStartWith("**Search the web server's configuration and the CDN's settings for X-Frame-Options and remove that line.**");
+    expect($frames(['Server' => 'Apache'], $files(['/app.css' => ['SAMEORIGIN']]))['tip'])->toBe("**Search the web server's configuration for X-Frame-Options and remove that line.**");
+
+    // The other way around works the same: the web server's is whichever the files have
+    expect($frames([], $files(['/app.css' => ['DENY']]))['note'])->toStartWith('sent twice: "SAMEORIGIN" from the application and "DENY" from the web server.');
+
+    // The tip is Vaka's own words: what comes from the site stays in the note, which the read API marks as untrusted
+    expect($item['tip'])->not->toContain('SAMEORIGIN')->not->toContain('/app.css');
+
+    // Files are read for this, not kept
+    $told = evaluate_headers(answered(['X-Content-Type-Options' => 'nosniff', 'X-Frame-Options' => ['DENY', 'SAMEORIGIN']] + $noCsp), 10, $files(['/app.css' => ['SAMEORIGIN']]));
+    expect($told['details']['files'])->toBe(['checked' => ['/app.css'], 'missing' => []]);
+
+    // Any other protection says the same, in its own effect
+    $referrer = evaluate_headers(answered(['Referrer-Policy' => ['same-origin', 'no-referrer']] + STRONG_HEADERS), 10, ['checked' => ['/app.css'], 'missing' => [], 'sent' => ['referrer-policy' => ['/app.css' => ['no-referrer']]]]);
+    expect($referrer['details']['headers']['referrer']['note'])->toBe('sent twice: "same-origin" from the application and "no-referrer" from the web server, so browsers may take either; keep one. Vaka can tell because the files the web server serves itself, such as /app.css, have only "no-referrer"');
+});
+
+test('a header sent twice says it cannot tell who sends which when the files do not answer that', function (?array $sent) {
+    $noCsp = array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]);
+    $with = $sent === null ? null : ['checked' => array_keys($sent), 'missing' => [], 'sent' => ['x-frame-options' => $sent]];
+    $item = array_column(header_items(evaluate_headers(answered(['X-Frame-Options' => ['DENY', 'SAMEORIGIN']] + $noCsp), 10, $with)['details']), null, 'key')['frames'];
+    expect($item['note'])->toStartWith('sent twice, "DENY" and "SAMEORIGIN".')
+        ->and($item['tip'])->toContain('Vaka cannot tell from outside');
+})->with([
+    'no file to compare with' => [null],
+    'a file with neither, as under a rule of its own' => [['/app.css' => []]],
+    'a file with both, as when an application serves its own files' => [['/app.css' => ['DENY', 'SAMEORIGIN']]],
+    'files that disagree' => [['/app.css' => ['SAMEORIGIN'], '/app.js' => ['DENY']]],
+    'a value the page does not have' => [['/app.css' => ['nonsense']]],
+]);
+
+test('files_nosniff keeps what files on the page\'s own host send of the headers asked for', function () {
+    expect(files_nosniff([
+        'https://shop.example/app.css' => answered(['Content-Type' => 'text/css', 'X-Frame-Options' => 'SAMEORIGIN'], 'https://shop.example/app.css'),
+        // Another host may be another server, so it says nothing about the page's
+        'https://static.shop.example/app.js' => answered(['Content-Type' => 'text/javascript', 'X-Frame-Options' => 'DENY'], 'https://static.shop.example/app.js'),
+        // Not a file: the application's own fallback page
+        'https://shop.example/gone.js' => answered(['Content-Type' => 'text/html', 'X-Frame-Options' => 'DENY'], 'https://shop.example/gone.js'),
+    ], 'https://shop.example/', ['x-frame-options']))->toBe([
+        'checked' => ['/app.css', 'static.shop.example/app.js'],
+        'missing' => ['/app.css', 'static.shop.example/app.js'],
+        'sent' => ['x-frame-options' => ['/app.css' => ['SAMEORIGIN']]],
+    ]);
 });
 
 test('a CSP in force sent next to a Report-Only one says the Report-Only adds nothing', function () {

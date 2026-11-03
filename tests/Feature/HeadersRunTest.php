@@ -138,6 +138,16 @@ test('the scripts and styles a page loads are checked for nosniff too', function
         ->and(json_decode(($this->state)($cached)['details'], true)['files'])->toBe(['checked' => ['/cached/site.css', '/cached/app.js'], 'missing' => ['/cached/site.css', '/cached/app.js']]);
 });
 
+test('a header sent twice is traced by the files the page loads, also on a page without nosniff', function () {
+    $id = add_site($this->db, ['url' => 'http://127.0.0.1:8794/sent-twice']);
+    ($this->headers)($this->now);
+
+    $details = json_decode(($this->state)($id)['details'], true);
+    expect($details['headers']['frames'])->toBe(['level' => 'good', 'note' => 'sent twice: "DENY" from the application and "SAMEORIGIN" from the web server. Browsers then allow no frames at all, so nothing is exposed, but one line is left over. Vaka can tell because the files the web server serves itself, such as /served/site.css, have only "SAMEORIGIN"'])
+        ->and($details)->not->toHaveKey('files')
+        ->and(array_column(header_items($details), null, 'key')['frames']['tip'])->toStartWith("**Search the web server's configuration for X-Frame-Options and remove that line.**");
+});
+
 test('nosniff leaving the scripts and styles alerts once, after a second look', function () {
     $id = add_site($this->db, ['url' => 'http://127.0.0.1:8794/with-files']);
     ($this->headers)($this->now);

@@ -36,6 +36,12 @@ const CSP_REPORT_ONLY_NOTE = 'only as Report-Only, which blocks nothing';
 /** What to do about a CSP that blocks parts of the page; the alert adds where they are named. */
 const CSP_BLOCKS_TIP = "Visitors do not get them: a blocked script stops working, a blocked style makes the page look broken. Allow what the page needs (a host goes in script-src, style-src, img-src or frame-src; an inline script needs a 'sha256-...' hash there or a file of its own; inline styles need 'unsafe-inline' in style-src, or classes instead), or take them off the page.";
 
+/** The headers where a second, different value is a conflict. Not a CSP: several all apply. */
+const HEADERS_SENT_ONCE = ['hsts' => 'strict-transport-security', 'nosniff' => 'x-content-type-options', 'frames' => 'x-frame-options', 'referrer' => 'referrer-policy', 'permissions' => 'permissions-policy'];
+
+/** Forge's default nginx adds X-Frame-Options on top of an application's, and keeps the line in a file sites-available only includes. */
+const FORGE_NGINX_TIP = "On Laravel Forge, the web server's configuration is in the site's … menu: Edit Nginx configuration, General site configuration.";
+
 /** How strong each level is, to tell worse from better. */
 const HEADER_LEVELS = ['missing' => 0, 'weak' => 1, 'good' => 2];
 
@@ -62,24 +68,105 @@ function csp_directives(string $policy): array
 }
 
 /**
+ * The values a protection's header is sent with when they differ, each once
+ * and as sent; empty when that is no conflict. HSTS counts only over https,
+ * where browsers read it. X-Frame-Options as the HTML standard reads it:
+ * values browsers do not know are no header at all, and a frame-ancestors
+ * that lets anyone in is the matter whatever the header says.
+ *
+ * @return list<string>
+ */
+function sent_twice(string $key, array $headers, bool $https): array
+{
+    if (!isset(HEADERS_SENT_ONCE[$key]) || ($key === 'hsts' && !$https)) return [];
+    $values = [];
+    foreach ($headers[HEADERS_SENT_ONCE[$key]] ?? [] as $value) $values[strtolower(trim((string) $value))] ??= trim((string) $value);
+    if (count($values) < 2) return [];
+    if ($key === 'frames') {
+        if (!array_intersect(array_keys($values), ['deny', 'sameorigin', 'allowall'])) return [];
+        foreach ($headers['content-security-policy'] ?? [] as $policy) {
+            if (in_array('*', csp_directives($policy)['frame-ancestors'] ?? [], true)) return [];
+        }
+    }
+    return array_values($values);
+}
+
+/**
+ * Who sends which value of a header sent twice, when the site's files tell.
+ * A file the web server serves itself never goes through the application,
+ * so what the files have is the web server's, and what only the page has is
+ * the application's. Empty when they cannot tell: no file, files that
+ * disagree, none of the values on them, or all of them, as when an
+ * application serves its own files.
+ *
+ * @param list<string> $values what the page sends
+ * @param array<string, list<string>> $files path => what that file sends
+ * @return array{application: list<string>, server: list<string>, file: string}|array{}
+ */
+function twice_origin(array $values, array $files): array
+{
+    $lower = function (array $list) {
+        $list = array_unique(array_map(fn ($value) => strtolower(trim((string) $value)), $list));
+        sort($list);
+        return $list;
+    };
+    $sets = array_map($lower, $files);
+    if (!$sets || count(array_unique($sets, SORT_REGULAR)) > 1) return [];
+    $onFiles = reset($sets);
+    $onPage = $lower($values);
+    if (!$onFiles || array_diff($onFiles, $onPage) || !array_diff($onPage, $onFiles)) return [];
+    $from = fn (bool $server) => array_values(array_filter($values, fn ($value) => in_array(strtolower(trim($value)), $onFiles, true) === $server));
+    return ['application' => $from(false), 'server' => $from(true), 'file' => (string) array_key_first($files)];
+}
+
+/**
+ * What is said about a header sent twice: who sends which when the files
+ * tell, what browsers make of it, and how Vaka can tell. Frame protection is
+ * safe either way: conflicting values allow no frames at all, and
+ * frame-ancestors overrules them (the HTML standard). Holds text from the
+ * site, so it belongs in the note, not the tip.
+ */
+function twice_note(string $key, array $values, array $origin, array $headers): string
+{
+    $words = fn (array $list) => list_words(array_map(fn ($value) => "\"{$value}\"", $list));
+    $cdn = detect_cdn($headers) !== '';
+    $ancestors = array_filter($headers['content-security-policy'] ?? [], fn ($policy) => isset(csp_directives($policy)['frame-ancestors']));
+    $who = $origin
+        ? "sent twice: {$words($origin['application'])} from the application and {$words($origin['server'])} from " . ($cdn ? 'the web server or the CDN' : 'the web server')
+        : 'sent twice, ' . $words($values);
+    $effect = match (true) {
+        $key !== 'frames' => ', so browsers may take either; keep one',
+        (bool) $ancestors => ". Browsers follow the CSP's frame-ancestors and ignore both, so nothing is exposed, but one line is left over",
+        default => '. Browsers then allow no frames at all, so nothing is exposed, but one line is left over',
+    };
+    $how = $origin ? '. Vaka can tell because the files ' . ($cdn ? 'served without the application' : 'the web server serves itself') . ", such as {$origin['file']}, have only {$words($origin['server'])}" : '';
+    return $who . $effect . $how;
+}
+
+/** What to do about a header sent twice, in Vaka's own words: where to look for $name, since a response does not say who added it. */
+function twice_tip(string $name, array $twice, string $server): string
+{
+    $forge = $server === 'apache' ? '' : ' ' . FORGE_NGINX_TIP;
+    if (!$twice['known']) return "**Search for {$name} in the web server's configuration and in the application's code, and keep one.** Vaka cannot tell from outside which adds which here.{$forge}";
+    $where = $twice['cdn'] ? "the web server's configuration and the CDN's settings" : "the web server's configuration";
+    return "**Search {$where} for {$name} and remove that line.**{$forge}";
+}
+
+/**
  * How well one protection is in place, from a response's headers (lowercase
  * name => list of values): good, weak or missing, and why in a few words.
+ * $origin is who sends which when the header is sent twice (twice_origin()).
  *
  * @return array{level: string, note: string}
  */
-function header_level(string $key, array $headers, bool $https): array
+function header_level(string $key, array $headers, bool $https, array $origin = []): array
 {
     $result = fn (string $level, string $note = '') => ['level' => $level, 'note' => $note];
     $first = fn (string $name) => isset($headers[$name]) ? trim((string) $headers[$name][0]) : null;
     $policies = array_map('csp_directives', $headers['content-security-policy'] ?? []);
-    // Sent twice with different values: the application and the web server both add it (Forge's nginx adds
-    // X-Frame-Options SAMEORIGIN on top of the app's), and browsers may take either. Not a CSP: those all apply
-    $names = ['hsts' => 'strict-transport-security', 'nosniff' => 'x-content-type-options', 'frames' => 'x-frame-options', 'referrer' => 'referrer-policy', 'permissions' => 'permissions-policy'];
-    if (isset($names[$key]) && !($key === 'hsts' && !$https)) {
-        $values = [];
-        foreach ($headers[$names[$key]] ?? [] as $value) $values[strtolower(trim((string) $value))] ??= trim((string) $value);
-        if (count($values) > 1) return $result('weak', 'sent twice, ' . list_words(array_map(fn ($value) => "\"{$value}\"", array_values($values))) . ': the application and the web server both add it, so browsers may take either; keep one');
-    }
+    // Different values, usually the application's and the web server's. Frame protection stays in place: browsers then allow no frames
+    $twice = sent_twice($key, $headers, $https);
+    if ($twice) return $result($key === 'frames' ? 'good' : 'weak', twice_note($key, $twice, $origin, $headers));
 
     switch ($key) {
         case 'hsts':
@@ -653,12 +740,14 @@ function own_host(string $url, string $pageUrl): bool
  * counts: a missing file can end up at the site's own error or fallback
  * page, with the app's headers. A file is named by its path, with its host
  * when that is not the page's ($pageUrl). Null when no file could tell.
+ * `sent` is what files on the page's own host send of the headers $names,
+ * which the page sends twice (a file on another host may be another server).
  *
- * @return ?array{checked: list<string>, missing: list<string>}
+ * @return ?array{checked: list<string>, missing: list<string>, sent?: array<string, array<string, list<string>>>}
  */
-function files_nosniff(array $responses, string $pageUrl = ''): ?array
+function files_nosniff(array $responses, string $pageUrl = '', array $names = []): ?array
 {
-    $checked = $missing = [];
+    $checked = $missing = $sent = [];
     foreach ($responses as $url => $response) {
         if ($response['errno'] || $response['status'] !== 200 || url_host($response['url']) !== url_host($url)) continue;
         $type = strtolower(trim(explode(';', $response['headers']['content-type'][0] ?? '')[0]));
@@ -667,23 +756,30 @@ function files_nosniff(array $responses, string $pageUrl = ''): ?array
         $path = (string) preg_replace('/^(.{119}).+$/us', '$1…', $name);
         $checked[] = $path;
         if (header_level('nosniff', $response['headers'], false)['level'] !== 'good') $missing[] = $path;
+        if (url_host($url) === url_host($pageUrl)) foreach ($names as $name) $sent[$name][$path] = $response['headers'][$name] ?? [];
     }
-    return $checked ? ['checked' => $checked, 'missing' => $missing] : null;
+    return $checked ? ['checked' => $checked, 'missing' => $missing] + ($sent ? ['sent' => $sent] : []) : null;
 }
 
 /**
  * Fetch the files that pages load (see page_files()) and tell, per page,
- * whether they say nosniff too (see files_nosniff()). A page without nosniff
- * of its own is left out: its files add nothing to what it already shows.
+ * whether they say nosniff too (see files_nosniff()), and what they send of
+ * a header the page sends twice. A page with neither nosniff of its own nor
+ * such a header is left out: its files add nothing to what it already shows.
  *
  * @param array<array-key, array> $pages fetch_many() responses
  * @return array<array-key, ?array> by the pages' keys
  */
 function fetch_files_nosniff(array $pages, array $config): array
 {
-    $urls = [];
+    $urls = $twice = [];
     foreach ($pages as $key => $page) {
-        if ($page['errno'] || $page['status'] >= 400 || header_level('nosniff', $page['headers'], false)['level'] !== 'good') continue;
+        if ($page['errno'] || $page['status'] >= 400) continue;
+        $twice[$key] = [];
+        foreach (HEADERS_SENT_ONCE as $protection => $name) {
+            if (sent_twice($protection, $page['headers'], str_starts_with($page['url'], 'https://'))) $twice[$key][] = $name;
+        }
+        if (!$twice[$key] && header_level('nosniff', $page['headers'], false)['level'] !== 'good') continue;
         foreach (page_files($page['body'], $page['url']) as $i => $url) $urls["{$key}\n{$i}"] = $url;
     }
     if (!$urls) return [];
@@ -693,7 +789,7 @@ function fetch_files_nosniff(array $pages, array $config): array
     $byPage = [];
     foreach ($urls as $id => $url) $byPage[explode("\n", (string) $id, 2)[0]][$url] = $responses[$id];
     $results = [];
-    foreach ($byPage as $key => $files) $results[$key] = files_nosniff($files, $pages[$key]['url']);
+    foreach ($byPage as $key => $files) $results[$key] = files_nosniff($files, $pages[$key]['url'], $twice[$key]);
     return $results;
 }
 
@@ -701,8 +797,8 @@ function fetch_files_nosniff(array $pages, array $config): array
  * A site's security headers graded, in plain words: ok (A or B), warn
  * (C to F) or unknown (no answer, or an error page, which says nothing
  * about the site's own headers). $files is what files_nosniff() found for
- * the scripts and styles the page loads; it counts only when the page
- * itself has nosniff.
+ * the scripts and styles the page loads; for nosniff it counts only when the
+ * page itself has it, and it tells who sends a header sent twice.
  *
  * @return array{status: string, summary: string, details: array}
  */
@@ -719,16 +815,22 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     }
 
     $https = str_starts_with($response['url'], 'https://');
-    $headers = [];
-    foreach (array_keys(SECURITY_HEADERS) as $key) $headers[$key] = header_level($key, $response['headers'], $https);
+    $headers = $twice = [];
+    foreach (array_keys(SECURITY_HEADERS) as $key) {
+        $values = sent_twice($key, $response['headers'], $https);
+        $origin = $values ? twice_origin($values, $files['sent'][HEADERS_SENT_ONCE[$key]] ?? []) : [];
+        $headers[$key] = header_level($key, $response['headers'], $https, $origin);
+        if ($values) $twice[$key] = ['known' => $origin !== [], 'cdn' => detect_cdn($response['headers']) !== ''];
+    }
     $details = ['headers' => $headers];
+    if ($twice) $details['twice'] = $twice;
     // What the site sends, for the detail to show
     $details['sent'] = sent_headers($response['headers']);
     // The policy tried as Report-Only, as sent: the line to add is that policy under the name that enforces it
     if (isset($response['headers']['content-security-policy-report-only'])) $details['csp_report_only'] = mb_substr(trim((string) $response['headers']['content-security-policy-report-only'][0]), 0, 1000);
     // For the lines the dashboard offers to paste in, never the grade
     if (($server = web_server($response['headers'])) !== '') $details['server'] = $server;
-    if ($files !== null && $headers['nosniff']['level'] === 'good') $details['files'] = $files;
+    if ($files !== null && $headers['nosniff']['level'] === 'good') $details['files'] = array_diff_key($files, ['sent' => 0]);
     // The page's scripts against the CSP, never for the grade: what an enforced one blocks (its own part of the
     // levels, so it is confirmed and alerted like a change), what a Report-Only one would, or what a first one would
     $scripts = page_scripts($response['body'] ?? '', $response['url']);
@@ -932,6 +1034,8 @@ function header_items(array $details): array
                 : ['note' => 'also on the scripts and styles the page loads'] + $item;
         }
         if ($key === 'csp') $item = csp_item($item, $details);
+        // Sent twice: where to look, with no line to add, since a line is what is left over
+        if (isset($details['twice'][$key])) $item = ['twice' => true, 'fix' => '', 'tip' => twice_tip((string) strstr(SECURITY_HEADERS[$key]['fix'], ':', true), $details['twice'][$key], $details['server'] ?? '')] + $item;
         $item['value'] = $details['sent'][$key] ?? '';
         $item['fix_label'] = fix_label($item);
         $items[] = $item;

@@ -125,10 +125,10 @@ function md_improvements(array $site, array $config, int $now): array
 {
     $items = [];
     $headers = $site['headers'];
-    $weak = array_values(array_filter($headers['items'] ?? [], fn (array $item) => $item['level'] !== 'good' || ($item['blocks'] ?? false)));
+    $weak = array_values(array_filter($headers['items'] ?? [], fn (array $item) => $item['level'] !== 'good' || ($item['blocks'] ?? false) || ($item['twice'] ?? false)));
     if ($weak) {
         $items[] = ['title' => "Security headers: grade {$headers['grade']}", 'text' => rtrim($headers['summary'] . '. ' . md_checked($headers, $config, $now, false), '. ') . '.'
-            . (($headers['tip'] ?? '') !== '' ? ' ' . md_own($headers['tip']) : ''), 'lines' => array_map(fn (array $item) => "- **{$item['label']}** " . (($item['blocks'] ?? false) ? 'is in place but blocks scripts on the page' : "is {$item['level']}")
+            . (($headers['tip'] ?? '') !== '' ? ' ' . md_own($headers['tip']) : ''), 'lines' => array_map(fn (array $item) => "- **{$item['label']}** " . (($item['blocks'] ?? false) ? 'is in place but blocks scripts on the page' : ($item['level'] === 'good' ? 'is in place' : "is {$item['level']}"))
             . ($item['note'] !== '' ? ': ' . md_code($item['note']) : '') . '. What it does: ' . lcfirst($item['what']) . ($item['fix'] !== '' ? '. Add ' . md_code($item['fix']) . '.' : '.')
             . ($item['tip'] !== '' ? ' ' . md_own($item['tip']) : '')
             // The inline scripts a CSP would block, by their start: text from the site

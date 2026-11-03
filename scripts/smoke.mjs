@@ -409,6 +409,30 @@ async function main() {
       q('dialog.drawer [data-action="close"]').click();
     }
 
+    // Frame protection sent twice stays in place: it says who sends which and where to look, with no line to add
+    all('.site-row').find((r) => /booking\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'booking.example', 'the booking site\'s detail to open')) {
+      const done = q('dialog.drawer .headers-done');
+      expect(/frame protection \(sent twice\)/.test(done?.querySelector('summary')?.textContent || ''), `what is in place says a header is sent twice (got "${done?.querySelector('summary')?.textContent}")`);
+      const row = [...(done?.querySelectorAll('.header-values li') || [])].find((li) => /^Frame protection/.test(li.textContent));
+      expect(row?.querySelector('code')?.textContent === 'DENY, SAMEORIGIN', 'it opens to both values');
+      expect(/^Sent twice: "DENY" from the application and "SAMEORIGIN" from the web server\. Browsers then allow no frames at all/.test(row?.querySelector('.header-why')?.textContent || ''), `it says who sends which (got "${row?.querySelector('.header-why')?.textContent}")`);
+      expect(/^Search the web server's configuration for X-Frame-Options and remove that line\./.test(row?.querySelector('.header-tip')?.textContent || '') && row?.querySelector('.header-tip strong'), 'and where to look, its takeaway in bold');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
+    // Any other header sent twice is weak: where to look is in sight, in place of a line to add
+    all('.site-row').find((r) => /deals1\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'deals1.example', 'the deals site\'s detail to open')) {
+      const twice = all('dialog.drawer .header-list > li').find((li) => /^Referrer-Policy/.test(li.querySelector('b')?.textContent || ''));
+      expect(twice?.querySelector('.header-why')?.textContent === 'Sent twice, "same-origin" and "no-referrer", so browsers may take either; keep one.', `a weak one sent twice says so (got "${twice?.querySelector('.header-why')?.textContent}")`);
+      expect(twice?.querySelector('.header-sent code')?.textContent === 'same-origin, no-referrer', 'with what the site sends');
+      expect(!twice?.querySelector('.header-fix') && !twice?.querySelector('.fix-label'), 'and no line to add');
+      expect(/^Search for Referrer-Policy in the web server's configuration and in the application's code, and keep one\./.test(twice?.querySelector(':scope > div > .header-tip')?.textContent || ''), 'where to look is in sight');
+      expect(twice?.querySelector('.header-more summary')?.textContent === 'What it does', 'what it does is one click away');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // A CSP in force that blocks a script on the page is something to do, said with the script
     all('.site-row').find((r) => /docs\.example/.test(r.textContent)).click();
     if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'docs.example', 'the docs site\'s detail to open')) {

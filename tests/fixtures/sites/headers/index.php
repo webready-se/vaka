@@ -6,7 +6,9 @@
  * /error answers 500. /with-files and /cached-files load a stylesheet and a
  * script from the site: the /assets/ files carry nosniff like the pages, the
  * /cached/ ones answer from a cache rule with a header of its own and lose
- * it, as an nginx location with its own add_header does.
+ * it, as an nginx location with its own add_header does. /sent-twice sends
+ * X-Frame-Options from both the application and the web server, and nothing
+ * else: its /served/ file has only the web server's, as a static file does.
  */
 
 $path = parse_url($_SERVER['REQUEST_URI'], PHP_URL_PATH);
@@ -22,6 +24,21 @@ if (str_starts_with($path, '/assets/') || str_starts_with($path, '/cached/')) {
     header('Cache-Control: public, max-age=31536000, immutable');
     header('Content-Type: ' . (str_ends_with($path, '.css') ? 'text/css' : 'text/javascript'));
     echo '/* a file */';
+    exit;
+}
+
+if (str_starts_with($path, '/served/')) {
+    header('X-Frame-Options: SAMEORIGIN');
+    header('Content-Type: text/css');
+    echo '/* a file */';
+    exit;
+}
+
+if ($path === '/sent-twice') {
+    header('X-Frame-Options: DENY');
+    header('X-Frame-Options: SAMEORIGIN', false);
+    header('Content-Type: text/html; charset=utf-8');
+    echo '<!doctype html><title>Shop</title><link rel="stylesheet" href="/served/site.css"><h1>Welcome to the shop</h1>';
     exit;
 }
 
