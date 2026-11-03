@@ -1953,7 +1953,7 @@
     return h('div', { class: 'headers-block' }, [
       h('p', { class: 'headers-summary' }, headers.summary),
       todo.length > 1 ? h('p', { class: 'headers-lead' }, 'Start at the top: the safest come first.') : null,
-      todo.length ? h('div', { class: 'segmented header-format', role: 'group', 'aria-label': 'Show the lines as' }, [
+      todo.some(function (item) { return item.fix; }) ? h('div', { class: 'segmented header-format', role: 'group', 'aria-label': 'Show the lines as' }, [
         h('span', {}, 'Lines for'),
         Object.keys(HEADER_FORMATS).map(function (key) {
           return h('button', { type: 'button', 'data-action': 'header-format', 'data-format': key, 'aria-pressed': key === format ? 'true' : 'false' }, HEADER_FORMATS[key]);
@@ -1978,10 +1978,12 @@
             item.level === 'weak' && item.value ? h('p', { class: 'header-sent' }, ['The site sends: ', h('code', {}, item.value)]) : null,
             item.fix ? h('p', { class: 'fix-label' }, item.fix_label || 'Add this line:') : null,
             item.fix ? pasteLine(headerLine(item.fix, format)) : null,
+            // Sent twice: no line to add, so where to look is what to do
+            item.twice ? h('p', { class: 'header-tip' }, rich(item.tip)) : null,
             h('details', { class: 'header-more' }, [
-              h('summary', {}, [icon('chevron'), item.blocks ? 'What it does, what it blocks, what to do' : named ? 'What it does, what it would block, how to add it' : 'What it does and how to add it']),
+              h('summary', {}, [icon('chevron'), item.twice ? 'What it does' : item.blocks ? 'What it does, what it blocks, what to do' : named ? 'What it does, what it would block, how to add it' : 'What it does and how to add it']),
               h('p', { class: 'header-what' }, item.what),
-              item.tip ? h('p', { class: 'header-tip' }, rich(item.tip)) : null,
+              item.tip && !item.twice ? h('p', { class: 'header-tip' }, rich(item.tip)) : null,
               item.inline ? scriptList(would ? 'The inline scripts ' + would + ' start:' : 'The inline scripts on the page start:', item.inline) : null,
               item.blocked ? scriptList('The scripts ' + would + ':', item.blocked) : null,
               item.blocked_assets ? scriptList('The styles, images and frames ' + would + ':', item.blocked_assets.map(function (asset) { return asset.kind + ' ' + asset.url; })) : null
@@ -1991,13 +1993,15 @@
       })) : null,
       // What is in place, one line, and what the site sends for each one click away
       done.length ? h('details', { class: 'headers-done' }, [
-        h('summary', {}, [icon('up'), h('span', {}, 'In place: ' + done.map(function (item) { return item.label; }).join(', ')), icon('chevron')]),
+        h('summary', {}, [icon('up'), h('span', {}, 'In place: ' + done.map(function (item) { return item.label + (item.twice ? ' (sent twice)' : ''); }).join(', ')), icon('chevron')]),
         h('ul', { class: 'header-values' }, done.map(function (item) {
-          return h('li', {}, [h('b', {}, capitalize(item.label)), item.value ? h('code', {}, item.value) : h('span', { class: 'header-sent' }, item.note ? capitalize(item.note) : 'In place')]);
+          return h('li', {}, [h('b', {}, capitalize(item.label)), item.value ? h('code', {}, item.value) : h('span', { class: 'header-sent' }, item.note ? capitalize(item.note) : 'In place'),
+            item.twice ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
+            item.twice ? h('p', { class: 'header-tip' }, rich(item.tip)) : null]);
         }))
       ]) : null,
       // Once under the list, while there is something to add, for the server the lines are for
-      tip && todo.length ? h('details', { class: 'headers-tip' }, [
+      tip && todo.some(function (item) { return item.fix; }) ? h('details', { class: 'headers-tip' }, [
         h('summary', {}, [icon('chevron'), 'Adding them in ' + where]),
         h('p', {}, rich(tip.replace(/^Adding them in (nginx|Apache)\? /, '')))
       ]) : null

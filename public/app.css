@@ -611,6 +611,9 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .header-values li { display: grid; gap: 3px; justify-items: start; }
 .header-values b { font-weight: 650; color: var(--text); }
 .header-values code, .header-sent code { overflow-wrap: anywhere; }
+/* A header sent twice is in place, and still says what is left over and where to look */
+.header-values .header-why { margin: 3px 0 0; color: var(--text-2); }
+.header-values .header-tip { margin: 0; color: var(--text-3); font-size: 13px; }
 .header-list .header-sent { margin-top: 4px; color: var(--text-3); font-size: 13px; }
 .header-list .header-sent code { margin-top: 0; }
 /* The scripts a note names are a link in the sentence (a button cannot wrap inside, so a long phrase sat on lines of its own) */

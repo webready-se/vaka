@@ -158,12 +158,16 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             // A CSP tried as Report-Only: the page loads a script it would block once enforced
             'https://builder.example' => ['content-security-policy-report-only' => ["default-src 'self'"]],
             'https://example.net' => ['referrer-policy' => ['no-referrer']] + $forge,
+            // Sent twice: the application's and the web server's, which its file gives away, and one the files cannot tell
+            'https://booking.example' => ['x-frame-options' => ['DENY', 'SAMEORIGIN'], 'referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=()']] + $forge,
+            'https://deals1.example' => ['referrer-policy' => ['same-origin', 'no-referrer']] + $forge,
             default => $forge,
         };
         // The scripts and styles: nosniff on the hardened site's, lost by a cache rule on a typical one's (a hostile name with --hostile)
         $files = match ($url) {
             'https://www.example.com' => ['checked' => ['/assets/site.css', '/assets/app.js'], 'missing' => []],
             'https://shop.example' => ['checked' => $paths = ['/build/assets/site-4f2a9c.css', isset($opts['hostile']) ? '/build/<img src=x onerror="window.__xss=4">.js' : '/build/assets/app-81d3e0.js'], 'missing' => $paths],
+            'https://booking.example' => ['checked' => [$file = isset($opts['hostile']) ? '/<img src=x onerror="window.__xss=6">.css' : '/assets/site.css'], 'missing' => [], 'sent' => ['x-frame-options' => [$file => ['SAMEORIGIN']]]],
             default => null,
         };
         // Without a CSP, the page's inline scripts and another host's are named (one with markup in it with --hostile)
