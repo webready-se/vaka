@@ -74,7 +74,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- `TIMEZONE` unset now means the server's time zone (php.ini, UTC on most servers), as in Puls and Snoka; it used to be Europe/Stockholm. **Set `TIMEZONE=Europe/Stockholm` in `.env` to keep Swedish time**: maintenance windows and the daily summary follow it.
+- `TIMEZONE` unset now means the server's time zone (php.ini, UTC on most servers), as in Puls; it used to be Europe/Stockholm. **Set `TIMEZONE=Europe/Stockholm` in `.env` to keep Swedish time**: maintenance windows and the daily summary follow it.
 - Cmd+K (Ctrl+K on Windows and Linux) jumps to the filter, as in the other Webready tools, instead of "/", which needs Shift on many keyboard layouts (Shift+7 on a Swedish one). The field shows the keys for the computer it is on, and none on a touch screen.
 - The owl in the night panel sits on its bottom edge, its talons over it, under tonight's moon in the phase it has (worked out in the browser; a hover names it). On a phone it stays in the corner. The pose is the design kit's new `characters/vaka-perched.svg`.
 - A site's detail reads at a glance. After its uptime (the numbers, the 30 days and the response times), what Vaka sees is a tile per check: the server, the certificate, the domain, exposed files, the headers grade and mail, each with how it is in words ("6 days left", "Grade E", "DMARC is missing"), tinted when it needs a look. The settings are a card of their own, with Change in its head, which checks are on and off (that was not shown at all) and the maintenance windows; the history comes last. The server's settings are in its tile.

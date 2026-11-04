@@ -29,6 +29,7 @@ This repository is public. Nothing about the user, the company, its customers or
 - Real data lives only in gitignored paths (`data/`, `.env`, `users.json`, `*.sqlite`, `.private/`) or outside the repo. Real site lists are imported with `site:import <path>` from wherever they live; never copy them, or anything from them, into the repo.
 - Demo data comes from a seed script with fake sites.
 - Sensitive project notes (real groups, servers, migration steps) go in `.private/` (gitignored). Read `.private/README.md` for what is there. Never reference its contents from tracked files.
+- A tool that is not public yet is not named here either: not in code, tests, docs, the roadmap, the changelog or commit messages. A reader outside gains nothing from it, and it is not this repository's to announce. What Vaka needs to know about one goes in `.private/notes.md`, and its name is on the list until it is released. A public sibling may be named where it explains a decision.
 - Handoffs go in `.claude/handoffs/` (gitignored), since they name real sites.
 - Before every commit, check the staged diff, the commit message and the PR title and text for real names, domains, IPs and URLs. Text written while looking at production data is where they slip in: describe the case with example names instead.
 - Hooks enforce it against the gitignored `.private/real-names.txt`: `scripts/hooks/pre-commit` and `commit-msg` for commits, `pre-push` for what a push sends (branch and tag names, every new commit), `.claude/hooks/no-real-names.sh` for every text `gh` sends to GitHub. See `.claude/rules/no-real-names.md`; never bypass them.
@@ -66,7 +67,7 @@ This repository is public. Nothing about the user, the company, its customers or
 ## Design
 
 This tool follows the Webready open source design kit
-(https://github.com/webready-se/open-source-design-kit, cloned next to this repo).
+(private for now, cloned next to this repo).
 Read its README.md first, then the doc for what you are changing. Copy values and
 files from it; never link to it at runtime or install it. When the kit and this
 tool disagree, the kit wins, unless this tool's docs say why it differs.

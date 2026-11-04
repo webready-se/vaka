@@ -1,6 +1,6 @@
 # Brand
 
-Vaka follows the [Webready open source design kit](https://github.com/webready-se/open-source-design-kit): the mark's frame, Figtree, the slate neutrals, what colours mean, the icons, the page order, the footer and the voice are the same in every Webready tool. This page only holds what is Vaka's own. The kit version Vaka copied is in the header of the tokens in `public/app.css`.
+Vaka follows the Webready open source design kit, private for now: the mark's frame, Figtree, the slate neutrals, what colours mean, the icons, the page order, the footer and the voice are the same in every Webready tool. This page only holds what is Vaka's own. The kit version Vaka copied is in the header of the tokens in `public/app.css`.
 
 Vaka keeps watch over websites the way an owl keeps watch at night: calmly, and wide awake when something moves.
 
