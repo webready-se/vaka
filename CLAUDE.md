@@ -19,11 +19,11 @@ Free tools (Uptime Kuma, Gatus) already cover plain uptime, SSL, domain expiry, 
 4. **Continuous external security hygiene** that alerts when something gets worse: exposed files, headers that disappear, DNS changes. Elsewhere this is a one-off test, a pentest scanner without alert state, or paid SaaS.
 5. **UX:** a busy site owner understands it in five seconds.
 
-Built for our own need first. Open sourced (MIT, like Puls) once it works.
+Built for our own need first. Open source (MIT, like Puls), public since 0.3.0.
 
 ## Never store sensitive data in git
 
-This repository will be public. Nothing about the user, the company, its customers or their sites goes into it: no real names, domains, URLs, IPs, server names, Slack channels or webhook URLs. That covers code, tests, fixtures, docs, examples, screenshots, commit messages, the CHANGELOG, issues and PRs.
+This repository is public. Nothing about the user, the company, its customers or their sites goes into it: no real names, domains, URLs, IPs, server names, Slack channels or webhook URLs. That covers code, tests, fixtures, docs, examples, screenshots, commit messages, the CHANGELOG, issues and PRs.
 
 - Use reserved example names: `example.com`, `example.se`, `shop.example`, and documentation IPs (`192.0.2.x`, `198.51.100.x`, `203.0.113.x`).
 - Real data lives only in gitignored paths (`data/`, `.env`, `users.json`, `*.sqlite`, `.private/`) or outside the repo. Real site lists are imported with `site:import <path>` from wherever they live; never copy them, or anything from them, into the repo.
