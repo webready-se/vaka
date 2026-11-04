@@ -2,7 +2,7 @@
 
 **The rule:** nothing that names a real person, customer, site, domain, server, IP, Slack channel, webhook or service account goes into this repository: not in code, tests, fixtures, docs, screenshots, commit messages, PR or issue titles and texts, comments or releases. Use the reserved examples (`shop.example`, `example.com`, `203.0.113.10`, "Customers", "Agency") instead.
 
-**Why:** the repository will be public, and git keeps everything: a name in an old commit message or a PR text is as public as one in the code, and taking it out later means rewriting history. Editing a PR text does not help either: GitHub keeps its earlier versions. It slips in most easily in text written while looking at production data ("the dashboard said ... for <real domain>"): describe the case with example names instead.
+**Why:** the repository is public, and git keeps everything: a name in an old commit message or a PR text is as public as one in the code, and taking it out later means rewriting history. Editing a PR text does not help either: GitHub keeps its earlier versions. It slips in most easily in text written while looking at production data ("the dashboard said ... for <real domain>"): describe the case with example names instead.
 
 The risk starts the day real data enters the work, not before. Until go-live Vaka only knew fake sites and nothing slipped; on go-live day, with the rule already in place, six commit messages, one test and eight PR texts named real sites, a customer, a server and a registrar. A rule alone did not hold, hence the hooks.
 
