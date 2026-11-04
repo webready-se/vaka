@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The footer credit shows Vaka's own mark next to Puls, linked to its repository,** now that the repository is public. `FOOTER_CREDIT=false` still leaves it out.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added

@@ -258,7 +258,8 @@ function footer_credit(array $config): string
 {
     if (!$config['footer_credit']) return '';
     $marks = '';
-    foreach (['puls' => 'https://github.com/webready-se/puls'] as $tool => $page) {
+    // The released, public tools only, each linked (design kit docs/layout.md)
+    foreach (['puls' => 'https://github.com/webready-se/puls', 'vaka' => 'https://github.com/webready-se/vaka'] as $tool => $page) {
         $marks .= '<a href="' . $page . '">' . mark_svg($tool, 'credit-mark', ucfirst($tool)) . '</a>';
     }
     return '<span class="credit">Made by <a href="https://webready.se">Webready</a> in Sweden <span class="credit-marks">' . $marks . '</span></span>';
