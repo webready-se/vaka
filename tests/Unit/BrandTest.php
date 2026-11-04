@@ -11,8 +11,6 @@ test('the footer credit links Webready and the released tools only, each mark li
         ->and($credit)->toContain('<a href="https://github.com/webready-se/puls"><svg class="credit-mark" role="img" aria-label="Puls"')
         ->and($credit)->toContain('<a href="https://github.com/webready-se/vaka"><svg class="credit-mark" role="img" aria-label="Vaka"')
         ->and(substr_count($credit, 'class="credit-mark"'))->toBe(2)
-        ->and($credit)->not->toContain('aria-label="Snoka"')
-        ->and($credit)->not->toContain('aria-label="Hamstra"')
         ->and(footer_credit(['footer_credit' => false]))->toBe('');
 });
 
