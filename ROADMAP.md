@@ -110,7 +110,7 @@ Everything the CLI does day to day should also be possible in the dashboard, for
 - [ ] Protect `main` with a ruleset, as Puls has (on the free plan GitHub offers it for public repositories only): no deletion or force push, the CI jobs (PHP 8.3, PHP 8.4, PHP 8.5, Dashboard smoke test) green before a merge, the admin role may bypass. `gh api -X POST repos/webready-se/vaka/rulesets --input <json>`, in the same step as the scan above
 - [ ] Turn on private vulnerability reporting (Settings > Security, or `gh api -X PUT repos/webready-se/vaka/private-vulnerability-reporting`): SECURITY.md links to `../../security/advisories/new`, which only works then
 - [ ] Upload `docs/screenshots/social-preview.png` as the social preview (Settings > General); GitHub accepts it only on a public repository
-- [ ] Vaka's own mark in the footer credit, linked to the repository, once it is public (design kit docs/layout.md); Snoka and Hamstra join when they are released
+- [x] Vaka's own mark in the footer credit, linked to the repository, once it is public (design kit docs/layout.md); Snoka and Hamstra join when they are released
 
 ## Milestone 6: A CSP that can be trusted
 
