@@ -362,7 +362,7 @@ Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.
 
 - Conventional commits: `type(scope): short description` with types feat, fix, docs, test, chore, refactor, style.
 - One logical change per commit. Stage files explicitly (never `git add .` or `-A`).
-- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. During the MVP (until the first tagged release, 0.1.0), merge a PR to main yourself once CI is green. **After 0.1.0, ask before merging to main.**
+- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. **Until 1.0, merge a PR to main yourself once CI is green and what it changes has been agreed** (UI text and UX choices are shown before the PR, as above), so finished work goes live without waiting for a reply. After the merge, wait for a production run on the new code (`/?health` with a newer `last_run_at`) before calling it done. At 1.0 the rule is decided again. (Between 0.1.0 and 2026-11-09 every merge was asked for first.)
 - Feature branches, never push straight to main. Tests must pass before pushing (pre-push hook).
 - Our own production deploys main by itself on every push, so a merge to main is live within minutes: merge only what may go live, and never change production by hand.
 - Before every commit, scan the staged diff, the commit message and the PR text for real names, domains, IPs and URLs.
