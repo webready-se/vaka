@@ -60,7 +60,7 @@ This repository is public. Nothing about the user, the company, its customers or
 - **Store as little as possible.** No personal data. Uptime samples are trimmed after `SAMPLES_RETENTION_DAYS`; the login audit log after 30 days.
 - **Quiet alerts.** Alert on state changes and expiry thresholds only (plus a reminder every `REMIND_EVERY_HOURS` while a site stays down), grouped into one message per destination per run.
 - **Standalone.** Other tools (like Puls) are reached through their own small JSON API with a token, never through a shared database or a shared code library. Copy patterns, don't depend on each other.
-- **A read API from v1 (every Webready tool).** A read-only token per site or group lets the AI assistant in a site's own project read Vaka's data and act on it, and the same API serves links between the tools. Same names as Puls: `share:create`, `share:list`, `share:revoke`, `GET /?api&share=TOKEN`. Stable field names documented in `docs/api.md`; text that came from the sites is marked as untrusted data there. Planned right after go-live (see ROADMAP).
+- **A read API from v1 (every Webready tool).** A read-only token per site or groups (one token per reader) lets the AI assistant in a site's own project read Vaka's data and act on it, and the same API serves links between the tools. Same names as Puls: `share:create`, `share:list`, `share:revoke`, `GET /?api&share=TOKEN`. Stable field names documented in `docs/api.md`; text that came from the sites is marked as untrusted data there. Planned right after go-live (see ROADMAP).
 - **No new monthly running costs.** Raise any that come up.
 - **Prefer established standards** (RDAP, Keep a Changelog, SemVer, Slack incoming webhooks) over custom extras.
 
@@ -105,7 +105,7 @@ src/checks/dns.php       lookup_mail_dns() (MX, SPF, DMARC in one spelling; reso
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat; queue_recheck() ("Check again")
 src/silence.php          Maintenance windows (parse, window_active() and window_periods() in local time, describe, site_windows()), active_silence(), snooze_site()
 src/manage.php           Changing sites, groups, maintenance windows and servers from the dashboard: site_form_input() and group_form_input() (an error per field, the CLI's rules; webhooks kept unless replaced or cleared), save_site_form(), save_group_form(), describe_*_changes() (history in words), remove_*_form() (kept in the audit log); CHECK_LABELS
-src/share.php            Read tokens (vaka_ and 64 hex): create_share_token() (only a SHA-256 and the start are kept), find_share_token(), share_token_expired_on() (an expired token says so), share_scope(), share_expiry(), share_default_day() (90 days)
+src/share.php            Read tokens (vaka_ and 64 hex) for a site or one or more groups: create_share_token() (only a SHA-256 and the start are kept), find_share_token(), share_token_expired_on() (an expired token says so), share_scope(), share_expiry(), share_default_day() (90 days)
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
@@ -175,8 +175,10 @@ samples      site_id, checked_at, status_code, ms, ok, ip        (uptime only, t
              (`check` is an SQL keyword, hence check_name)
 audit_log    id, username, action, ip, created_at               (login lockout, trimmed after 30 days)
 meta         key, value                                          (last_run_at, last_cleanup_on, last_digest_on, last_digest_at)
-share_tokens id, token_hash, prefix, site_id | group_id, label, expires_at, last_used_at, created_at
-             (read tokens: SHA-256 of the token and its start, vaka_ and 8 characters, only; 90 days unless another last day or never is chosen; go with their site or group)
+share_tokens id, token_hash, prefix, site_id, label, expires_at, last_used_at, created_at
+             (read tokens: SHA-256 of the token and its start, vaka_ and 8 characters, only; 90 days unless another last day or never is chosen;
+             a site, or one or more groups in share_groups; go with their site, or their last group)
+share_groups token_id, group_id                                  (the groups a token reads)
 ```
 
 Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are stored in UTC (ISO 8601); the dashboard shows local time.
@@ -303,7 +305,7 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka alert:test [<group>]` | Send a test alert to a group's destinations (no group: the defaults in .env) |
 | `php vaka server:list` | Servers (by IP or hand-set name) and their sites; CDN sites counted apart |
 | `php vaka user:add [<name>]` / `user:edit` / `user:remove` / `user:list` | Manage dashboard users |
-| `php vaka share:create [<group\|site>] [--label=] [--expires=YYYY-MM-DD\|never]` / `share:list` / `share:revoke [<#>]` | Read tokens for the read API (`vaka_` and 64 hex): 90 days unless `--expires` gives another last day or `never`, shown once, stored hashed |
+| `php vaka share:create [<group\|site>] [--groups=a,b] [--label=] [--expires=YYYY-MM-DD\|never]` / `share:list` / `share:revoke [<#>]` | Read tokens for the read API (`vaka_` and 64 hex), one per reader: a site, or one or more groups; 90 days unless `--expires` gives another last day or `never`, shown once, stored hashed |
 
 ## Development
 

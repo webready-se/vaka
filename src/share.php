@@ -1,7 +1,7 @@
 <?php
 
 /**
- * Read tokens for the API (docs/api.md): one per site or group, read-only,
+ * Read tokens for the API (docs/api.md): one per site or groups, read-only,
  * working for 90 days unless another last day, or never, is chosen. The
  * token is shown once when it is made; Vaka keeps only its SHA-256 and its
  * first characters, to tell tokens apart.
@@ -28,30 +28,49 @@ function is_share_token(string $token): bool
 }
 
 /**
- * A new read token for a site or a group: vaka_ and 64 hex characters.
- * $expiresAt is UTC (see share_expiry()), or null for one that never expires.
+ * A new read token for a site, or for one or more groups: vaka_ and 64 hex
+ * characters. One token per reader: a reader of two groups would keep two
+ * tokens in the same .env, so a second one limits nothing. $expiresAt is UTC
+ * (see share_expiry()), or null for one that never expires.
  *
  * @return array{id: int, token: string}
  */
-function create_share_token(PDO $db, ?int $siteId, ?int $groupId, string $label, ?string $expiresAt, int $now): array
+function create_share_token(PDO $db, ?int $siteId, array $groupIds, string $label, ?string $expiresAt, int $now): array
 {
+    if (($siteId === null) === !$groupIds) throw new InvalidArgumentException('A token reads one site, or one or more groups');
     $token = SHARE_TOKEN_PREFIX . bin2hex(random_bytes(32));
-    $db->prepare('INSERT INTO share_tokens (token_hash, prefix, site_id, group_id, label, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        ->execute([share_token_hash($token), substr($token, 0, SHARE_PREFIX_LENGTH), $siteId, $groupId, clean_text($label, 100, 'label'), $expiresAt, utc_now($now)]);
-    return ['id' => (int) $db->lastInsertId(), 'token' => $token];
+    $db->beginTransaction();
+    $db->prepare('INSERT INTO share_tokens (token_hash, prefix, site_id, label, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)')
+        ->execute([share_token_hash($token), substr($token, 0, SHARE_PREFIX_LENGTH), $siteId, clean_text($label, 100, 'label'), $expiresAt, utc_now($now)]);
+    $id = (int) $db->lastInsertId();
+    $add = $db->prepare('INSERT OR IGNORE INTO share_groups (token_id, group_id) VALUES (?, ?)');
+    foreach ($groupIds as $groupId) $add->execute([$id, (int) $groupId]);
+    $db->commit();
+    return ['id' => $id, 'token' => $token];
+}
+
+/** Tokens' rows with their groups as [{id, name}], by name ([] for a site token). */
+function with_share_groups(PDO $db, array $tokens): array
+{
+    if (!$tokens) return [];
+    $ids = implode(', ', array_map(fn (array $token) => (int) $token['id'], $tokens));
+    $groups = [];
+    foreach ($db->query("SELECT sg.token_id, g.id, g.name FROM share_groups sg JOIN groups g ON g.id = sg.group_id WHERE sg.token_id IN ({$ids}) ORDER BY g.name COLLATE NOCASE, g.id") as $row) {
+        $groups[$row['token_id']][] = ['id' => (int) $row['id'], 'name' => $row['name']];
+    }
+    return array_map(fn (array $token) => $token + ['groups' => $groups[$token['id']] ?? []], $tokens);
 }
 
 /**
- * The token's row with its site or group, when the token is valid now, else
+ * The token's row with its site or groups, when the token is valid now, else
  * null. Records when it was last used (at most once a minute, so reading
  * stays cheap).
  */
 function find_share_token(PDO $db, string $token, int $now): ?array
 {
     if (!is_share_token($token)) return null;
-    $stmt = $db->prepare('SELECT t.*, s.url AS site_url, g.name AS group_name FROM share_tokens t
+    $stmt = $db->prepare('SELECT t.*, s.url AS site_url FROM share_tokens t
         LEFT JOIN sites s ON s.id = t.site_id
-        LEFT JOIN groups g ON g.id = t.group_id
         WHERE t.token_hash = ?');
     $stmt->execute([share_token_hash($token)]);
     $row = $stmt->fetch();
@@ -60,7 +79,7 @@ function find_share_token(PDO $db, string $token, int $now): ?array
     if ($row['last_used_at'] === null || $row['last_used_at'] <= utc_now($now - 60)) {
         $db->prepare('UPDATE share_tokens SET last_used_at = ? WHERE id = ?')->execute([utc_now($now), $row['id']]);
     }
-    return $row;
+    return with_share_groups($db, [$row])[0];
 }
 
 /** When a token Vaka knows stopped working (UTC), or null for one that works, or that it does not know. */
@@ -79,13 +98,12 @@ function share_expires_words(?string $expiresAt, string $timezone): string
     return (new DateTimeImmutable('@' . (strtotime($expiresAt) - 1)))->setTimezone(new DateTimeZone($timezone))->format('j M Y');
 }
 
-/** Every token, newest first, with its site or group. */
+/** Every token, newest first, with its site or groups. */
 function list_share_tokens(PDO $db): array
 {
-    return $db->query('SELECT t.*, s.url AS site_url, g.name AS group_name FROM share_tokens t
+    return with_share_groups($db, $db->query('SELECT t.*, s.url AS site_url FROM share_tokens t
         LEFT JOIN sites s ON s.id = t.site_id
-        LEFT JOIN groups g ON g.id = t.group_id
-        ORDER BY t.created_at DESC, t.id DESC')->fetchAll();
+        ORDER BY t.created_at DESC, t.id DESC')->fetchAll());
 }
 
 function revoke_share_token(PDO $db, int $id): void
@@ -93,23 +111,29 @@ function revoke_share_token(PDO $db, int $id): void
     $db->prepare('DELETE FROM share_tokens WHERE id = ?')->execute([$id]);
 }
 
-/** What a token reads, in words: "group Customers" or "shop.example". */
+/** What a token reads, in words: "group Customers", "groups Customers and Own" or "shop.example". */
 function share_target(array $token): string
 {
-    return $token['group_id'] !== null ? "group {$token['group_name']}" : display_url((string) $token['site_url']);
+    if ($token['site_id'] !== null) return display_url((string) $token['site_url']);
+    $names = array_column($token['groups'], 'name');
+    return (count($names) === 1 ? 'group ' : 'groups ') . list_words($names);
 }
 
 /**
- * What a token may read: its type and name for the response, the SQL
- * condition on sites (s.) for overview_rows(), and for a site token its site.
+ * What a token may read: its type and name for the response (and for a
+ * group token the names of its groups), the SQL condition on sites (s.) for
+ * overview_rows(), and for a site token its site. A group token reads the
+ * sites in its groups as they are now, and nothing when they have none.
  *
- * @return array{type: string, name: string, where: string, site_id?: int}
+ * @return array{type: string, name: string, groups?: list<string>, where: string, site_id?: int}
  */
 function share_scope(array $token): array
 {
-    return $token['group_id'] !== null
-        ? ['type' => 'group', 'name' => $token['group_name'], 'where' => 's.group_id = ' . (int) $token['group_id']]
-        : ['type' => 'site', 'name' => display_url((string) $token['site_url']), 'where' => 's.id = ' . (int) $token['site_id'], 'site_id' => (int) $token['site_id']];
+    if ($token['site_id'] !== null) {
+        return ['type' => 'site', 'name' => display_url((string) $token['site_url']), 'where' => 's.id = ' . (int) $token['site_id'], 'site_id' => (int) $token['site_id']];
+    }
+    $names = array_column($token['groups'], 'name');
+    return ['type' => 'group', 'name' => implode(', ', $names), 'groups' => $names, 'where' => group_filter(array_column($token['groups'], 'id'))];
 }
 
 /** The last day (YYYY-MM-DD, local time) a token made now works, unless something else is chosen. */

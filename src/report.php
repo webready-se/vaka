@@ -253,7 +253,7 @@ function read_api_markdown_site(array $about, array $detail, array $config): str
 function read_api_markdown_list(array $about, array $totals, array $sites, array $config): string
 {
     $title = match ($about['scope']['type']) {
-        'group' => 'group ' . md_text($about['scope']['name']),
+        'group' => count($about['scope']['groups'] ?? []) > 1 ? 'groups ' . list_words(array_map('md_text', $about['scope']['groups'])) : 'group ' . md_text($about['scope']['name']),
         'site' => md_text($about['scope']['name']),
         default => 'every site you can see',
     };

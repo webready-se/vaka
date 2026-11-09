@@ -268,7 +268,7 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and($detail['site']['headers']['items'][5])->toMatchArray(['label' => 'CSP', 'fix' => SECURITY_HEADERS['csp']['fix'], 'what' => SECURITY_HEADERS['csp']['what']])
         // Once for all six: how to add them in nginx and in Apache without losing them, and which one the site runs
         ->and($detail['site']['headers'])->toMatchArray(['server' => 'nginx', 'tip' => HEADERS_NGINX_TIP, 'tip_apache' => HEADERS_APACHE_TIP]);
-    $token = create_share_token($this->db, $shop, null, '', utc_now(time() + 86400), time())['token'];
+    $token = create_share_token($this->db, $shop, [], '', utc_now(time() + 86400), time())['token'];
     expect(http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['headers'])->toMatchArray(['server' => 'nginx', 'tip' => HEADERS_NGINX_TIP, 'tip_apache' => HEADERS_APACHE_TIP]);
     expect($admin['groups'][1]['sites'][0]['advice'])->toBe('');
 
@@ -292,7 +292,7 @@ test('mail DNS shows in words on the overview, and record by record in the site 
     expect(array_column($detail['site']['dns']['items'], 'level', 'key'))->toBe(['mx' => 'good', 'spf' => 'good', 'dmarc' => 'missing'])
         ->and($detail['site']['dns']['items'][0]['records'])->toBe(['10 mx1.mail.example']);
 
-    $token = create_share_token($this->db, $shop, null, '', utc_now($now + 86400), $now)['token'];
+    $token = create_share_token($this->db, $shop, [], '', utc_now($now + 86400), $now)['token'];
     $api = http_request('GET', WEB . '/?api&site=shop.example&share=' . $token)['json'];
     expect($api['site']['dns'])->toMatchArray(['status' => 'warn', 'domain' => 'shop.example'])
         ->and(array_keys($api['site']['dns']['items'][2]))->toBe(['key', 'label', 'level', 'records', 'note', 'what', 'fix_label', 'fix', 'tip']);
@@ -311,7 +311,7 @@ test('a site behind a bot check says so, with what to do and the address to let 
         // The last time measured is not the site's time now
         ->and($site['ms'])->toBeNull();
 
-    $token = create_share_token($this->db, $shop, null, '', utc_now($now + 86400), $now)['token'];
+    $token = create_share_token($this->db, $shop, [], '', utc_now($now + 86400), $now)['token'];
     expect(http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['blocked'])->toBe(['by' => 'Imunify360', 'since' => utc_now($now - 3600), 'from_ip' => '2001:db8::5']);
 
     // Seen again: nothing to say
@@ -560,12 +560,12 @@ test('the read API answers a share token with the sites in its scope, in stable 
     save_check_state($this->db, $shop, 'uptime', ['status' => 'fail', 'summary' => 'No answer within 10 s', 'details' => ['problem' => 'timeout', 'status_code' => 0], 'fail_count' => 2, 'changed_at' => utc_now($now - 600)], utc_now($now - 30), utc_now($now + 30));
     save_check_state($this->db, $shop, 'ssl', ['status' => 'warn', 'summary' => 'The certificate expires in 6 days (31 Oct 2026)', 'details' => ['days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z', 'problem' => 'expiring'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
     set_meta($this->db, 'last_run_at', utc_now($now - 30));
-    $token = create_share_token($this->db, null, $customers, 'AI assistant', utc_now($now + 86400), $now)['token'];
+    $token = create_share_token($this->db, null, [$customers], 'AI assistant', utc_now($now + 86400), $now)['token'];
 
     $r = http_request('GET', WEB . '/?api&share=' . $token);
     expect($r['status'])->toBe(200)
         ->and($r['headers'])->not->toHaveKey('set-cookie')
-        ->and($r['json'])->toMatchArray(['version' => VAKA_VERSION, 'scope' => ['type' => 'group', 'name' => 'Customers'], 'run_ok' => true])
+        ->and($r['json'])->toMatchArray(['version' => VAKA_VERSION, 'scope' => ['type' => 'group', 'name' => 'Customers', 'groups' => ['Customers']], 'run_ok' => true])
         ->and($r['json'])->not->toHaveKey('setup')
         ->and($r['json']['totals'])->toMatchArray(['sites' => 1, 'down' => 1])
         ->and($r['json']['sites'])->toHaveCount(1);
@@ -588,10 +588,10 @@ test('an unknown or revoked share token is a 404, an expired one says when it ex
     add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
     add_site($this->db, ['url' => 'https://blog.example']);
     $now = time();
-    $expired = create_share_token($this->db, null, $customers, '', '2026-01-26T23:00:00Z', strtotime('2025-10-28T12:00:00Z'))['token'];
-    $revoked = create_share_token($this->db, null, $customers, '', utc_now($now + 86400), $now);
+    $expired = create_share_token($this->db, null, [$customers], '', '2026-01-26T23:00:00Z', strtotime('2025-10-28T12:00:00Z'))['token'];
+    $revoked = create_share_token($this->db, null, [$customers], '', utc_now($now + 86400), $now);
     revoke_share_token($this->db, $revoked['id']);
-    $token = create_share_token($this->db, null, $customers, '', utc_now($now + 86400), $now)['token'];
+    $token = create_share_token($this->db, null, [$customers], '', utc_now($now + 86400), $now)['token'];
 
     foreach (['vaka_' . str_repeat('0', 64), str_repeat('0', 64), $revoked['token'], 'nonsense'] as $bad) {
         $r = http_request('GET', WEB . '/?api&share=' . $bad);
@@ -615,7 +615,7 @@ test('one site in detail: every check\'s history and response times, and CSV for
     add_event($this->db, $shop, 'ssl', ['status' => 'warn', 'previous' => 'ok', 'message' => 'The certificate expires in 14 days'], utc_now($now - 3600));
     $this->db->exec("INSERT INTO samples (site_id, checked_at, status_code, ms, ok) VALUES ({$shop}, '" . utc_now($now - 600) . "', 200, 230, 1), ({$shop}, '" . utc_now($now - 300) . "', 503, 120, 0), ({$shop}, '" . utc_now($now - 2 * 86400) . "', 200, 250, 1)");
     save_check_state($this->db, $shop, 'uptime', ['status' => 'ok', 'summary' => 'Answered 200 OK in 230 ms', 'details' => ['ms' => 230], 'fail_count' => 0, 'changed_at' => utc_now($now - 7200)], utc_now($now - 60), utc_now($now + 240));
-    $token = create_share_token($this->db, $shop, null, '', utc_now($now + 86400), $now)['token'];
+    $token = create_share_token($this->db, $shop, [], '', utc_now($now + 86400), $now)['token'];
 
     $r = http_request('GET', WEB . '/?api&site=shop.example&share=' . $token);
     expect($r['status'])->toBe(200)
@@ -641,14 +641,34 @@ test('one site in detail: every check\'s history and response times, and CSV for
         ->and(http_request('GET', WEB . '/?api&format=csv&share=' . $token)['body'])->toBe($csv['body']);
 });
 
+test('a token for several groups reads the sites in all of them, and says which groups', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    $own = add_group($this->db, ['name' => 'Own']);
+    add_group($this->db, ['name' => 'Agency']);
+    add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    add_site($this->db, ['url' => 'https://blog.example', 'group' => 'Own']);
+    add_site($this->db, ['url' => 'https://studio.example', 'group' => 'Agency']);
+    $now = time();
+    $token = create_share_token($this->db, null, [$customers, $own], '', utc_now($now + 86400), $now)['token'];
+    $auth = ['headers' => ['Authorization: Bearer ' . $token]];
+
+    $r = http_request('GET', WEB . '/?api', $auth);
+    expect($r['status'])->toBe(200)
+        ->and($r['json']['scope'])->toBe(['type' => 'group', 'name' => 'Customers, Own', 'groups' => ['Customers', 'Own']])
+        ->and(array_column($r['json']['sites'], 'label'))->toBe(['shop.example', 'blog.example'])
+        ->and(http_request('GET', WEB . '/?api&site=blog.example', $auth)['status'])->toBe(200)
+        ->and(http_request('GET', WEB . '/?api&site=studio.example', $auth)['status'])->toBe(404)
+        ->and(http_request('GET', WEB . '/?api&format=md', $auth)['body'])->toStartWith('# Vaka report for groups Customers and Own');
+});
+
 test('&format=md is a report for an AI assistant: one site for a site token, every site for a group token', function () {
     $customers = add_group($this->db, ['name' => 'Customers']);
     $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
     add_site($this->db, ['url' => 'https://cafe.example', 'group' => 'Customers']);
     $now = time();
     save_check_state($this->db, $shop, 'uptime', ['status' => 'fail', 'summary' => 'The site answered 503 Service Unavailable', 'details' => ['problem' => 'http', 'status_code' => 503], 'fail_count' => 2, 'changed_at' => utc_now($now - 600)], utc_now($now - 60), utc_now($now + 60));
-    $site = create_share_token($this->db, $shop, null, '', utc_now($now + 86400), $now)['token'];
-    $group = create_share_token($this->db, null, $customers, '', utc_now($now + 86400), $now)['token'];
+    $site = create_share_token($this->db, $shop, [], '', utc_now($now + 86400), $now)['token'];
+    $group = create_share_token($this->db, null, [$customers], '', utc_now($now + 86400), $now)['token'];
 
     $r = http_request('GET', WEB . '/?api&format=md', ['headers' => ['Authorization: Bearer ' . $site]]);
     expect($r['status'])->toBe(200)

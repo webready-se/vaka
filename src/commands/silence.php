@@ -8,12 +8,18 @@ function group_or_site(PDO $db, string $target): array
     fail("No group or site matches \"{$target}\". See `php vaka group:list` and `php vaka site:list`.");
 }
 
+/** A group as a list shows it: "The group Customers (3 sites)". */
+function group_choice(array $group): string
+{
+    return "The group {$group['name']} (" . ($group['site_count'] ? plural((int) $group['site_count'], 'site', 'sites') : 'no sites') . ')';
+}
+
 /** A group or a site, picked from a list: groups first. Returns its name as group_or_site() takes it. */
 function pick_group_or_site(PDO $db): string
 {
     $options = [];
     foreach (list_groups($db) as $group) {
-        $options['group:' . $group['name']] = "The group {$group['name']} (" . ($group['site_count'] ? plural((int) $group['site_count'], 'site', 'sites') : 'no sites') . ')';
+        $options['group:' . $group['name']] = group_choice($group);
     }
     foreach (list_sites($db) as $site) {
         $options['site:' . $site['url']] = site_choice($site);
