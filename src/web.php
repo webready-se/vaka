@@ -717,7 +717,7 @@ function read_api(array $config, array $scope, string $method, int $now): never
         'version' => VAKA_VERSION,
         'generated_at' => utc_now($now),
         'timezone' => $config['timezone'],
-        'scope' => ['type' => $scope['type'], 'name' => $scope['name']],
+        'scope' => ['type' => $scope['type'], 'name' => $scope['name']] + (isset($scope['groups']) ? ['groups' => $scope['groups']] : []),
         'last_run_at' => $lastRun,
         'run_ok' => $lastRun !== null && $now - strtotime($lastRun) <= STALE_RUN_SECONDS,
     ];

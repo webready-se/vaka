@@ -318,10 +318,17 @@ function update_group(PDO $db, int $id, array $input): void
         ->execute([$group['name'], $group['policy'], $group['delay_minutes'], $group['slack_webhook'], $group['webhook_url'], $group['email'], $id]);
 }
 
-/** Remove a group. Its sites stay, without a group. */
+/**
+ * Remove a group. Its sites stay, without a group. A read token for it keeps
+ * its other groups, and goes with its last one, as a site token goes with
+ * its site.
+ */
 function remove_group(PDO $db, int $id): void
 {
+    $db->beginTransaction();
     $db->prepare('DELETE FROM groups WHERE id = ?')->execute([$id]);
+    $db->exec('DELETE FROM share_tokens WHERE site_id IS NULL AND id NOT IN (SELECT token_id FROM share_groups)');
+    $db->commit();
 }
 
 /** A group by name, any case. */

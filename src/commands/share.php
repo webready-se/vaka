@@ -17,11 +17,52 @@ function share_expiry_or_fail(string $date, array $config): ?string
     }
 }
 
+/**
+ * What a new token reads: [site id or null, the groups' rows, in words]. One
+ * site, or one or more groups: by name, with --groups, or picked at a terminal.
+ */
+function share_create_target(PDO $db, array $args, array $opts): array
+{
+    if (isset($opts['groups'])) {
+        if (isset($args[1])) fail('Give a group or site, or --groups, not both.');
+        $groups = groups_option($db, $opts['groups']);
+        return [null, $groups, share_target(['site_id' => null, 'groups' => $groups])];
+    }
+    if (!isset($args[1])) return pick_share_target($db);
+    [$siteId, $groupId, $name] = group_or_site($db, $args[1]);
+    return [$siteId, $groupId !== null ? [get_group($db, $groupId)] : [], $name];
+}
+
+/** At a terminal: one site, or one or more groups, from one numbered list (groups first). */
+function pick_share_target(PDO $db): array
+{
+    $groups = array_column(list_groups($db), null, 'id');
+    $sites = array_column(list_sites($db), null, 'id');
+    if (!$groups && !$sites) fail('No groups or sites yet. Add a site with `php vaka site:add <url>`.');
+    $options = [];
+    foreach ($groups as $id => $group) $options["group:{$id}"] = group_choice($group);
+    foreach ($sites as $id => $site) $options["site:{$id}"] = site_choice($site);
+
+    $picked = choose_many('What is the token for? One site, or one or more groups:', $options, 'several groups like 1,2');
+    if (!is_array($picked)) fail('Nothing chosen.');
+    $chosen = fn (string $kind) => array_map(fn ($key) => (int) substr($key, strlen($kind) + 1), array_filter($picked, fn ($key) => str_starts_with($key, "{$kind}:")));
+    [$pickedSites, $pickedGroups] = [$chosen('site'), $chosen('group')];
+    if (!$pickedSites) {
+        $rows = array_values(array_map(fn ($id) => $groups[$id], $pickedGroups));
+        return [null, $rows, share_target(['site_id' => null, 'groups' => $rows])];
+    }
+    if (count($pickedSites) === 1 && !$pickedGroups) {
+        $id = reset($pickedSites);
+        return [$id, [], display_url($sites[$id]['url'])];
+    }
+    fail('A token reads one site, or one or more groups.');
+}
+
 function cmd_share_create(array $config, array $args, array $opts): void
 {
-    allow_options($opts, ['label', 'expires']);
+    allow_options($opts, ['label', 'expires', 'groups']);
     $db = get_db($config['db_path']);
-    [$siteId, $groupId, $name] = group_or_site($db, $args[1] ?? pick_group_or_site($db));
+    [$siteId, $groups, $name] = share_create_target($db, $args, $opts);
     // A date given as an option is checked before anything is asked
     $expiresAt = isset($opts['expires']) ? share_expiry_or_fail($opts['expires'] === true ? '' : $opts['expires'], $config) : '';
     $label = isset($opts['label']) ? ($opts['label'] === true ? '' : $opts['label']) : ask_optional('Label, e.g. AI assistant or the customer it is for');
@@ -31,7 +72,7 @@ function cmd_share_create(array $config, array $args, array $opts): void
     }
 
     try {
-        $created = create_share_token($db, $siteId, $groupId, $label, $expiresAt, time());
+        $created = create_share_token($db, $siteId, array_column($groups, 'id'), $label, $expiresAt, time());
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage() . '.');
     }
@@ -40,7 +81,9 @@ function cmd_share_create(array $config, array $args, array $opts): void
 
     // The token is printed once, in the lines to copy, and read back from .env
     // after that, so an AI assistant that runs the command never sees it
-    echo "Read token for {$name}" . ($label !== '' ? " ({$label})" : '') . ', ' . ($expiresAt === null ? 'never expires' : 'valid through ' . share_expires_words($expiresAt, $config['timezone'])) . ".\n\n";
+    echo "Read token for {$name}" . ($label !== '' ? " ({$label})" : '') . ', ' . ($expiresAt === null ? 'never expires' : 'valid through ' . share_expires_words($expiresAt, $config['timezone'])) . ".\n";
+    if ($groups) echo 'It reads every site in ' . (count($groups) === 1 ? 'the group' : 'these groups') . ", including sites added later.\n";
+    echo "\n";
     echo "Put these two lines in the .env of the project that reads it, such as the site's own; never in CLAUDE.md or another file that is committed:\n\n";
     echo "  VAKA_URL={$base}\n";
     echo "  VAKA_SHARE_TOKEN={$token}\n\n";

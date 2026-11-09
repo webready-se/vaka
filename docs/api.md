@@ -8,11 +8,11 @@ The field names below stay the same between versions. New fields may be added; a
 
 There are two ways in:
 
-- **Read token (for other tools).** Create one with `php vaka share:create <group or site>`, optionally with `--label="Report bot"` and `--expires=2026-12-31`, the last day it works. Left out, that is 90 days from today, so a token that is forgotten stops working on its own; `--expires=never` makes one that does not expire, for when that is what you want. Send it as a header, `Authorization: Bearer TOKEN`, which keeps it out of URLs, server logs and shell history, or add `&share=TOKEN` to the URL. Some Apache hosts drop the header before PHP sees it, which gives a `401`; use `&share=` there.
+- **Read token (for other tools).** Create one with `php vaka share:create <group or site>`, or `--groups=a,b` for several groups, optionally with `--label="Report bot"` and `--expires=2026-12-31`, the last day it works. Left out, that is 90 days from today, so a token that is forgotten stops working on its own; `--expires=never` makes one that does not expire, for when that is what you want. Send it as a header, `Authorization: Bearer TOKEN`, which keeps it out of URLs, server logs and shell history, or add `&share=TOKEN` to the URL. Some Apache hosts drop the header before PHP sees it, which gives a `401`; use `&share=` there.
   - A token starts with `vaka_` (then 64 hex characters), so you can tell one at a glance, and so can a secret scanner given the pattern `vaka_[a-f0-9]{64}` (GitHub's secret scanning and gitleaks need it added as a custom pattern). Tokens made before the prefix keep working.
-  - A token for a group reads every site in the group, including sites added later; a token for a site reads that site.
+  - A token for groups reads every site in them, including sites added later; a token for a site reads that site. One token per reader: a reader of two groups would keep two tokens in the same `.env`, where they leak together, so a second one limits nothing. A group without sites reads nothing, never every site, and a token goes with its site or its last group.
   - The token is shown once, when it is made. Vaka keeps only a fingerprint of it (a SHA-256 hash) and its start (`vaka_` and eight characters), to tell tokens apart.
-  - An unknown or revoked token gets `404`. A site outside the token's group gets `404` too, so its existence does not leak.
+  - An unknown or revoked token gets `404`. A site outside the token's groups gets `404` too, so its existence does not leak.
   - An expired token gets `401` and says when it expired, so a script that stops working says why: `{"error": "This read token expired on 26 Jan 2027. Create a new one with `php vaka share:create`."}`
   - `php vaka share:list` shows every token, what it reads, its last day and when it was last used; `php vaka share:revoke <#>` ends one (its number, or its start as `share:list` shows it).
 - **Session (the dashboard itself).** A logged-in browser session reads the sites that user may see. Without a token or a session, the API answers `401`.
@@ -43,7 +43,7 @@ All requests are `GET`.
 | `version` | Vaka's version, e.g. `0.1.0` |
 | `generated_at` | When this answer was made (UTC, ISO 8601, like every time in the API) |
 | `timezone` | Vaka's `TIMEZONE`, for showing times the way the dashboard does |
-| `scope` | What the token reads: `{type: "group" \| "site" \| "user", name}` |
+| `scope` | What the token reads: `{type: "group" \| "site" \| "user", name}`, where `name` is always a string. A token for groups adds the list, `{type: "group", name: "Customers, Own", groups: ["Customers", "Own"]}`, also for one group |
 | `last_run_at`, `run_ok` | When the checks last ran, and whether that was within the last 5 minutes. `run_ok: false` means Vaka itself has stopped checking: the statuses below are not current |
 | `totals` | `{sites, up, down, failing, paused, pending}` |
 | `sites` | One object per site, below |

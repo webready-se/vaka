@@ -11,6 +11,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The footer credit shows Vaka's own mark next to Puls, linked to its repository,** now that the repository is public. `FOOTER_CREDIT=false` still leaves it out.
 
+- **One read token can read several groups: `share:create --groups=a,b`.** One token per reader, since a reader of two groups keeps both tokens in the same `.env`, where they leak together, and a reader given one of them may believe it has seen everything. At a terminal, `share:create` picks one site, or one or more groups, from one list. A token for groups reads every site in them, including sites added later, and says so when it is made. In the read API, `scope` adds `groups`, the names of a group token's groups; `name` stays a string, so a token for one group answers as before. Removing one of a token's groups leaves it the others; it goes with its last group, as before.
+
 ### Security
 
 - **An empty `--groups` no longer gives a user every site.** `user:add` and `user:edit` with `--groups=`, a bare `--groups` or only commas, as a script with an empty variable sends, used to take every limit away; now they stop and say so. Every site takes the word: `--groups=all` (a group called all wins, since it shows less). In `user:edit` at a terminal, Enter keeps the groups and `all` gives every site.

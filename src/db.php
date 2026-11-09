@@ -172,6 +172,32 @@ function migrations(): array
                 created_at TEXT NOT NULL
             )",
         ],
+        9 => [
+            // A read token for one or more groups: they move to a table of their own. The table
+            // is rebuilt without group_id, since DROP COLUMN needs SQLite 3.35 and older hosts have less
+            'CREATE TABLE share_tokens_new (
+                id INTEGER PRIMARY KEY,
+                token_hash TEXT NOT NULL UNIQUE,
+                prefix TEXT NOT NULL,
+                site_id INTEGER REFERENCES sites (id) ON DELETE CASCADE,
+                label TEXT NOT NULL DEFAULT \'\',
+                expires_at TEXT,
+                last_used_at TEXT,
+                created_at TEXT NOT NULL
+            )',
+            'INSERT INTO share_tokens_new (id, token_hash, prefix, site_id, label, expires_at, last_used_at, created_at)
+                SELECT id, token_hash, prefix, site_id, label, expires_at, last_used_at, created_at FROM share_tokens',
+            'CREATE TABLE share_groups_old AS SELECT id AS token_id, group_id FROM share_tokens WHERE group_id IS NOT NULL',
+            'DROP TABLE share_tokens',
+            'ALTER TABLE share_tokens_new RENAME TO share_tokens',
+            'CREATE TABLE share_groups (
+                token_id INTEGER NOT NULL REFERENCES share_tokens (id) ON DELETE CASCADE,
+                group_id INTEGER NOT NULL REFERENCES groups (id) ON DELETE CASCADE,
+                PRIMARY KEY (token_id, group_id)
+            )',
+            'INSERT INTO share_groups (token_id, group_id) SELECT token_id, group_id FROM share_groups_old',
+            'DROP TABLE share_groups_old',
+        ],
     ];
 }
 

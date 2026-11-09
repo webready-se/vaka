@@ -34,22 +34,29 @@ function new_password(string $label): string
 }
 
 /**
- * Group names from "a,b" as they are stored; every one must exist. Every site
- * takes the word "all" (a group called all wins, since it shows less). Empty
- * is refused, so a script's empty variable never opens every site.
+ * The groups in --groups=a,b as stored, every one checked. Empty is refused,
+ * so a script's empty variable never means every site; $else says what else
+ * may be given.
+ *
+ * @return list<array> the groups' rows
  */
-function group_names(PDO $db, string|bool $list): array
+function groups_option(PDO $db, string|bool $list, string $else = ''): array
 {
-    $list = is_string($list) ? trim($list) : '';
-    if (strcasecmp($list, 'all') === 0 && !find_group($db, $list)) return [];
-    $names = [];
-    foreach (array_filter(array_map('trim', explode(',', $list))) as $name) {
+    $groups = [];
+    foreach (array_filter(array_map('trim', explode(',', is_string($list) ? $list : ''))) as $name) {
         $group = find_group($db, $name);
         if (!$group) fail("No group called \"{$name}\". See `php vaka group:list`.");
-        $names[] = $group['name'];
+        $groups[$group['id']] = $group;
     }
-    if (!$names) fail('--groups is empty. Give group names separated by commas, or `--groups=all` for every site.');
-    return array_values(array_unique($names));
+    if (!$groups) fail("--groups is empty. Give group names separated by commas{$else}.");
+    return array_values($groups);
+}
+
+/** The groups a user may see, from --groups=a,b, or [] for every site, which takes the word "all" (a group called all wins, since it shows less). */
+function group_names(PDO $db, string|bool $list): array
+{
+    if (is_string($list) && strcasecmp(trim($list), 'all') === 0 && !find_group($db, $list)) return [];
+    return array_column(groups_option($db, $list, ', or `--groups=all` for every site'), 'name');
 }
 
 function describe_access(array $groups): string
