@@ -33,15 +33,22 @@ function new_password(string $label): string
     return hash_password($password);
 }
 
-/** Group names from "a,b" as they are stored; every one must exist. Empty means every site. */
-function group_names(PDO $db, string $list): array
+/**
+ * Group names from "a,b" as they are stored; every one must exist. Every site
+ * takes the word "all" (a group called all wins, since it shows less). Empty
+ * is refused, so a script's empty variable never opens every site.
+ */
+function group_names(PDO $db, string|bool $list): array
 {
+    $list = is_string($list) ? trim($list) : '';
+    if (strcasecmp($list, 'all') === 0 && !find_group($db, $list)) return [];
     $names = [];
     foreach (array_filter(array_map('trim', explode(',', $list))) as $name) {
         $group = find_group($db, $name);
         if (!$group) fail("No group called \"{$name}\". See `php vaka group:list`.");
         $names[] = $group['name'];
     }
+    if (!$names) fail('--groups is empty. Give group names separated by commas, or `--groups=all` for every site.');
     return array_values(array_unique($names));
 }
 
@@ -79,7 +86,7 @@ function cmd_user_add(array $config, array $args, array $opts): void
     if (isset($users[$name])) fail("User {$name} already exists. Change it with `php vaka user:edit {$name}`.");
 
     if (isset($opts['groups'])) {
-        $groups = group_names($db, (string) $opts['groups']);
+        $groups = group_names($db, $opts['groups']);
     } elseif (!isset($args[1]) && ($all = list_groups($db))) {
         $picked = choose_many('Which groups may ' . $name . ' see?', array_column($all, 'name', 'name'), '0 or Enter for every site');
         $groups = is_array($picked) ? $picked : [];
@@ -100,11 +107,12 @@ function cmd_user_edit(array $config, array $args, array $opts): void
     $name = pick_user($users, $args[1] ?? null);
 
     if (!$opts) {
-        $groups = ask_optional('Groups this user may see', implode(', ', $users[$name]['groups'] ?? []), skip: 'Enter for every site');
-        $users[$name]['groups'] = group_names($db, $groups);
+        $current = $users[$name]['groups'] ?? [];
+        $answer = prompt('Groups this user may see ' . ($current ? '[' . implode(', ', $current) . '] (Enter keeps them, all for every site): ' : '(Enter for every site): '));
+        $users[$name]['groups'] = $answer === '' ? $current : group_names($db, $answer);
         if (confirm('Set a new password?')) $users[$name]['password'] = new_password("New password for {$name}: ");
     }
-    if (isset($opts['groups'])) $users[$name]['groups'] = group_names($db, $opts['groups'] === true ? '' : (string) $opts['groups']);
+    if (isset($opts['groups'])) $users[$name]['groups'] = group_names($db, $opts['groups']);
     if (isset($opts['password'])) $users[$name]['password'] = new_password("New password for {$name}: ");
 
     save_users($config['users_file'], $users);
