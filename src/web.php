@@ -89,7 +89,8 @@ function handle_request(array $config): never
         if (!$found) {
             // Whoever sends an expired token had it already, so saying so leaks nothing, and saves hunting for why a script stopped working
             $expired = share_token_expired_on($db, $token, $now);
-            if ($expired !== null) respond_json(401, ['error' => 'This read token expired on ' . share_expires_words($expired, $config['timezone']) . '. Create a new one with `php vaka share:create`.']);
+            if ($expired !== null) respond_json(401, ['error' => 'This read token expired on ' . share_expires_words($expired, $config['timezone'])
+                . '. Extend it with `php vaka share:edit ' . share_token_start($token) . ' --expires=YYYY-MM-DD`, or create a new one with `php vaka share:create`.']);
             respond_json(404, ['error' => 'No such read token: it may have been revoked']);
         }
         read_api($config, share_scope($found), $method, $now);

@@ -21,6 +21,12 @@ function share_token_hash(string $token): string
     return hash('sha256', $token);
 }
 
+/** The start of a token as share:list shows it: vaka_ and eight characters, or eight for a token made before the prefix. */
+function share_token_start(string $token): string
+{
+    return substr($token, 0, str_starts_with($token, SHARE_TOKEN_PREFIX) ? SHARE_PREFIX_LENGTH : 8);
+}
+
 /** Whether $token looks like a whole read token. Tokens made before the vaka_ prefix have none, and still work. */
 function is_share_token(string $token): bool
 {
@@ -41,12 +47,33 @@ function create_share_token(PDO $db, ?int $siteId, array $groupIds, string $labe
     $token = SHARE_TOKEN_PREFIX . bin2hex(random_bytes(32));
     $db->beginTransaction();
     $db->prepare('INSERT INTO share_tokens (token_hash, prefix, site_id, label, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-        ->execute([share_token_hash($token), substr($token, 0, SHARE_PREFIX_LENGTH), $siteId, clean_text($label, 100, 'label'), $expiresAt, utc_now($now)]);
+        ->execute([share_token_hash($token), share_token_start($token), $siteId, clean_text($label, 100, 'label'), $expiresAt, utc_now($now)]);
     $id = (int) $db->lastInsertId();
     $add = $db->prepare('INSERT OR IGNORE INTO share_groups (token_id, group_id) VALUES (?, ?)');
     foreach ($groupIds as $groupId) $add->execute([$id, (int) $groupId]);
     $db->commit();
     return ['id' => $id, 'token' => $token];
+}
+
+/**
+ * Change a token's label, last day (expires_at, null for never) or groups
+ * (ids, never none). The token itself stays the same, so whoever reads with
+ * it changes nothing: one about to expire is extended where it is kept.
+ */
+function update_share_token(PDO $db, int $id, array $changes): void
+{
+    if (array_key_exists('label', $changes)) $changes['label'] = clean_text($changes['label'], 100, 'label');
+    if (isset($changes['groups']) && !$changes['groups']) throw new InvalidArgumentException('A token for groups reads at least one');
+    $db->beginTransaction();
+    foreach (array_intersect_key($changes, ['label' => 1, 'expires_at' => 1]) as $column => $value) {
+        $db->prepare("UPDATE share_tokens SET {$column} = ? WHERE id = ?")->execute([$value, $id]);
+    }
+    if (isset($changes['groups'])) {
+        $db->prepare('DELETE FROM share_groups WHERE token_id = ?')->execute([$id]);
+        $add = $db->prepare('INSERT OR IGNORE INTO share_groups (token_id, group_id) VALUES (?, ?)');
+        foreach ($changes['groups'] as $groupId) $add->execute([$id, (int) $groupId]);
+    }
+    $db->commit();
 }
 
 /** Tokens' rows with their groups as [{id, name}], by name ([] for a site token). */

@@ -600,7 +600,7 @@ test('an unknown or revoked share token is a 404, an expired one says when it ex
     }
     $r = http_request('GET', WEB . '/?api&share=' . $expired);
     expect($r['status'])->toBe(401)
-        ->and($r['json']['error'])->toMatch('/^This read token expired on 2[67] Jan 2026\. Create a new one with `php vaka share:create`\.$/');
+        ->and($r['json']['error'])->toMatch('/^This read token expired on 2[67] Jan 2026\. Extend it with `php vaka share:edit vaka_[a-f0-9]{8} --expires=YYYY-MM-DD`, or create a new one with `php vaka share:create`\.$/');
 
     expect(http_request('GET', WEB . '/?api&site=blog.example&share=' . $token)['status'])->toBe(404)
         ->and(http_request('GET', WEB . '/?api=overview&share=' . $token)['status'])->toBe(401)
