@@ -50,8 +50,34 @@ test('a user limited to groups, listed and changed', function () {
 
     expect(vaka(['user:list'], $this->env)['out'])->toMatch('/anna\s+Customers, Own/');
 
-    vaka(['user:edit', 'anna', '--groups='], $this->env);
+    vaka(['user:edit', 'anna', '--groups=all'], $this->env);
     expect(vaka(['user:list'], $this->env)['out'])->toMatch('/anna\s+every site/');
+});
+
+test('an empty --groups is refused: only the word all gives every site', function () {
+    vaka(['group:add', 'Customers'], $this->env);
+    vaka(['user:add', 'anna', '--groups=Customers'], $this->env, "a long password\n");
+
+    // A script's empty variable, a bare flag or only commas never take a limit away
+    foreach (['--groups=', '--groups', '--groups= , '] as $flag) {
+        $r = vaka(['user:edit', 'anna', $flag], $this->env);
+        expect($r['exit'])->toBe(1)
+            ->and($r['err'])->toContain('--groups is empty')
+            ->and($r['err'])->toContain('`--groups=all` for every site');
+        expect(vaka(['user:list'], $this->env)['out'])->toMatch('/anna\s+Customers/');
+
+        $r = vaka(['user:add', 'erik', $flag], $this->env, "a long password\n");
+        expect($r['exit'])->toBe(1)
+            ->and($r['err'])->toContain('--groups is empty');
+        expect(vaka(['user:list'], $this->env)['out'])->not->toContain('erik');
+    }
+
+    expect(vaka(['user:add', 'erik', '--groups=ALL'], $this->env, "a long password\n")['out'])->toContain('Added user erik, who sees every site');
+});
+
+test('a group called all wins over the word, since it shows less', function () {
+    vaka(['group:add', 'All'], $this->env);
+    expect(vaka(['user:add', 'anna', '--groups=all'], $this->env, "a long password\n")['out'])->toContain('Added user anna, who sees the group All');
 });
 
 test('renaming a group keeps it for the users that have it', function () {

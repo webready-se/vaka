@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The footer credit shows Vaka's own mark next to Puls, linked to its repository,** now that the repository is public. `FOOTER_CREDIT=false` still leaves it out.
 
+### Security
+
+- **An empty `--groups` no longer gives a user every site.** `user:add` and `user:edit` with `--groups=`, a bare `--groups` or only commas, as a script with an empty variable sends, used to take every limit away; now they stop and say so. Every site takes the word: `--groups=all` (a group called all wins, since it shows less). In `user:edit` at a terminal, Enter keeps the groups and `all` gives every site.
+
 ## [0.3.0] - 2026-11-04
 
 ### Added

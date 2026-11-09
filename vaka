@@ -115,7 +115,7 @@ function print_help(): void
     Dashboard users
       user:add <name>      Add a user (asks for a password)  --groups=<a,b> to limit
                            what they see; without it, every site
-      user:edit <name>     Change a user  --groups=<a,b> (empty: every site) --password
+      user:edit <name>     Change a user  --groups=<a,b> or all (every site)  --password
       user:remove <name>   Remove a user  --force
       user:list            Every user and what they see
 

@@ -97,7 +97,7 @@ Users who see every site can also add, change and remove sites and groups in the
 | Command | What it does |
 |---------|--------------|
 | `php vaka user:add <name> [--groups=a,b]` | Add a dashboard user. Without `--groups`, they see every site |
-| `php vaka user:edit <name> [--groups=] [--password]` | Change what a user sees, or their password |
+| `php vaka user:edit <name> [--groups=a,b\|all] [--password]` | Change what a user sees (`all` for every site), or their password. An empty `--groups` is refused, so a script's empty variable never opens every site |
 | `php vaka user:remove <name>` | Remove a user |
 | `php vaka user:list` | Every user and what they see |
 

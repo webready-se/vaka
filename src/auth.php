@@ -102,7 +102,7 @@ function assert_group_unused(string $file, string $group): void
     $users = users_limited_to($file, $group);
     if (!$users) return;
     throw new InvalidArgumentException("{$group} cannot be removed while users are limited to it: " . list_words($users)
-        . '. Give them other groups first with `php vaka user:edit <name> --groups=<groups>` (an empty list would show them every site), or remove those users, then remove the group');
+        . '. Give them other groups first with `php vaka user:edit <name> --groups=<groups>` (or `--groups=all` for every site), or remove those users, then remove the group');
 }
 
 // =====================================================================
