@@ -241,6 +241,86 @@ test('share:create at a terminal picks one site, or one or more groups, from one
         ->and(vaka(['share:create', '--label=', '--expires=2099-12-31'], $env, "1,3\n")['err'])->toContain('A token reads one site, or one or more groups.');
 });
 
+test('update_share_token changes the label, last day and groups, and the token stays the same', function () {
+    $created = create_share_token($this->db, null, [$this->group], 'Bot', utc_now($this->now + 86400), $this->now);
+    update_share_token($this->db, $created['id'], ['label' => 'Report bot', 'expires_at' => null, 'groups' => [$this->other, $this->group]]);
+    expect(find_share_token($this->db, $created['token'], $this->now + 10 * 86400))->toMatchArray([
+        'label' => 'Report bot',
+        'expires_at' => null,
+        'groups' => [['id' => $this->group, 'name' => 'Customers'], ['id' => $this->other, 'name' => 'Own sites']],
+    ]);
+
+    update_share_token($this->db, $created['id'], ['groups' => [$this->other]]);
+    expect(find_share_token($this->db, $created['token'], $this->now)['groups'])->toBe([['id' => $this->other, 'name' => 'Own sites']]);
+});
+
+test('share:edit changes a token where it is read: its groups, last day and label', function () {
+    $env = cli_env();
+    vaka(['group:add', 'Customers'], $env);
+    vaka(['group:add', 'Own'], $env);
+    vaka(['site:add', 'https://shop.example', '--group=Customers'], $env);
+    vaka(['site:add', 'https://blog.example', '--group=Own'], $env);
+    preg_match('/(vaka_[a-f0-9]{8})/', vaka(['share:create', 'Customers', '--label=Bot', '--expires=2099-12-31'], $env)['out'], $m);
+
+    $r = vaka(['share:edit', $m[1], '--groups=Customers,Own', '--expires=never', '--label=Report bot'], $env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->toContain("Updated the read token {$m[1]}…: it reads groups Customers and Own (2 sites), labelled Report bot, and never expires.")
+        ->and($r['out'])->toContain('It now also reads group Own (1 site).')
+        ->and($r['out'])->toContain('The token stays the same, so nothing changes where it is kept.')
+        ->and(vaka(['share:list'], $env)['out'])->toMatch('/groups Customers and Own \(2 sites\)\s+Report bot\s+vaka_[a-f0-9]{8}…\s+never/');
+
+    $r = vaka(['share:edit', '1', '--groups=Own'], $env);
+    expect($r['out'])->toContain('it reads group Own (1 site), labelled Report bot, and never expires.')
+        ->and($r['out'])->toContain('It no longer reads group Customers.');
+
+    expect(vaka(['share:edit', '1', '--groups=Own'], $env)['out'])->toBe("Nothing changed.\n")
+        ->and(vaka(['share:edit', '1', '--label='], $env)['out'])->toContain('it reads group Own (1 site), and never expires.');
+});
+
+test('share:edit brings an expired token back, and asks at a terminal with Enter keeping each value', function () {
+    $env = cli_env();
+    vaka(['group:add', 'Customers'], $env);
+    $db = get_db($env['DB_PATH']);
+    create_share_token($db, null, [find_group($db, 'Customers')['id']], 'Bot', '2026-01-26T23:00:00Z', strtotime('2025-10-28T12:00:00Z'));
+    $db = null;
+
+    $r = vaka(['share:edit', '1', '--expires=2099-12-31'], $env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->toContain('valid through 31 Dec 2099.')
+        ->and($r['out'])->toMatch('/It expired on 2[67] Jan 2026 and works again\./');
+
+    $r = vaka(['share:edit'], $env, "\n\n\n");
+    expect($r['out'])->toContain('Label [Bot] (Enter keeps it, - clears it): ')
+        ->and($r['out'])->toContain('Last day it works [31 Dec 2099] (Enter keeps it), YYYY-MM-DD or never: ')
+        ->and($r['out'])->toContain('Groups it reads [Customers] (Enter keeps them): ')
+        ->and($r['out'])->toContain('Nothing changed.');
+});
+
+test('share:edit explains what it cannot do', function () {
+    $env = cli_env();
+    vaka(['group:add', 'Customers'], $env);
+    vaka(['site:add', 'https://shop.example', '--group=Customers'], $env);
+    expect(vaka(['share:edit', '1'], $env)['err'])->toContain('There are no read tokens to change');
+
+    vaka(['share:create', 'shop.example', '--label=', '--expires='], $env);
+    expect(vaka(['share:edit', '1', '--groups=Customers'], $env)['err'])->toContain('This token reads one site, shop.example, and stays that way. For groups, make a new one: `php vaka share:create --groups=<a,b>`.')
+        ->and(vaka(['share:edit', '1', '--expires=2001-01-01'], $env)['err'])->toContain('has passed')
+        ->and(vaka(['share:edit', 'abcdef12', '--label=x'], $env)['err'])->toContain('No read token starts with "abcdef12"');
+});
+
+test('share:list says what a group token reaches now, and when it reads nothing', function () {
+    $env = cli_env();
+    vaka(['group:add', 'Customers'], $env);
+    vaka(['group:add', 'Empty'], $env);
+    vaka(['site:add', 'https://shop.example', '--group=Customers'], $env);
+    vaka(['share:create', 'Customers', '--label=', '--expires='], $env);
+    vaka(['share:create', 'Empty', '--label=', '--expires='], $env);
+    $list = vaka(['share:list'], $env)['out'];
+    expect($list)->toContain('group Customers (1 site)')
+        ->and($list)->toContain('group Empty (no sites, reads nothing)')
+        ->and($list)->toContain('Change one with `php vaka share:edit <#>`');
+});
+
 test('share:revoke takes the start of a token with or without vaka_, or the whole token', function () {
     $env = cli_env();
     vaka(['site:add', 'https://shop.example'], $env);
@@ -296,7 +376,7 @@ test('share commands explain what they cannot do', function () {
 
 test('help lists the share commands', function () {
     $out = vaka(['help'])['out'];
-    foreach (['share:create', 'share:list', 'share:revoke'] as $command) expect($out)->toContain($command);
+    foreach (['share:create', 'share:list', 'share:edit', 'share:revoke'] as $command) expect($out)->toContain($command);
 });
 
 /** $env after creating one read token for shop.example. */

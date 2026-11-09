@@ -50,6 +50,7 @@ match ($command) {
     'user:list' => cmd_user_list($config, $args, $opts),
     'share:create' => cmd_share_create($config, $args, $opts),
     'share:list' => cmd_share_list($config, $args, $opts),
+    'share:edit' => cmd_share_edit($config, $args, $opts),
     'share:revoke' => cmd_share_revoke($config, $args, $opts),
     'help', '--help', '-h' => print_help(),
     'version' => print_version(),
@@ -124,6 +125,8 @@ function print_help(): void
                            --groups=<a,b> for one token that reads several groups
                            --label=<what it is for> --expires=YYYY-MM-DD|never (default: in 90 days)
       share:list           Every read token: what it reads, when it was last used
+      share:edit <#>       Change a token's groups, last day or label; the token stays the same
+                           --groups=<a,b> --expires=YYYY-MM-DD|never --label=<text>
       share:revoke <#>     Revoke a read token (its number, or the start of it)
 
     Other

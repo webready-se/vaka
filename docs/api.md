@@ -13,8 +13,9 @@ There are two ways in:
   - A token for groups reads every site in them, including sites added later; a token for a site reads that site. One token per reader: a reader of two groups would keep two tokens in the same `.env`, where they leak together, so a second one limits nothing. A group without sites reads nothing, never every site, and a token goes with its site or its last group.
   - The token is shown once, when it is made. Vaka keeps only a fingerprint of it (a SHA-256 hash) and its start (`vaka_` and eight characters), to tell tokens apart.
   - An unknown or revoked token gets `404`. A site outside the token's groups gets `404` too, so its existence does not leak.
-  - An expired token gets `401` and says when it expired, so a script that stops working says why: `{"error": "This read token expired on 26 Jan 2027. Create a new one with `php vaka share:create`."}`
-  - `php vaka share:list` shows every token, what it reads, its last day and when it was last used; `php vaka share:revoke <#>` ends one (its number, or its start as `share:list` shows it).
+  - An expired token gets `401` and says when it expired and how to extend it, so a script that stops working says why: `{"error": "This read token expired on 26 Jan 2027. Extend it with `php vaka share:edit vaka_1a2b3c4d --expires=YYYY-MM-DD`, or create a new one with `php vaka share:create`."}`
+  - `php vaka share:list` shows every token, what it reads now (a group without sites reads nothing), its last day and when it was last used; `php vaka share:revoke <#>` ends one (its number, or its start as `share:list` shows it).
+  - `php vaka share:edit <#>` changes a token's groups (`--groups=a,b`), last day (`--expires`) or label, also one that has expired, and the token stays the same, so nothing changes where it is kept: a token about to expire is extended where it sits. A token for one site stays one; for groups, make a new one. Only the CLI changes a token, so one that leaks can never extend itself.
 - **Session (the dashboard itself).** A logged-in browser session reads the sites that user may see. Without a token or a session, the API answers `401`.
 
 Treat a read token like a password: anyone with it can read the status, history and response times of the sites it covers.
@@ -150,7 +151,7 @@ A read token lets an AI coding assistant, such as Claude Code, read a site's hea
 
    The command reads `.env` as a shell script. If the project's `.env` has a value with spaces and no quotes, quote it, or put the two lines in a file of their own (such as `.env.vaka`, ignored by git) and load that instead.
 
-When the token expires, the API answers `401` with the day it expired: create a new one with `share:create` and replace the line in `.env`. Revoke a token with `php vaka share:revoke <#>` when it is no longer needed.
+When the token expires, the API answers `401` with the day it expired: extend it with `php vaka share:edit <#> --expires=YYYY-MM-DD`, and the line in `.env` stays as it is. Revoke a token with `php vaka share:revoke <#>` when it is no longer needed.
 
 ## Things to know
 

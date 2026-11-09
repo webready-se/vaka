@@ -100,7 +100,8 @@ function cmd_share_create(array $config, array $args, array $opts): void
 function cmd_share_list(array $config, array $args, array $opts): void
 {
     allow_options($opts, []);
-    $tokens = list_share_tokens(get_db($config['db_path']));
+    $db = get_db($config['db_path']);
+    $tokens = list_share_tokens($db);
     if (!$tokens) {
         echo "No read tokens yet. Create one with `php vaka share:create <group or site>`.\n";
         return;
@@ -108,36 +109,104 @@ function cmd_share_list(array $config, array $args, array $opts): void
     $now = time();
     print_table(['#', 'Reads', 'Label', 'Token', 'Works through', 'Last used', 'Created'], array_map(fn (array $token) => [
         $token['id'],
-        share_target($token),
+        share_reach($db, $token),
         $token['label'],
         $token['prefix'] . '…',
         share_expires_words($token['expires_at'], $config['timezone']) . ($token['expires_at'] !== null && $token['expires_at'] <= utc_now($now) ? ' (expired)' : ''),
         $token['last_used_at'] === null ? 'never' : ago($token['last_used_at'], $now),
         (new DateTimeImmutable($token['created_at']))->setTimezone(new DateTimeZone($config['timezone']))->format('j M Y'),
     ], $tokens));
-    echo "\nOnly the start of each token is kept in the clear. Revoke one with `php vaka share:revoke <#>`.\n";
+    echo "\nOnly the start of each token is kept in the clear. Change one with `php vaka share:edit <#>`, revoke one with `php vaka share:revoke <#>`.\n";
+}
+
+/** What a token reads now, in words: "group Customers (3 sites)", "group Empty (no sites, reads nothing)" or "shop.example". */
+function share_reach(PDO $db, array $token): string
+{
+    if ($token['site_id'] !== null) return share_target($token);
+    $count = (int) $db->query('SELECT COUNT(*) FROM sites s WHERE ' . group_filter(array_column($token['groups'], 'id')))->fetchColumn();
+    return share_target($token) . ' (' . ($count ? plural($count, 'site', 'sites') : 'no sites, reads nothing') . ')';
+}
+
+/**
+ * A token by its number in share:list, its start (vaka_ may be left out) or
+ * the whole token, or picked from a list when none is given.
+ */
+function pick_share_token(PDO $db, ?string $ref, string $none): array
+{
+    $tokens = array_column(list_share_tokens($db), null, 'id');
+    if (!$tokens) fail($none);
+
+    $ref ??= (string) choose('Which token?', array_map(fn (array $token) => share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ', ' . $token['prefix'] . '…', $tokens));
+    if (ctype_digit($ref) && isset($tokens[(int) $ref])) return $tokens[(int) $ref];
+
+    $ref = strtolower(rtrim($ref, '.…'));
+    $bare = fn (string $start) => str_starts_with($start, SHARE_TOKEN_PREFIX) ? substr($start, strlen(SHARE_TOKEN_PREFIX)) : $start;
+    $matches = array_values(array_filter($tokens, fn (array $token) => is_share_token($ref)
+        ? hash_equals($token['token_hash'], share_token_hash($ref))
+        : $bare($ref) !== '' && str_starts_with($bare($token['prefix']), $bare($ref))));
+    if (count($matches) > 1) fail("More than one read token starts with \"{$ref}\". Use its number from `php vaka share:list`.");
+    return $matches[0] ?? fail("No read token starts with \"{$ref}\". See `php vaka share:list`.");
+}
+
+function cmd_share_edit(array $config, array $args, array $opts): void
+{
+    allow_options($opts, ['label', 'expires', 'groups']);
+    $db = get_db($config['db_path']);
+    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to change. Create one with `php vaka share:create <group or site>`.');
+    $tz = $config['timezone'];
+
+    // At a terminal without options each value is asked for, and Enter keeps it
+    if (!$opts) {
+        $opts['label'] = ask_optional('Label', $token['label']);
+        $answer = prompt('Last day it works [' . share_expires_words($token['expires_at'], $tz) . '] (Enter keeps it), YYYY-MM-DD or never: ');
+        if ($answer !== '') $opts['expires'] = $answer;
+        if ($token['groups']) {
+            $answer = prompt('Groups it reads [' . implode(', ', array_column($token['groups'], 'name')) . '] (Enter keeps them): ');
+            if ($answer !== '') $opts['groups'] = $answer;
+        }
+    }
+
+    // Every value is checked before anything changes
+    $changes = [];
+    if (isset($opts['label']) && ($label = trim($opts['label'] === true ? '' : $opts['label'])) !== $token['label']) $changes['label'] = $label;
+    if (isset($opts['expires']) && ($expiresAt = share_expiry_or_fail($opts['expires'] === true ? '' : $opts['expires'], $config)) !== $token['expires_at']) {
+        $changes['expires_at'] = $expiresAt;
+    }
+    $before = array_column($token['groups'], null, 'id');
+    $after = $before;
+    if (isset($opts['groups'])) {
+        // A token for one site stays one: reading groups instead is another reader, so another token
+        if (!$before) fail('This token reads one site, ' . share_target($token) . ', and stays that way. For groups, make a new one: `php vaka share:create --groups=<a,b>`.');
+        $after = array_column(groups_option($db, $opts['groups']), null, 'id');
+        if (array_diff_key($after, $before) || array_diff_key($before, $after)) $changes['groups'] = array_keys($after);
+    }
+    if (!$changes) {
+        echo "Nothing changed.\n";
+        return;
+    }
+
+    try {
+        update_share_token($db, (int) $token['id'], $changes);
+    } catch (InvalidArgumentException $e) {
+        fail($e->getMessage() . '.');
+    }
+    $updated = array_replace($token, $changes, ['groups' => array_values($after)]);
+    echo "Updated the read token {$token['prefix']}…: it reads " . share_reach($db, $updated)
+        . ($updated['label'] !== '' ? ", labelled {$updated['label']}" : '')
+        . ', ' . ($updated['expires_at'] === null ? 'and never expires' : 'valid through ' . share_expires_words($updated['expires_at'], $tz)) . ".\n";
+    if (array_key_exists('expires_at', $changes) && $token['expires_at'] !== null && $token['expires_at'] <= utc_now()) {
+        echo 'It expired on ' . share_expires_words($token['expires_at'], $tz) . " and works again.\n";
+    }
+    if ($added = array_diff_key($after, $before)) echo 'It now also reads ' . share_reach($db, ['site_id' => null, 'groups' => array_values($added)]) . ".\n";
+    if ($removed = array_diff_key($before, $after)) echo 'It no longer reads ' . share_target(['site_id' => null, 'groups' => array_values($removed)]) . ".\n";
+    echo "The token stays the same, so nothing changes where it is kept.\n";
 }
 
 function cmd_share_revoke(array $config, array $args, array $opts): void
 {
     allow_options($opts, []);
     $db = get_db($config['db_path']);
-    $tokens = array_column(list_share_tokens($db), null, 'id');
-    if (!$tokens) fail('There are no read tokens to revoke.');
-
-    $ref = (string) ($args[1] ?? choose('Which token?', array_map(fn (array $token) => share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ', ' . $token['prefix'] . '…', $tokens)));
-    if (ctype_digit($ref) && isset($tokens[(int) $ref])) {
-        $token = $tokens[(int) $ref];
-    } else {
-        // The start of the token, as share:list shows it (vaka_ may be left out), or the whole token
-        $ref = strtolower(rtrim($ref, '.…'));
-        $bare = fn (string $start) => str_starts_with($start, SHARE_TOKEN_PREFIX) ? substr($start, strlen(SHARE_TOKEN_PREFIX)) : $start;
-        $matches = array_values(array_filter($tokens, fn (array $token) => is_share_token($ref)
-            ? hash_equals($token['token_hash'], share_token_hash($ref))
-            : $bare($ref) !== '' && str_starts_with($bare($token['prefix']), $bare($ref))));
-        if (count($matches) > 1) fail("More than one read token starts with \"{$ref}\". Use its number from `php vaka share:list`.");
-        $token = $matches[0] ?? fail("No read token starts with \"{$ref}\". See `php vaka share:list`.");
-    }
+    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to revoke.');
 
     revoke_share_token($db, (int) $token['id']);
     echo 'Revoked the read token for ' . share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ". Whatever used it now gets 404.\n";

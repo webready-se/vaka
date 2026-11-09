@@ -94,7 +94,7 @@ src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:impor
 src/commands/run.php     run, check, status
 src/commands/alerts.php  alert:test, server:list, server:label
 src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, snooze, unsnooze; group_or_site() and pick_group_or_site()
-src/commands/share.php   share:create, share:list, share:revoke
+src/commands/share.php   share:create, share:list (what each token reaches now), share:edit, share:revoke
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
 src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), bot_check() (a bot check is not the site: uptime keeps its status, headers and exposed files say unknown), advice_for(), plain-words errors and durations
 src/checks/ssl.php       fetch_certificate() (verified, then unverified to describe a bad one), certificate_info(), host_matches(), evaluate_ssl(), ssl_notice() (thresholds once per certificate)
@@ -105,7 +105,7 @@ src/checks/dns.php       lookup_mail_dns() (MX, SPF, DMARC in one spelling; reso
 src/runner.php           run_locked(), run(): due checks, state, events, samples, cleanup, heartbeat; queue_recheck() ("Check again")
 src/silence.php          Maintenance windows (parse, window_active() and window_periods() in local time, describe, site_windows()), active_silence(), snooze_site()
 src/manage.php           Changing sites, groups, maintenance windows and servers from the dashboard: site_form_input() and group_form_input() (an error per field, the CLI's rules; webhooks kept unless replaced or cleared), save_site_form(), save_group_form(), describe_*_changes() (history in words), remove_*_form() (kept in the audit log); CHECK_LABELS
-src/share.php            Read tokens (vaka_ and 64 hex) for a site or one or more groups: create_share_token() (only a SHA-256 and the start are kept), find_share_token(), share_token_expired_on() (an expired token says so), share_scope(), share_expiry(), share_default_day() (90 days)
+src/share.php            Read tokens (vaka_ and 64 hex) for a site or one or more groups: create_share_token() (only a SHA-256 and the start are kept), update_share_token() (the token stays the same), find_share_token(), share_token_expired_on() (an expired token says so), share_scope(), share_expiry(), share_default_day() (90 days)
 src/alerts.php           server_key(), alert_decision(), notice_for() (flapping), collect_notices(), bundle_notices(), alert_text(), digests
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
@@ -305,7 +305,7 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka alert:test [<group>]` | Send a test alert to a group's destinations (no group: the defaults in .env) |
 | `php vaka server:list` | Servers (by IP or hand-set name) and their sites; CDN sites counted apart |
 | `php vaka user:add [<name>]` / `user:edit` / `user:remove` / `user:list` | Manage dashboard users |
-| `php vaka share:create [<group\|site>] [--groups=a,b] [--label=] [--expires=YYYY-MM-DD\|never]` / `share:list` / `share:revoke [<#>]` | Read tokens for the read API (`vaka_` and 64 hex), one per reader: a site, or one or more groups; 90 days unless `--expires` gives another last day or `never`, shown once, stored hashed |
+| `php vaka share:create [<group\|site>] [--groups=a,b] [--label=] [--expires=YYYY-MM-DD\|never]` / `share:list` / `share:edit [<#>]` / `share:revoke [<#>]` | Read tokens for the read API (`vaka_` and 64 hex), one per reader: a site, or one or more groups; 90 days unless `--expires` gives another last day or `never`, shown once, stored hashed; `share:edit` changes groups, last day or label and keeps the token |
 
 ## Development
 
