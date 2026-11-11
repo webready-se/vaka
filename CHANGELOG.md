@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-11-11
+
 ### Added
 
 - **The footer credit shows Vaka's own mark next to Puls, linked to its repository,** now that the repository is public. `FOOTER_CREDIT=false` still leaves it out.
@@ -153,7 +155,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `scripts/seed-demo.php` builds a demo database with fake sites; `scripts/smoke.mjs` drives the dashboard in headless Chrome and fails on JavaScript errors, CSP violations and markup from the data.
 - Every release comes as a zip with only the files Vaka needs to run, and its docs: download, unpack, run.
 
-[Unreleased]: https://github.com/webready-se/vaka/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/webready-se/vaka/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/webready-se/vaka/releases/tag/v0.4.0
 [0.3.0]: https://github.com/webready-se/vaka/releases/tag/v0.3.0
 [0.2.0]: https://github.com/webready-se/vaka/releases/tag/v0.2.0
 [0.1.0]: https://github.com/webready-se/vaka/releases/tag/v0.1.0
