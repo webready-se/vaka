@@ -138,6 +138,53 @@ function revoke_share_token(PDO $db, int $id): void
     $db->prepare('DELETE FROM share_tokens WHERE id = ?')->execute([$id]);
 }
 
+/**
+ * Who reads each group, in words, by group id: the users limited to it
+ * ("user anna") and the read tokens for it that work now ("read token #3
+ * (Claude Code)", numbered as share:list numbers them). A login or a token
+ * for a group follows its sites, so these are who a move shows a site to.
+ * Users who see every site and tokens for one site are left out: a site that
+ * changes group changes nothing for them.
+ *
+ * @return array<int, list<string>>
+ */
+function group_readers(PDO $db, string $usersFile, int $now): array
+{
+    $readers = [];
+    $users = load_users($usersFile);
+    ksort($users, SORT_NATURAL | SORT_FLAG_CASE);
+    foreach ($users as $name => $user) {
+        foreach ($user['groups'] ?? [] as $groupName) {
+            if ($group = find_group($db, (string) $groupName)) $readers[(int) $group['id']][] = "user {$name}";
+        }
+    }
+    $tokens = $db->prepare('SELECT sg.group_id, t.id, t.label FROM share_groups sg JOIN share_tokens t ON t.id = sg.token_id
+        WHERE t.expires_at IS NULL OR t.expires_at > ? ORDER BY t.id');
+    $tokens->execute([utc_now($now)]);
+    foreach ($tokens as $row) $readers[(int) $row['group_id']][] = "read token #{$row['id']}" . ($row['label'] !== '' ? " ({$row['label']})" : '');
+    // A user may name a group twice, in another case
+    return array_map(fn (array $names) => array_values(array_unique($names)), $readers);
+}
+
+/**
+ * Who sees sites, or no longer does, when they move from their groups
+ * ($from: each one's group id, null for none) to $to (null for none), from
+ * group_readers(). Never who reads both, and each name once.
+ *
+ * @return array{gain: list<string>, lose: list<string>}
+ */
+function readers_change(array $readers, array $from, ?int $to): array
+{
+    $now = $to === null ? [] : $readers[$to] ?? [];
+    $gain = $lose = [];
+    foreach (array_unique($from) as $group) {
+        $before = $group === null ? [] : $readers[$group] ?? [];
+        array_push($gain, ...array_diff($now, $before));
+        array_push($lose, ...array_diff($before, $now));
+    }
+    return ['gain' => array_values(array_unique($gain)), 'lose' => array_values(array_unique($lose))];
+}
+
 /** What a token reads, in words: "group Customers", "groups Customers and Own" or "shop.example". */
 function share_target(array $token): string
 {

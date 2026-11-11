@@ -121,12 +121,12 @@ function cmd_site_edit(array $config, array $args, array $opts): void
     // A server instead of a site: move all its sites at once
     $target = $args[1] ?? null;
     if ($target !== null && !find_site($db, $target) && ($onServer = sites_on_server($db, $target))) {
-        move_server_sites($db, $onServer, $opts);
+        move_server_sites($db, $config, $onServer, $opts);
         return;
     }
     // --group alone, without a site: move several sites at once, picked from a list
     if ($target === null && array_keys($opts) === ['group'] && is_string($opts['group'])) {
-        move_picked_sites($db, $opts['group']);
+        move_picked_sites($db, $config, $opts['group']);
         return;
     }
     $site = pick_site($db, $target);
@@ -148,23 +148,25 @@ function cmd_site_edit(array $config, array $args, array $opts): void
         $note = $moved ? unresolved_note((string) $fields['url'], $config['host_lookup'] ?? null) : null;
         if ($note !== null && stream_isatty(STDIN) && !confirm("{$note} Change it anyway?")) fail('Not changed. Check the address, then try again.');
     }
+    $readers = group_readers($db, $config['users_file'], time());
     try {
         update_site($db, $site['id'], $fields);
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage() . '.');
     }
     if ($note !== null && !stream_isatty(STDIN)) fwrite(STDERR, "Warning: {$note} Changed anyway: check the spelling.\n");
-    $site = site_with_group($db, $site['id']);
-    echo 'Updated ' . readable_url($site['url']) . ': ' . describe_site($site, $config) . ".\n";
+    $updated = site_with_group($db, $site['id']);
+    echo 'Updated ' . readable_url($updated['url']) . ': ' . describe_site($updated, $config) . ".\n";
+    echo readers_lines(readers_change($readers, [$site['group_id']], $updated['group_id']));
 }
 
 /** site:edit <server> --group=<name|none>: every site on a server into a group, or out of one. Nothing else changes for a whole server. */
-function move_server_sites(PDO $db, array $sites, array $opts): void
+function move_server_sites(PDO $db, array $config, array $sites, array $opts): void
 {
     if (array_keys($opts) !== ['group'] || !is_string($opts['group'])) {
         fail('For a whole server, only --group can change: php vaka site:edit <server> --group=<name|none>. Change other settings one site at a time.');
     }
-    move_sites($db, $sites, $opts['group'], ' on server ' . server_display($sites[0], server_labels($db)));
+    move_sites($db, $config, $sites, $opts['group'], ' on server ' . server_display($sites[0], server_labels($db)));
 }
 
 /**
@@ -172,7 +174,7 @@ function move_server_sites(PDO $db, array $sites, array $opts): void
  * numbered list (ranges and all). A group that does not exist yet can be
  * added on the way.
  */
-function move_picked_sites(PDO $db, string $group): void
+function move_picked_sites(PDO $db, array $config, string $group): void
 {
     if (strtolower(trim($group)) !== 'none' && !find_group($db, $group)) {
         if (!confirm("There is no group called {$group}. Add it?", true)) fail("No group called \"{$group}\". See `php vaka group:list`.");
@@ -192,12 +194,13 @@ function move_picked_sites(PDO $db, string $group): void
         echo "Nothing moved.\n";
         return;
     }
-    move_sites($db, $picked === true ? $sites : array_values(array_filter($sites, fn ($site) => in_array($site['id'], $picked, true))), $group);
+    move_sites($db, $config, $picked === true ? $sites : array_values(array_filter($sites, fn ($site) => in_array($site['id'], $picked, true))), $group);
 }
 
-/** Move $sites into $group (or out of their group with "none"), and say which. */
-function move_sites(PDO $db, array $sites, string $group, string $where = ''): void
+/** Move $sites into $group (or out of their group with "none"), and say which, and who that shows them to. */
+function move_sites(PDO $db, array $config, array $sites, string $group, string $where = ''): void
 {
+    $readers = group_readers($db, $config['users_file'], time());
     try {
         foreach ($sites as $site) update_site($db, $site['id'], ['group' => $group]);
     } catch (InvalidArgumentException $e) {
@@ -206,10 +209,23 @@ function move_sites(PDO $db, array $sites, string $group, string $where = ''): v
     $names = array_map(fn (array $site) => display_url($site['url']), $sites);
     $more = count($names) - 15;
     $list = $more > 0 ? implode(', ', array_slice($names, 0, 15)) . " and {$more} more" : list_words($names);
-    $to = strtolower(trim($group)) === 'none'
+    $into = strtolower(trim($group)) === 'none' ? null : find_group($db, $group);
+    $to = $into === null
         ? 'out of ' . (count($sites) === 1 ? 'its' : 'their') . ' group'
-        : 'to ' . find_group($db, $group)['name'];
+        : 'to ' . $into['name'];
     echo 'Moved ' . plural(count($sites), 'site', 'sites') . "{$where} {$to}: {$list}.\n";
+    echo readers_lines(readers_change($readers, array_column($sites, 'group_id'), $into['id'] ?? null));
+}
+
+/**
+ * Who a move shows sites to and hides them from, a line each: a login or a
+ * read token for a group follows its sites. Nothing when it changes nothing
+ * for anyone.
+ */
+function readers_lines(array $change): string
+{
+    $lines = $change['gain'] ? 'Now also visible to: ' . implode(', ', $change['gain']) . ".\n" : '';
+    return $lines . ($change['lose'] ? 'No longer visible to: ' . implode(', ', $change['lose']) . ".\n" : '');
 }
 
 function cmd_site_remove(array $config, array $args, array $opts): void

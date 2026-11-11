@@ -224,6 +224,21 @@ test('the first steps come with the real cron line and whether alerts are set up
     expect($anna['setup'])->toBeNull();
 });
 
+test('the site and server forms know who reads each group, so a move can say who it shows the sites to', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    add_group($this->db, ['name' => 'Agency']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    add_site($this->db, ['url' => 'https://blog.example']);
+    $this->db->exec("UPDATE sites SET ip = '203.0.113.10'");
+    $token = create_share_token($this->db, null, [$customers], 'Claude Code', null, time())['id'];
+    $jar = ($this->login)('admin', 'admin password')['jar'];
+
+    // By group name, as the forms pick groups; a group nobody limited reads is left out
+    expect(http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['json']['setup']['readers'])->toBe(['Customers' => ['user anna', "read token #{$token} (Claude Code)"]])
+        // The groups the server's sites are in now ('' for none)
+        ->and(http_request('GET', WEB . "/?api=server&site={$shop}", ['jar' => $jar])['json']['server']['groups'])->toBe(['', 'Customers']);
+});
+
 test('the overview lists sites with their state, and a restricted user only sees their groups', function () {
     add_group($this->db, ['name' => 'Customers']);
     add_group($this->db, ['name' => 'Own']);

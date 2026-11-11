@@ -79,7 +79,8 @@ async function main() {
   const dbPath = join(tmp, 'demo.sqlite');
   const usersFile = join(tmp, 'users.json');
   execFileSync('php', [join(root, 'scripts/seed-demo.php'), dbPath, '--hostile'], { stdio: 'ignore' });
-  execFileSync('php', ['-r', 'file_put_contents($argv[1], json_encode(["smoke" => ["password" => password_hash("smoke password", PASSWORD_BCRYPT, ["cost" => 4]), "groups" => []]]));', usersFile]);
+  // A second user limited to a group, so moving a site to it says who that shows it to
+  execFileSync('php', ['-r', '$h = password_hash("smoke password", PASSWORD_BCRYPT, ["cost" => 4]); file_put_contents($argv[1], json_encode(["smoke" => ["password" => $h, "groups" => []], "reader" => ["password" => $h, "groups" => ["Own sites"]]]));', usersFile]);
 
   // 2. Serve it
   const env = { ...process.env, VAKA_ENV_FILE: '/dev/null', DB_PATH: dbPath, USERS_FILE: usersFile, TIMEZONE: ZONE };
@@ -497,6 +498,13 @@ async function main() {
         q('[data-action="edit-site"]').click();
         if (await waitFor(() => q('#f-keyword'), 'the edit form')) {
           expect(q('#f-keyword').value === '<b>Welcome</b>' && !q('[data-form="site"] b'), 'the edit form shows the keyword as text');
+          // Picking another group says who that shows the site to, as it is picked, and nothing once it is back
+          const groupField = q('#f-group');
+          const pickGroup = (name) => { groupField.value = name; groupField.dispatchEvent(new Event('change', { bubbles: true })); };
+          pickGroup('Own sites');
+          expect(q('#f-group-hint')?.textContent === 'Alerts go where the group says. Moving it shows it to user reader.' && q('#f-group-hint').getAttribute('aria-live') === 'polite' && groupField.isConnected, `moving a site says who it shows it to, without redrawing the form (got "${q('#f-group-hint')?.textContent}")`);
+          pickGroup('');
+          expect(q('#f-group-hint')?.textContent === 'Alerts go where the group says.', 'back in its own group, nothing more is said');
           q('[data-action="remove-ask"]').click();
           if (await waitFor(() => q('[data-action="remove-site"]'), 'the remove confirmation')) {
             expect(/cannot be undone/.test(q('.confirm').textContent), 'removing asks first, in the page');
@@ -573,6 +581,10 @@ async function main() {
         q('[data-action="edit-server"]').click();
         if (await waitFor(() => q('[data-form="server"]'), 'the server form')) {
           expect(q('#s-label').value === 'web-2' && /5 sites answer on 198\.51\.100\.7/.test(q('dialog.drawer').textContent), 'the server form shows its name and how many sites are on it');
+          // Its sites are in Own sites, which the reader is limited to, and one in none: a move says who gains or loses them
+          const serverGroup = q('#s-group');
+          const moveTo = (value) => { serverGroup.value = value; serverGroup.dispatchEvent(new Event('change', { bubbles: true })); return q('#s-group-move')?.textContent; };
+          expect(moveTo('Customers') === 'Moving them hides them from user reader.' && moveTo('Own sites') === 'Moving them shows them to user reader.' && moveTo('__keep') === '', `moving a server's sites says who gains or loses them (got "${q('#s-group-move')?.textContent}")`);
           q('[data-action="form-cancel"]').click();
           await waitFor(() => q('dialog.drawer[open] [data-action="edit-server"]'), 'cancel to go back to the detail');
         }
