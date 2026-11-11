@@ -523,6 +523,7 @@ function header_levels(array $details): array
     $levels = array_map(fn ($header) => $header['level'], $details['headers'] ?? []);
     if (isset($details['files'])) $levels['nosniff_files'] = $details['files']['missing'] ? 'missing' : 'good';
     if (isset($details['csp_blocks'])) $levels['csp_blocks'] = csp_blocks_anything($details['csp_blocks']) ? 'weak' : 'good';
+    if (isset($details['csp_would_block'])) $levels['csp_would_block'] = csp_blocks_anything($details['csp_would_block']) ? 'weak' : 'good';
     return $levels;
 }
 
@@ -714,6 +715,13 @@ function url_host(string $url): string
     return strtolower(($parts['host'] ?? '') . (isset($parts['port']) ? ':' . $parts['port'] : ''));
 }
 
+/** A page's address without scheme, query or fragment ("example.com/guide/"), with no whitespace and cut to 80 characters. */
+function page_address(string $url): string
+{
+    $address = (string) preg_replace('/\s+/u', '', url_host($url) . (parse_url($url, PHP_URL_PATH) ?: '/'));
+    return mb_strlen($address) > 80 ? mb_substr($address, 0, 79) . '…' : $address;
+}
+
 /**
  * Whether a file is on the site's own server: the page's host and port, or
  * a host under the page's (without www.), such as static.shop.example for
@@ -834,6 +842,8 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     // The page's scripts against the CSP, never for the grade: what an enforced one blocks (its own part of the
     // levels, so it is confirmed and alerted like a change), what a Report-Only one would, or what a first one would
     $scripts = page_scripts($response['body'] ?? '', $response['url']);
+    // The page that was read, for the CSP notes to name: a verdict on one page is not one on the site
+    $details['page'] = page_address($response['url']);
     $policies = fn (string $name) => array_map('csp_directives', $response['headers'][$name] ?? []);
     if ($headers['csp']['level'] !== 'missing') {
         $details['csp_blocks'] = csp_blocked($policies('content-security-policy'), $scripts, $response['url']);
@@ -937,6 +947,11 @@ function headers_change(array $from, array $to): string
     $blocks = [$from['csp_blocks'] ?? null, $to['csp_blocks'] ?? null];
     if ($blocks[1] === 'weak' && $blocks[0] !== 'weak') $parts[] = 'CSP blocks parts of the page';
     if ($blocks[0] === 'weak' && $blocks[1] === 'good') $parts[] = 'CSP no longer blocks parts of the page';
+    // A Report-Only policy against the page: whether it would, so a script that changed under its hash shows before
+    // it is enforced (a first look, and a policy taken away or enforced, say nothing of it)
+    $would = [$from['csp_would_block'] ?? null, $to['csp_would_block'] ?? null];
+    if ($would === ['good', 'weak']) $parts[] = 'Report-Only CSP would now block parts of the page';
+    if ($would === ['weak', 'good']) $parts[] = 'Report-Only CSP would no longer block parts of the page';
     if (!$parts) return '';
 
     $old = headers_grade($from);
@@ -1043,6 +1058,13 @@ function header_items(array $details): array
     return $items;
 }
 
+/** The page a CSP note is about, in words: "the start page", or its address ("example.com/guide/"); "the page" when it was not kept. */
+function csp_page_words(string $page): string
+{
+    if ($page === '') return 'the page';
+    return str_contains(rtrim($page, '/'), '/') ? $page : 'the start page';
+}
+
 /**
  * The CSP item against the page. In force: whether it blocks scripts on the
  * page (`blocks`), and which (`blocked` URLs, `inline` starts), with what to
@@ -1050,27 +1072,31 @@ function header_items(array $details): array
  * rename. Without one: Report-Only to try first, and what the page has that
  * default-src 'self' would block, so the line is not copied as it is onto a
  * site it would break. No policy is built from the page: Vaka sees one page,
- * and a hash for an inline script changes whenever the script does.
+ * and a hash for an inline script changes whenever the script does. The
+ * notes name the page, so a verdict on it is not taken for the whole site.
  */
 function csp_item(array $item, array $details): array
 {
     $blocked = $details['csp_blocks'] ?? $details['csp_would_block'] ?? null;
     $blocks = csp_blocks_anything($blocked);
     $named = $blocks ? array_filter(['inline' => $blocked['inline'], 'blocked' => $blocked['scripts'], 'blocked_assets' => csp_blocked_assets($blocked)]) : [];
+    $on = ' on ' . csp_page_words($details['page'] ?? '');
     if ($item['level'] !== 'missing') {
         // A Report-Only next to the policy in force adds nothing: said, since the one in force may come from somewhere else than the line just added
         $also = isset($details['csp_report_only']) ? 'also sent as Report-Only, which adds nothing next to a policy in force: if that line was meant to be the only one, something else sets the first (the application, or another server rule)' : '';
         $join = fn (string ...$parts) => implode('. ', array_map(fn ($part, $i) => $i > 0 ? ucfirst($part) : $part, $filtered = array_values(array_filter($parts)), array_keys($filtered)));
         if (!$blocks) return ['blocks' => false, 'note' => $join($item['note'], $also)] + $item;
-        return ['blocks' => true, 'note' => $join($item['note'], 'it blocks ' . csp_blocked_words($blocked) . ' on the page', $also), 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
+        return ['blocks' => true, 'note' => $join($item['note'], 'it blocks ' . csp_blocked_words($blocked) . $on, $also), 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
     }
     if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
         $would = match (true) {
             $blocked === null => '',
-            $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . ' on the page',
-            default => '. Enforced, it would block nothing on the page, so it is safe to rename',
+            $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . $on,
+            default => ". Enforced, it would block nothing{$on}. Vaka reads only that page, so look at the site's other kinds of page in the browser's console before renaming",
         };
-        return ['blocks' => false, 'report_only' => true, 'ready' => $blocked !== null && !$blocks, 'caution' => tag_manager_caution($details['scripts'] ?? []), 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. **Add it once the browser's console, and the list above, show nothing it would block that the site needs**, and remove the Report-Only line. Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
+        // A hash is of the code as it is today: a build that writes a date or a version into the script breaks it
+        $hashes = preg_match("/'sha(?:256|384|512)-/i", $details['csp_report_only'] ?? '') ? " Its hashes are of inline scripts and styles as they are today: a build that writes something new into one (a date, a version) changes its hash, and once the policy is enforced, browsers block it. Let the build add the hashes, or move the code to files." : '';
+        return ['blocks' => false, 'report_only' => true, 'ready' => $blocked !== null && !$blocks, 'caution' => tag_manager_caution($details['scripts'] ?? []), 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. **Add it once the browser's console, and the list above, show nothing it would block that the site needs**, and remove the Report-Only line." . $hashes . " Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
     }
     // No CSP at all: what default-src 'self' would stop on the page, and a draft that allows it (old data: the scripts only)
     $scripts = $details['scripts'] ?? [];
@@ -1103,6 +1129,8 @@ function headers_notice(array $state, ?array $group): array
     $told = json_decode($state['alerted_snapshot'] ?: '[]', true) ?: [];
     $worse = [];
     foreach ($levels ?? [] as $key => $level) {
+        // A Report-Only policy blocks nothing: what it would block is in the history, never an alert
+        if ($key === 'csp_would_block') continue;
         // A part not told before (the files, the first time they are checked) is a baseline. Not the CSP blocking
         // scripts: before it, nothing was blocked, so a new CSP that blocks the page's scripts is told
         $before = $told[$key] ?? ($key === 'csp_blocks' && $told ? 'good' : null);

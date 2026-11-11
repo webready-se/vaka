@@ -425,7 +425,7 @@ test('without a CSP, the suggestion is Report-Only, and the note says what defau
 
     // Already there as Report-Only: the step after is to enforce it
     $trying = $csp($page('<script>theme()</script>', ['Content-Security-Policy-Report-Only' => "default-src 'self'"]));
-    expect($trying['note'])->toBe('it blocks nothing yet. Enforced, it would block 1 inline script on the page')
+    expect($trying['note'])->toBe('it blocks nothing yet. Enforced, it would block 1 inline script on the start page')
         ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'")
         ->and($trying['report_only'])->toBeTrue()
         ->and($trying['tip'])->toContain("show nothing it would block that the site needs");
@@ -567,7 +567,7 @@ test('the site detail says what the CSP blocks, or what a Report-Only one would,
     $blocking = $csp(evaluate_headers($page($body, ['Content-Security-Policy' => "default-src 'self'"]), 10));
     expect($blocking['level'])->toBe('good')
         ->and($blocking['blocks'])->toBeTrue()
-        ->and($blocking['note'])->toBe('it blocks 2 inline scripts and a script from cdn.example on the page')
+        ->and($blocking['note'])->toBe('it blocks 2 inline scripts and a script from cdn.example on the start page')
         ->and($blocking['inline'])->toBe(['theme()', 'go()'])
         ->and($blocking['blocked'])->toBe(['https://cdn.example/w.js'])
         ->and($blocking['fix'])->toBe('')
@@ -580,7 +580,7 @@ test('the site detail says what the CSP blocks, or what a Report-Only one would,
     $trying = $csp(evaluate_headers($page($body, ['Content-Security-Policy-Report-Only' => "default-src 'self'"]), 10));
     expect($trying['level'])->toBe('missing')
         ->and($trying['blocks'])->toBeFalse()
-        ->and($trying['note'])->toBe('it blocks nothing yet. Enforced, it would block 2 inline scripts and a script from cdn.example on the page')
+        ->and($trying['note'])->toBe('it blocks nothing yet. Enforced, it would block 2 inline scripts and a script from cdn.example on the start page')
         ->and($trying['inline'])->toBe(['theme()', 'go()'])
         ->and($trying['blocked'])->toBe(['https://cdn.example/w.js'])
         ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'")
@@ -588,8 +588,75 @@ test('the site detail says what the CSP blocks, or what a Report-Only one would,
         ->and($blocking)->not->toHaveKey('report_only');
 
     $ready = $csp(evaluate_headers($page($body, ['Content-Security-Policy-Report-Only' => "script-src 'self' 'unsafe-inline' https://cdn.example"]), 10));
-    expect($ready['note'])->toBe('it blocks nothing yet. Enforced, it would block nothing on the page, so it is safe to rename')
+    expect($ready['note'])->toBe("it blocks nothing yet. Enforced, it would block nothing on the start page. Vaka reads only that page, so look at the site's other kinds of page in the browser's console before renaming")
         ->and($ready)->not->toHaveKey('blocked');
+});
+
+test('a CSP verdict names the page it is about, since Vaka reads one page', function () {
+    $csp = fn (array $result) => array_values(array_filter(header_items($result['details']), fn ($item) => $item['key'] === 'csp'))[0];
+    $page = fn (string $url, array $headers) => ['body' => '<script>theme()</script>'] + answered($headers + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY'], $url);
+    $trying = ['Content-Security-Policy-Report-Only' => "default-src 'self'"];
+
+    // The address without scheme, query or fragment; the start page in words
+    expect(evaluate_headers($page('https://example.com/guide/?ref=x#top', $trying), 10)['details']['page'])->toBe('example.com/guide/')
+        ->and($csp(evaluate_headers($page('https://example.com/guide/?ref=x', $trying), 10))['note'])->toBe('it blocks nothing yet. Enforced, it would block 1 inline script on example.com/guide/')
+        ->and($csp(evaluate_headers($page('https://example.com/?lang=sv', $trying), 10))['note'])->toBe('it blocks nothing yet. Enforced, it would block 1 inline script on the start page')
+        ->and($csp(evaluate_headers($page('https://example.com', $trying), 10))['note'])->toEndWith('on the start page')
+        ->and($csp(evaluate_headers($page('https://example.com/guide/', ['Content-Security-Policy' => "default-src 'self'"]), 10))['note'])->toBe('it blocks 1 inline script on example.com/guide/');
+
+    // Nothing to block: a verdict on that page, not on the site
+    $ready = $csp(evaluate_headers($page('https://example.com/guide/', ['Content-Security-Policy-Report-Only' => "script-src 'self' 'unsafe-inline'"]), 10));
+    expect($ready['note'])->toBe("it blocks nothing yet. Enforced, it would block nothing on example.com/guide/. Vaka reads only that page, so look at the site's other kinds of page in the browser's console before renaming");
+
+    // Stored before the page was kept: the page, as before
+    $old = evaluate_headers($page('https://example.com/guide/', $trying), 10)['details'];
+    unset($old['page']);
+    expect($csp(['details' => $old])['note'])->toBe('it blocks nothing yet. Enforced, it would block 1 inline script on the page');
+
+    // A long address is cut, and whitespace never gets in
+    expect(page_address('https://example.com/' . str_repeat('a', 100)))->toHaveLength(80)->toEndWith('…')
+        ->and(page_address("https://example.com/a b"))->toBe('example.com/ab');
+});
+
+test('a Report-Only policy with hashes says they follow the code', function () {
+    $csp = fn (string $policy) => array_column(header_items(evaluate_headers(['body' => '<script>theme()</script>'] + answered(['Content-Security-Policy-Report-Only' => $policy] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
+    $hashed = $csp("default-src 'self'; script-src 'self' 'sha256-" . base64_encode(hash('sha256', 'theme()', true)) . "'");
+    expect($hashed['tip'])->toContain('Its hashes are of inline scripts and styles as they are today')
+        ->and($hashed['tip'])->toContain('Let the build add the hashes, or move the code to files')
+        // One takeaway in bold per tip
+        ->and(substr_count($hashed['tip'], '**'))->toBe(2)
+        ->and($csp("default-src 'self'")['tip'])->not->toContain('hashes');
+});
+
+test('a Report-Only CSP starting or stopping to block parts of the page is in the history, never an alert', function () {
+    $page = fn (string $policy) => ['body' => '<script>theme()</script>'] + answered(['Content-Security-Policy-Report-Only' => $policy] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']);
+    $would = evaluate_headers($page("default-src 'self'"), 10);
+    $wouldNot = evaluate_headers($page("script-src 'self' 'unsafe-inline'"), 10);
+    expect(header_levels($would['details'])['csp_would_block'])->toBe('weak')
+        ->and(header_levels($wouldNot['details'])['csp_would_block'])->toBe('good')
+        // Never the grade or the status: it blocks nothing
+        ->and(headers_grade(header_levels($would['details'])))->toBe('B')
+        ->and($would['status'])->toBe('ok')
+        ->and(header_levels(evaluate_headers(['body' => '<script>theme()</script>'] + answered(STRONG_HEADERS + ['X-Frame-Options' => 'DENY']), 10)['details']))->not->toHaveKey('csp_would_block');
+
+    $levels = fn (?string $would) => array_combine(array_keys(SECURITY_HEADERS), ['good', 'missing', 'good', 'good', 'good', 'good']) + ($would ? ['csp_would_block' => $would] : []);
+    expect(headers_change($levels('good'), $levels('weak')))->toBe('Report-Only CSP would now block parts of the page (grade still B)')
+        ->and(headers_change($levels('weak'), $levels('good')))->toBe('Report-Only CSP would no longer block parts of the page (grade still B)')
+        // A first look, and a Report-Only taken away or enforced, say nothing of it
+        ->and(headers_change($levels(null), $levels('weak')))->toBe('')
+        ->and(headers_change($levels('weak'), $levels(null)))->toBe('');
+
+    // Confirmed by a second look like any change, then in the history
+    $first = confirm_headers(null, $wouldNot);
+    $seen = confirm_headers($first['details'], $would);
+    expect($seen['change'])->toBeNull()
+        ->and($seen['wait'])->toBe(HEADERS_CONFIRM_SECONDS)
+        ->and(confirm_headers($seen['details'], $would)['change'])->toBe('Report-Only CSP would now block parts of the page (grade still B)');
+
+    // Never an alert, whatever the policy
+    $state = headers_state(['good', 'missing', 'good', 'good', 'good', 'good'], json_encode($levels('good')));
+    $state['details']['confirmed'] = $levels('weak');
+    expect(headers_notice($state, null))->toMatchArray(['action' => 'mark', 'worse' => []]);
 });
 
 test('a CSP starting or stopping to block scripts is a change, confirmed like the others, and an alert only when it starts', function () {
@@ -652,8 +719,8 @@ test('each item says what the site sends and what to do with its line, so the li
     expect($csp([])['fix_label'])->toBe('Try this line first; as Report-Only it blocks nothing:')
         ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"])['fix_label'])->toBe('Your policy under the name that enforces it:')
         // A CSP that blocks has no line, so no label
-        ->and($csp(['Content-Security-Policy' => "default-src 'self'"], '<script>a()</script>'))->toMatchArray(['fix' => '', 'fix_label' => '', 'note' => 'it blocks 1 inline script on the page'])
-        ->and($csp(['Content-Security-Policy' => "script-src 'self' 'unsafe-inline'"], '<script src="https://cdn.example/w.js"></script>')['note'])->toBe("it allows inline scripts ('unsafe-inline'). It blocks a script from cdn.example on the page");
+        ->and($csp(['Content-Security-Policy' => "default-src 'self'"], '<script>a()</script>'))->toMatchArray(['fix' => '', 'fix_label' => '', 'note' => 'it blocks 1 inline script on the start page'])
+        ->and($csp(['Content-Security-Policy' => "script-src 'self' 'unsafe-inline'"], '<script src="https://cdn.example/w.js"></script>')['note'])->toBe("it allows inline scripts ('unsafe-inline'). It blocks a script from cdn.example on the start page");
 });
 
 test('page_scripts also keeps the stylesheets, style blocks and attributes, images and frames, for the CSP comparison', function () {
@@ -710,7 +777,7 @@ test('the summary, the item and the alert name blocked styles and images as well
         ->and($result['status'])->toBe('warn');
     $csp = array_column(header_items($result['details']), null, 'key')['csp'];
     expect($csp['blocks'])->toBeTrue()
-        ->and($csp['note'])->toBe('it blocks 1 inline style and an image from cdn.example on the page')
+        ->and($csp['note'])->toBe('it blocks 1 inline style and an image from cdn.example on the start page')
         ->and($csp)->not->toHaveKey('blocked')
         ->and($csp['blocked_assets'])->toBe([['kind' => 'image', 'url' => 'https://cdn.example/b.jpg']])
         ->and($csp['tip'])->toContain('inline styles need');
@@ -907,7 +974,7 @@ test('a page with a tag manager is told that a strict CSP needs nonces, or stays
         ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self' https://www.googletagmanager.com 'unsafe-inline'"], '<script src="https://www.googletagmanager.com/gtm.js"></script>')['fix_label'])->toBe('Your policy under the name that enforces it:')
         // Said in the note itself, in sight, not only one click away
         ->and($csp([], $gtm)['note'])->toEndWith(': the line below allows what is there today. It loads Google Tag Manager, so a strict policy takes more than a line')
-        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['note'])->toEndWith(' on the page. It loads Google Tag Manager, so a strict policy takes more than a line')
+        ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['note'])->toEndWith(' on the start page. It loads Google Tag Manager, so a strict policy takes more than a line')
         ->and($csp(['Content-Security-Policy-Report-Only' => "default-src 'self'"], $gtm)['tip'])->toContain('Google Tag Manager loads more later')
         ->and($csp([], '<script src="https://analytics.example/a.js"></script>')['tip'])->not->toContain('Tag Manager');
 });
