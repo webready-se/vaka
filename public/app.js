@@ -1920,10 +1920,11 @@
   /**
    * A CSP item's note with the scripts it names ("2 inline scripts and a script
    * from cdn.example") as a button that opens the list of them below. The note
-   * is Vaka's own words around hosts from the site, all set as text.
+   * is Vaka's own words around hosts from the site, all set as text. The phrase
+   * ends where the page is named: "on the start page." or "on example.com/guide/."
    */
   function scriptsNote(note) {
-    var match = /((?:\d+|an?) (?:inline scripts?|inline styles?|scripts?|stylesheets?|images?|frames?)\b.*?)(?= on the page|, which)/.exec(note);
+    var match = /((?:\d+|an?) (?:inline scripts?|inline styles?|scripts?|stylesheets?|images?|frames?)\b.*?)(?= on (?:the (?:start )?page|\S+)\.|, which)/.exec(note);
     if (!match) return [note];
     return [
       note.slice(0, match.index),

@@ -181,7 +181,9 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             'https://builder.example' => '<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({"gtm.start":new Date().getTime(),event:"gtm.js"})})(window,document,"script","dataLayer","GTM-XXXX")</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-XXXX"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter"><p style="margin:0">x</p><script src="https://widgets.example/chat.js"></script>',
             default => '',
         };
-        $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => $url . '/', 'headers' => $sent, 'body' => $body], 10, $files);
+        // The builder site sends its start page on to an app under a path, which the CSP notes name
+        $page = $url === 'https://builder.example' ? $url . '/app/' : $url . '/';
+        $graded = evaluate_headers(['status' => 200, 'errno' => 0, 'error' => '', 'url' => $page, 'headers' => $sent, 'body' => $body], 10, $files);
         $confirmed = confirm_headers(null, $graded)['details'];
         save_check_state($db, $id, 'headers', ['status' => $graded['status'], 'summary' => $graded['summary'], 'details' => $confirmed, 'fail_count' => 0, 'changed_at' => utc_now($month)], utc_now($now - 2 * 3600), utc_now($now + 4 * 3600));
         $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_snapshot = ? WHERE site_id = ? AND check_name = 'headers'")

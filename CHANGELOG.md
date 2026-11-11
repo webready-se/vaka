@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A Report-Only CSP that starts or stops to block parts of the page says so in the site's history.** Confirmed by a second look like other header changes, and never alerted, since it blocks nothing yet. The usual cause is an inline script whose text changed under its hash, as when a build writes a date or a version into it, and now it shows before the policy is enforced. A Report-Only policy with hashes also says in its tip that they are of the code as it is today, so the build should add them or the code move to files.
+
+### Changed
+
+- **The CSP item names the page Vaka read: "on the start page", or "on example.com/guide/".** Vaka reads one page, and "Enforced, it would block nothing on the page, so it is safe to rename" read like a verdict on the whole site, where another kind of page, or a second app under a path of the same domain, can have inline scripts of its own. A Report-Only policy that would block nothing now says to look at the site's other kinds of page in the browser's console before renaming. The read API's CSP `note` names the page the same way.
+
 ## [0.4.0] - 2026-11-11
 
 ### Added
