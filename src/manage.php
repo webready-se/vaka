@@ -310,7 +310,26 @@ function server_form_values(PDO $db, array $site): ?array
     if ($key === null || !str_starts_with($key, 'ip:')) return null;
     $stmt = $db->prepare("SELECT s.* FROM sites s WHERE s.ip = ? AND s.cdn = '' AND s.server = ''");
     $stmt->execute([$site['ip']]);
-    return ['ip' => $site['ip'], 'label' => server_labels($db)[$site['ip']] ?? '', 'sites' => array_map(fn ($s) => display_url($s['url']), sort_sites($stmt->fetchAll(), false))];
+    $sites = sort_sites($stmt->fetchAll(), false);
+    // The groups its sites are in now ('' for none), so moving them can say who that shows them to
+    $names = array_column(list_groups($db), 'name', 'id');
+    $groups = array_values(array_unique(array_map(fn ($s) => $names[$s['group_id']] ?? '', $sites)));
+    sort($groups, SORT_NATURAL | SORT_FLAG_CASE);
+    return ['ip' => $site['ip'], 'label' => server_labels($db)[$site['ip']] ?? '', 'sites' => array_map(fn ($s) => display_url($s['url']), $sites), 'groups' => $groups];
+}
+
+/**
+ * group_readers() by group name, as the dashboard's forms pick groups;
+ * groups nobody limited reads are left out.
+ *
+ * @return array<string, list<string>>
+ */
+function readers_by_name(PDO $db, array $config, int $now): array
+{
+    $names = array_column(list_groups($db), 'name', 'id');
+    $readers = [];
+    foreach (group_readers($db, $config['users_file'], $now) as $id => $list) $readers[$names[$id]] = $list;
+    return $readers;
 }
 
 /**

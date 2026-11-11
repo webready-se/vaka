@@ -114,6 +114,39 @@ test('share_scope: a site token reads its site, a group token the sites in its g
         ->and(share_scope($site))->not->toHaveKey('groups');
 });
 
+test('group_readers: the users limited to each group and the tokens that read it now, never those who see every site', function () {
+    $users = temp_dir() . '/users.json';
+    save_users($users, [
+        'bo' => ['password' => 'x', 'groups' => ['customers', 'Own sites']],
+        'anna' => ['password' => 'x', 'groups' => ['Customers']],
+        'admin' => ['password' => 'x', 'groups' => []],
+        'gone' => ['password' => 'x', 'groups' => ['Removed long ago']],
+    ]);
+    $both = create_share_token($this->db, null, [$this->group, $this->other], 'Claude Code', utc_now($this->now + 86400), $this->now)['id'];
+    $plain = create_share_token($this->db, null, [$this->other], '', null, $this->now)['id'];
+    // An expired token reads nothing, and a site token follows its site wherever it goes
+    create_share_token($this->db, null, [$this->group], 'Old', utc_now($this->now - 60), $this->now - 86400);
+    create_share_token($this->db, $this->site, [], 'Shop', null, $this->now);
+
+    expect(group_readers($this->db, $users, $this->now))->toBe([
+        $this->group => ['user anna', 'user bo', "read token #{$both} (Claude Code)"],
+        $this->other => ['user bo', "read token #{$both} (Claude Code)", "read token #{$plain}"],
+    ]);
+});
+
+test('readers_change: who a move shows sites to and hides them from, never who reads both', function () {
+    $readers = [1 => ['user anna', 'user bo', 'read token #3 (Claude Code)'], 2 => ['user bo', 'read token #4']];
+    expect(readers_change($readers, [1], 2))->toBe(['gain' => ['read token #4'], 'lose' => ['user anna', 'read token #3 (Claude Code)']])
+        ->and(readers_change($readers, [2], 1))->toBe(['gain' => ['user anna', 'read token #3 (Claude Code)'], 'lose' => ['read token #4']])
+        // Out of a group, or into one from none: a limited reader never sees a site without a group
+        ->and(readers_change($readers, [1], null))->toBe(['gain' => [], 'lose' => ['user anna', 'user bo', 'read token #3 (Claude Code)']])
+        ->and(readers_change($readers, [null], 2))->toBe(['gain' => ['user bo', 'read token #4'], 'lose' => []])
+        // Several sites from several groups: everyone who gains or loses one of them, once
+        ->and(readers_change($readers, [1, 2, 1], 2))->toBe(['gain' => ['read token #4'], 'lose' => ['user anna', 'read token #3 (Claude Code)']])
+        ->and(readers_change($readers, [1], 1))->toBe(['gain' => [], 'lose' => []])
+        ->and(readers_change([], [1], 2))->toBe(['gain' => [], 'lose' => []]);
+});
+
 test('a token for a group without sites reads nothing, never every site', function () {
     $empty = add_group($this->db, ['name' => 'Empty']);
     $token = find_share_token($this->db, create_share_token($this->db, null, [$empty], '', utc_now($this->now + 86400), $this->now)['token'], $this->now);

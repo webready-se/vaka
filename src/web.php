@@ -621,6 +621,8 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
             'alerts' => alerts_configured($db, $config),
             // For adding and changing sites in the dashboard
             'groups' => array_column(list_groups($db), 'name'),
+            // Who reads each group, by name, so moving a site can say who that shows it to
+            'readers' => (object) readers_by_name($db, $config, $now),
             'checks' => array_map(fn ($key, $label) => ['key' => $key, 'label' => $label], array_keys(CHECK_LABELS), CHECK_LABELS),
             'interval' => $config['uptime_interval'],
             'digest_time' => $config['digest_time'],

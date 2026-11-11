@@ -191,6 +191,27 @@ test('site:edit moves every site on a server into a group, by IP or by its name'
     expect(vaka(['site:edit', 'web-2', '--group=none'], $this->env)['out'])->toContain('Moved 1 site on server web-2 (198.51.100.7) out of its group: other.example.');
 });
 
+test('a move says who it shows the sites to and hides them from, since logins and tokens for a group follow its sites', function () {
+    vaka(['group:add', 'Customers'], $this->env);
+    vaka(['group:add', 'Agency'], $this->env);
+    foreach (['shop.example', 'blog.example'] as $domain) vaka(['site:add', $domain, '--group=Customers'], $this->env);
+    save_users($this->env['USERS_FILE'], ['anna' => ['password' => 'x', 'groups' => ['Customers']], 'bo' => ['password' => 'x', 'groups' => ['Agency', 'Customers']], 'admin' => ['password' => 'x', 'groups' => []]]);
+    $db = get_db($this->env['DB_PATH']);
+    $token = create_share_token($db, null, [find_group($db, 'Agency')['id']], 'Claude Code', null, time())['id'];
+
+    $r = vaka(['site:edit', 'shop.example', '--group=Agency'], $this->env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->toEndWith("\nNow also visible to: read token #{$token} (Claude Code).\nNo longer visible to: user anna.\n");
+
+    // Nothing changes for anyone: no lines
+    expect(vaka(['site:edit', 'shop.example', '--name=Shop'], $this->env)['out'])->not->toContain('visible to');
+
+    // A whole server, out of its group
+    $db->exec("UPDATE sites SET ip = '203.0.113.10'");
+    expect(vaka(['site:edit', '203.0.113.10', '--group=none'], $this->env)['out'])
+        ->toBe("Moved 2 sites on server 203.0.113.10 out of their group: blog.example and shop.example.\nNo longer visible to: user anna, user bo, read token #{$token} (Claude Code).\n");
+});
+
 test('site:edit on a server changes only the group', function () {
     vaka(['site:add', 'shop.example'], $this->env);
     get_db($this->env['DB_PATH'])->exec("UPDATE sites SET ip = '203.0.113.10'");

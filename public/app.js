@@ -1231,6 +1231,8 @@
     state.form = {
       id: site ? site.id : null,
       label: site ? site.label : null,
+      // The group it is in, for what moving it changes
+      fromGroup: site ? site.group || '' : null,
       errors: {},
       confirmRemove: false,
       values: site ? {
@@ -1248,6 +1250,37 @@
     if (!regions.detail.open) regions.detail.showModal();
     var first = regions.detail.querySelector('[aria-invalid="true"]') || regions.detail.querySelector('#f-url');
     if (first) first.focus();
+  }
+
+  /**
+   * What moving sites from their groups to another changes for who sees them,
+   * in a sentence: the users limited to a group and the read tokens for it
+   * follow its sites (setup.readers). Empty when it changes nothing for anyone.
+   */
+  function moveWords(from, to, many) {
+    var readers = state.data.setup.readers || {};
+    var of = function (group) { return Object.prototype.hasOwnProperty.call(readers, group) ? readers[group] : []; };
+    var now = of(to);
+    var gain = [];
+    var lose = [];
+    from.forEach(function (group) {
+      var before = of(group);
+      now.forEach(function (r) { if (before.indexOf(r) === -1 && gain.indexOf(r) === -1) gain.push(r); });
+      before.forEach(function (r) { if (now.indexOf(r) === -1 && lose.indexOf(r) === -1) lose.push(r); });
+    });
+    var it = many ? 'them' : 'it';
+    var parts = [];
+    if (gain.length) parts.push('shows ' + it + ' to ' + listWords(gain));
+    if (lose.length) parts.push('hides ' + it + ' from ' + listWords(lose));
+    return parts.length ? 'Moving ' + it + ' ' + parts.join(', and ') + '.' : '';
+  }
+
+  /** The site form's group hint: where alerts go, and for a site moved to another group, who that shows it to. */
+  function groupHint(group) {
+    var form = state.form;
+    var base = state.data.setup.groups.length ? 'Alerts go where the group says.' : 'No groups yet: alerts go to the defaults in .env.';
+    var move = form.id && group !== form.fromGroup ? moveWords([form.fromGroup], group, false) : '';
+    return move ? base + ' ' + move : base;
   }
 
   /** A labelled field with its hint and, after a failed save, what was wrong. */
@@ -1332,7 +1365,7 @@
       ]),
       h('form', { class: 'site-form', 'data-form': 'site', novalidate: true }, [
         field('url', 'Address', textInput('url', v.url, { inputmode: 'url', placeholder: 'https://shop.example' }), 'The page Vaka checks. A domain alone means https.'),
-        field('group', 'Group', group, setup.groups.length ? 'Alerts go where the group says.' : 'No groups yet: alerts go to the defaults in .env.'),
+        field('group', 'Group', group, groupHint(v.group)),
         field('name', 'Name', textInput('name', v.name, { spellcheck: 'true' }), 'Optional, shown with the address.'),
         field('keyword', 'Text that must be on the page', textInput('keyword', v.keyword), 'Optional. Catches an error page that still answers 200 OK.'),
         field('interval', 'Check uptime', interval, 'A site that fails is checked again every minute regardless.'),
@@ -1346,6 +1379,9 @@
         remove
       ])
     ]));
+    // Picking another group changes the hint; said, not only shown
+    var moveHint = node.querySelector('#f-group-hint');
+    if (moveHint) moveHint.setAttribute('aria-live', 'polite');
   }
 
   /** The form's values, as the API takes them. */
@@ -1760,7 +1796,7 @@
   function openServerForm(siteId, siteLabel) {
     return api('/?api=server&site=' + encodeURIComponent(siteId)).then(function (result) {
       var server = result.server;
-      state.form = { kind: 'server', back: 'site', siteId: siteId, siteLabel: siteLabel, ip: server.ip, label: server.label, sites: server.sites, errors: {}, values: { label: server.label, group: '__keep' } };
+      state.form = { kind: 'server', back: 'site', siteId: siteId, siteLabel: siteLabel, ip: server.ip, label: server.label, sites: server.sites, groups: server.groups || [], errors: {}, values: { label: server.label, group: '__keep' } };
       renderServerForm();
       var first = regions.detail.querySelector('#s-label');
       if (first) first.focus();
@@ -1802,7 +1838,9 @@
           h('label', { for: 's-group' }, 'Every site on it'),
           group,
           form.errors.group ? h('p', { class: 'field-error' }, form.errors.group) : null,
-          h('p', { class: 'field-hint' }, form.sites.join(', '))
+          h('p', { class: 'field-hint' }, form.sites.join(', ')),
+          // Who moving them shows them to, said as the group is picked
+          h('p', { class: 'field-hint', id: 's-group-move', 'aria-live': 'polite' }, serverMoveWords(v.group))
         ]),
         h('div', { class: 'actions' }, [
           h('button', { type: 'submit', class: 'button is-primary' }, 'Save'),
@@ -1810,6 +1848,12 @@
         ])
       ])
     ]));
+  }
+
+  /** What moving every site on the server to a group changes for who sees them; nothing while they keep their groups. */
+  function serverMoveWords(group) {
+    var form = state.form;
+    return group === '__keep' ? '' : moveWords(form.groups, group, form.sites.length > 1);
   }
 
   function saveServer(formNode) {
@@ -2295,6 +2339,16 @@
     if (formNode.getAttribute('data-form') === 'group') saveGroup(formNode);
     if (formNode.getAttribute('data-form') === 'window') saveWindow(formNode);
     if (formNode.getAttribute('data-form') === 'server') saveServer(formNode);
+  });
+
+  // Picking another group says who that shows the site to, in the hint, without redrawing the form
+  document.addEventListener('change', function (event) {
+    if (event.target.name !== 'group' || !state.form) return;
+    var formNode = event.target.closest && event.target.closest('[data-form="site"], [data-form="server"]');
+    if (!formNode) return;
+    var site = formNode.getAttribute('data-form') === 'site';
+    var hint = regions.detail.querySelector(site ? '#f-group-hint' : '#s-group-move');
+    if (hint) hint.textContent = site ? groupHint(event.target.value) : serverMoveWords(event.target.value);
   });
 
   // The window form shows the fields for the kind of window chosen

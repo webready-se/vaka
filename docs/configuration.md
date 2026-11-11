@@ -63,6 +63,8 @@ Every command asks for what it needs when you leave out its arguments. `php vaka
 
 `<site>` is a URL or a domain (`shop.example`), with the port if it has one. A domain with several sites means the one without a path.
 
+Moving a site to another group changes who sees it: a user limited to groups and a read token for groups follow the sites in them. So a move says who it shows the sites to and who it hides them from ("Now also visible to: user anna, read token #3 (Claude Code).", numbered as `share:list` numbers tokens), and the dashboard's site and server forms say it as the group is picked, before anything is saved. Users who see every site and tokens for one site are not named, since a move changes nothing for them.
+
 Users who see every site can also add, change and remove sites and groups in the dashboard: **Add a site** and **Add a group** above the list, **Change** on a group, and **Change settings** in a site's detail. A group's webhooks show masked and stay as they are unless you type a new one or tick **Remove it**; **Send a test alert** checks where the saved settings send. A site's detail also has **Add a maintenance window** (for the site or its whole group; the group form lists and adds the group's windows) and **Server settings**, to name the server it answers on and move every site on it to a group. The same rules apply, a wrong value is explained under its field, and every change goes in the site's history with who made it.
 
 ### Groups
