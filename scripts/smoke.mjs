@@ -217,6 +217,10 @@ async function main() {
     expect(/favicon-alert\.svg$/.test(q('[data-favicon]').getAttribute('href')), 'the favicon turns to the alarmed owl');
     expect(q('.brand-name')?.textContent === 'Vaka' && q('.brand .mark'), 'the mark and the name, Capitalised, in the top bar');
     expect(q('.watch-owl.is-awake'), 'the owl in the night panel is wide awake while a site is down');
+    const watchBox = q('.watch').getBoundingClientRect();
+    q('.watch h1').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: watchBox.left + 10, clientY: watchBox.top + 10 }));
+    await new Promise((r) => requestAnimationFrame(r));
+    expect(all('.watch-owl.is-awake .owl-pupil').length === 2 && all('.watch-owl .owl-pupil').every((pupil) => !pupil.style.transform), 'the wide-awake owl stares ahead instead of following the pointer');
     expect(/Made by\s*Webready\s*in Sweden/.test(q('.foot .credit')?.textContent || '') && q('.foot .credit a[href="https://webready.se"]'), 'the footer credits Webready, linked');
     expect(q('.foot .credit a[href="https://github.com/webready-se/puls"] svg[aria-label="Puls"]'), 'the footer shows Puls, the released sibling, linked');
     expect(q('.foot .credit a[href="https://github.com/webready-se/vaka"] svg[aria-label="Vaka"]'), 'the footer shows Vaka itself, linked to its repository');
@@ -767,6 +771,38 @@ async function main() {
   if (!/^\* \* \* \* \* php[\d.]* \/.+\/vaka run$/.test(waiting.banner)) fails.push(`before the first run, the banner gives this server's cron line (got "${waiting.banner}")`);
   if (waiting.figures[1] !== '–') fails.push(`a site not checked yet shows no uptime (got "${waiting.figures[1]}")`);
   if (/Up, 30 days/.test(waiting.watch)) fails.push('the watch shows no 30-day uptime before the first check');
+
+  // The calm owl's eyes follow a mouse over the panel and go back when it leaves; for Reduce Motion they stand still
+  const gaze = () => evaluate(async () => {
+    const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const box = document.querySelector('.watch').getBoundingClientRect();
+    const pupils = [...document.querySelectorAll('.watch-owl:not(.is-awake) .owl-pupil')];
+    const point = (type, x, relatedTarget) => document.querySelector('.watch h1').dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse', clientX: x, clientY: box.top + 10, relatedTarget }));
+    point('pointermove', box.left + 10, null);
+    await frame();
+    const looking = pupils.map((pupil) => pupil.style.transform);
+    // At the beak (20, 24.5 of the owl's 40 units) both pupils turn in
+    const owl = document.querySelector('.watch-owl').getBoundingClientRect();
+    document.querySelector('.watch-owl').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: owl.left + owl.width / 2, clientY: owl.top + owl.height * 24.5 / 40 }));
+    await frame();
+    const crossed = pupils.map((pupil) => parseFloat((/translate\((-?[\d.]+)px/.exec(pupil.style.transform) || [])[1]));
+    // Down and to the side, near it but away from the beak, they keep together
+    document.querySelector('.watch-owl').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: owl.left - owl.width / 2, clientY: owl.top + owl.height * 0.9 }));
+    await frame();
+    const together = pupils.map((pupil) => pupil.style.transform);
+    point('pointerout', box.left - 10, document.body);
+    await frame();
+    return { pupils: pupils.length, looking, crossed, together, after: pupils.map((pupil) => pupil.style.transform) };
+  });
+  const calm = await gaze();
+  if (calm.pupils !== 2 || !calm.looking.every((t) => /^translate\(-[\d.]+px, -[\d.]+px\)$/.test(t))) fails.push(`the calm owl looks up and left at a pointer there (got ${JSON.stringify(calm.looking)})`);
+  if (!(calm.crossed[0] > 0.8 && calm.crossed[1] < -0.8)) fails.push(`at the beak the owl's eyes cross (got ${JSON.stringify(calm.crossed)})`);
+  if (!calm.together[0] || calm.together[0] !== calm.together[1]) fails.push(`away from the beak both eyes look the same way (got ${JSON.stringify(calm.together)})`);
+  if (!calm.after.every((t) => t === '')) fails.push(`the owl looks ahead again when the pointer leaves the panel (got ${JSON.stringify(calm.after)})`);
+  await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
+  const still = await gaze();
+  await send('Emulation.setEmulatedMedia', { features: [] });
+  if (still.pupils !== 2 || !still.looking.every((t) => t === '')) fails.push(`for Reduce Motion the owl's eyes stand still (got ${JSON.stringify(still.looking)})`);
 
   ws.close();
   const problems = [...fails, ...errors];

@@ -337,6 +337,9 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .watch-owl .owl-eyes { transform-box: fill-box; transform-origin: center; animation: blink 7s infinite; }
 .watch.is-alert .watch-owl .owl-eyes { animation: none; }
 @keyframes blink { 0%, 92%, 100% { transform: scaleY(1); } 95% { transform: scaleY(0.1); } }
+/* Its eyes follow a mouse over the panel (lookAt() in app.js): quick while it looks, back to the middle after a moment when the mouse leaves */
+.watch-owl .owl-pupil { transition: transform 0.6s ease-in-out 0.4s; }
+.watch-owl.is-following .owl-pupil { transition: transform 0.12s ease-out; }
 
 /* ===================================================================
    Needs your attention

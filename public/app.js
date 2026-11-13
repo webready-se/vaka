@@ -132,13 +132,17 @@
 
   /**
    * The owl in the night panel. Awake: wide eyes, small pupils. Its eyes blink
-   * while all is calm (CSS). Both kinds of feet are drawn: talons over the
-   * panel's edge where it sits on it, feet where it sits in the corner (CSS).
+   * while all is calm (CSS) and follow a mouse over the panel (lookAt()). Both
+   * kinds of feet are drawn: talons over the panel's edge where it sits on it,
+   * feet where it sits in the corner (CSS).
    */
   function owl(awake) {
     var draw = function (items) { return items.map(function (item) { return s(item[0], item[1]); }); };
+    var eyes = awake ? OWL.awakeEyes : OWL.eyes;
+    // The two whites, then each pupil with its glint in a group of its own, which can turn
+    var pupils = [0, 1].map(function (i) { return s('g', { class: 'owl-pupil' }, draw([eyes[2 + i], eyes[4 + i]])); });
     return s('svg', { class: 'watch-owl' + (awake ? ' is-awake' : ''), viewBox: '0 0 40 40', 'aria-hidden': 'true', focusable: 'false' },
-      draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(awake ? OWL.awakeEyes : OWL.eyes))], draw(OWL.beak),
+      draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(eyes.slice(0, 2)).concat(pupils))], draw(OWL.beak),
         [s('g', { class: 'owl-feet' }, draw(OWL.feet)), s('g', { class: 'owl-talons' }, draw(OWL.talons))]));
   }
 
@@ -493,6 +497,8 @@
       ]),
       h('div', { class: 'watch-perch' }, [moon(Date.now()), owl(kind === 'alert')])
     ]));
+    // A refresh draws a new owl: it goes on looking where the pointer is
+    lookAt(gaze);
   }
 
   function command(text) {
@@ -2466,6 +2472,56 @@
     next.setAttribute('tabindex', '0');
     next.focus();
   });
+
+  // The owl's eyes follow a mouse over the night panel: both look the same way, from between the eyes, and go all
+  // the way when it is far (1.5 of the owl's 40 units, the white still showing round them); only near the beak do
+  // they cross. Never for a finger, never while the owl is wide awake, and never for people who prefer reduced
+  // motion (a CSS reset does not reach this)
+  var stillness = window.matchMedia('(prefers-reduced-motion: reduce)');
+  var gaze = null;
+  var gazeFrame = 0;
+
+  function lookAt(point) {
+    var looking = Boolean(point) && !stillness.matches;
+    document.querySelectorAll('.watch-owl:not(.is-awake)').forEach(function (svg) {
+      var box = svg.getBoundingClientRect();
+      var unit = box.width / 40;
+      var pupils = svg.querySelectorAll('.owl-pupil');
+      svg.classList.toggle('is-following', looking);
+      if (!looking) {
+        pupils.forEach(function (pupil) { pupil.style.transform = ''; });
+        return;
+      }
+      // In the owl's units: the pointer from between the eyes (20, 19), as if 8 of them in front of the face,
+      // and how close it is to the beak (20, 24.5), which pulls each pupil in
+      var x = (point.x - box.left) / unit;
+      var y = (point.y - box.top) / unit;
+      var reach = 1.5 / Math.hypot(x - 20, y - 19, 8);
+      var cross = 1.2 * Math.max(0, 1 - Math.hypot(x - 20, y - 24.5) / 10);
+      pupils.forEach(function (pupil) {
+        var dx = (x - 20) * reach + (Number(pupil.firstChild.getAttribute('cx')) < 20 ? cross : -cross);
+        var dy = (y - 19) * reach;
+        var keep = Math.min(1, 1.5 / Math.hypot(dx, dy));
+        // Through the CSSOM, which the CSP allows; px are the owl's own units inside its SVG
+        pupil.style.transform = 'translate(' + (dx * keep).toFixed(2) + 'px, ' + (dy * keep).toFixed(2) + 'px)';
+      });
+    });
+  }
+
+  document.addEventListener('pointermove', function (event) {
+    if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
+    if (!(event.target.closest && event.target.closest('.watch'))) return;
+    gaze = { x: event.clientX, y: event.clientY };
+    // Once a frame, however often the mouse reports
+    if (!gazeFrame) gazeFrame = requestAnimationFrame(function () { gazeFrame = 0; lookAt(gaze); });
+  });
+  document.addEventListener('pointerout', function (event) {
+    var panel = event.target.closest && event.target.closest('.watch');
+    if (!panel || panel.contains(event.relatedTarget)) return;
+    gaze = null;
+    lookAt(null);
+  });
+  stillness.addEventListener('change', function () { lookAt(gaze); });
 
   // A click on the backdrop closes the detail, as Esc does
   regions.detail.addEventListener('click', function (event) {
