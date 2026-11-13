@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **The CSP item names the page Vaka read: "on the start page", or "on example.com/guide/".** Vaka reads one page, and "Enforced, it would block nothing on the page, so it is safe to rename" read like a verdict on the whole site, where another kind of page, or a second app under a path of the same domain, can have inline scripts of its own. A Report-Only policy that would block nothing now says to look at the site's other kinds of page in the browser's console before renaming. The read API's CSP `note` names the page the same way.
 
+### Fixed
+
+- **The CSP line Vaka drafts lets a script from another host send back to it.** A statistics script loaded from its own host sends each visit there, which falls under `connect-src`, and the draft only had the host in `script-src`. Tried as Report-Only, the browser's console filled with warnings; enforced, the statistics would have stopped without a word. Each script's origin now goes in `connect-src` too.
+
 ## [0.4.0] - 2026-11-11
 
 ### Added

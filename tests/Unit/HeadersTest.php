@@ -944,7 +944,9 @@ test('a first CSP is drafted from what the page has, to try as Report-Only, and 
     $html = '<script>theme()</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter">'
         . '<div style="color:red"></div><img src="https://cdn.example/a.jpg"><link rel="icon" href="data:image/svg+xml,<svg/>"><iframe src="https://www.youtube.com/embed/x"></iframe>';
     $theme = 'sha256-' . base64_encode(hash('sha256', 'theme()', true));
-    expect($draft($html))->toBe("default-src 'self'; script-src 'self' https://www.googletagmanager.com '{$theme}'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://cdn.example data:; frame-src 'self' https://www.youtube.com; object-src 'none'")
+    expect($draft($html))->toBe("default-src 'self'; script-src 'self' https://www.googletagmanager.com '{$theme}'; style-src 'self' https://fonts.googleapis.com 'unsafe-inline'; font-src 'self' https://fonts.gstatic.com; img-src 'self' https://cdn.example data:; connect-src 'self' https://www.googletagmanager.com; frame-src 'self' https://www.youtube.com; object-src 'none'")
+        // A script from another host sends what it collects back there, which the page never shows
+        ->and($draft('<script src="https://stats.example/?js"></script><noscript><img src="https://stats.example/?pixel"></noscript>'))->toBe("default-src 'self'; script-src 'self' https://stats.example; img-src 'self' https://stats.example; connect-src 'self' https://stats.example; object-src 'none'")
         // Style blocks without attributes get hashes, as scripts do
         ->and($draft('<style>p{}</style>'))->toBe("default-src 'self'; style-src 'self' 'sha256-" . base64_encode(hash('sha256', 'p{}', true)) . "'; object-src 'none'")
         ->and(csp_blocks_anything(csp_blocked([csp_directives($draft($html))], page_scripts($html, $page), $page)))->toBeFalse();
@@ -956,7 +958,7 @@ test('without a CSP, the line to try is the draft when the page needs more than 
     expect($bare['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'")->and($bare['note'])->toBe('');
     $theme = 'sha256-' . base64_encode(hash('sha256', 'theme()', true));
     $more = $csp('<script>theme()</script><script src="https://analytics.example/a.js"></script><p style="margin:0"></p>');
-    expect($more['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://analytics.example '{$theme}'; style-src 'self' 'unsafe-inline'; object-src 'none'")
+    expect($more['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://analytics.example '{$theme}'; style-src 'self' 'unsafe-inline'; connect-src 'self' https://analytics.example; object-src 'none'")
         ->and($more['note'])->toBe('the page has 1 inline script, a script from analytics.example and 1 inline style: the line below allows what is there today')
         ->and($more['inline'])->toBe(['theme()'])
         ->and($more['tip'])->toContain('as they are today')

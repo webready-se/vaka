@@ -417,7 +417,8 @@ const CSP_COMPANIONS = ['fonts.googleapis.com' => ['font-src', 'https://fonts.gs
  * hash for each inline script and <style> block as they are today, and
  * 'unsafe-inline' for styles when the page has style="..." attributes, which
  * nothing else lets through. Known companions are added (Google Fonts loads
- * from fonts.gstatic.com). Only what the page shows: a tag manager loads
+ * from fonts.gstatic.com), and each script's origin again in connect-src,
+ * where it sends what it collects. Only what the page shows: a tag manager loads
  * more later, which Report-Only reports in the console. Empty when the page
  * needs nothing beyond the site itself.
  */
@@ -444,10 +445,13 @@ function csp_draft(array $page, string $pageUrl): string
     }
     $images = $origins([...($page['images'] ?? []), ...($page['icons'] ?? [])]);
     if ($images) $directives['img-src'] = $images;
+    // A script from another host sends what it collects back there (statistics, chat, forms), which the page never shows
+    $connect = array_values(array_diff($origins(array_column($page['external'] ?? [], 'url')), ['data:']));
+    if ($connect) $directives['connect-src'] = $connect;
     $frames = $origins($page['frames'] ?? []);
     if ($frames) $directives['frame-src'] = $frames;
     if (!$directives) return '';
-    $order = ['script-src', 'style-src', 'font-src', 'img-src', 'frame-src'];
+    $order = ['script-src', 'style-src', 'font-src', 'img-src', 'connect-src', 'frame-src'];
     uksort($directives, fn ($a, $b) => array_search($a, $order, true) <=> array_search($b, $order, true));
     $lines = ["default-src 'self'"];
     foreach ($directives as $name => $sources) $lines[] = "{$name} 'self' " . implode(' ', array_values(array_unique($sources)));
