@@ -13,7 +13,7 @@
     regions[node.getAttribute('data-region')] = node;
   });
   var filterInput = document.querySelector('[data-filter]');
-  var state = { data: null, filter: '', detailId: null, detail: null, headerFormat: null, form: null, timezone: undefined, failed: false, open: {}, autoOpen: null, recheck: null };
+  var state = { data: null, filter: '', detailId: null, detail: null, headerFormat: null, form: null, timezone: undefined, failed: false, open: {}, autoOpen: null, recheck: null, watched: null };
 
   // =================================================================
   // DOM helpers
@@ -132,18 +132,21 @@
 
   /**
    * The owl in the night panel. Awake: wide eyes, small pupils. Its eyes blink
-   * while all is calm (CSS) and follow a mouse over the panel (lookAt()). Both
-   * kinds of feet are drawn: talons over the panel's edge where it sits on it,
-   * feet where it sits in the corner (CSS).
+   * while all is calm (CSS), follow a mouse over the panel and tilt its head
+   * when the mouse rests near it (lookAt()). Both kinds of feet are drawn:
+   * talons over the panel's edge where it sits on it, feet where it sits in
+   * the corner (CSS).
    */
   function owl(awake) {
     var draw = function (items) { return items.map(function (item) { return s(item[0], item[1]); }); };
     var eyes = awake ? OWL.awakeEyes : OWL.eyes;
     // The two whites, then each pupil with its glint in a group of its own, which can turn
     var pupils = [0, 1].map(function (i) { return s('g', { class: 'owl-pupil' }, draw([eyes[2 + i], eyes[4 + i]])); });
-    return s('svg', { class: 'watch-owl' + (awake ? ' is-awake' : ''), viewBox: '0 0 40 40', 'aria-hidden': 'true', focusable: 'false' },
-      draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(eyes.slice(0, 2)).concat(pupils))], draw(OWL.beak),
-        [s('g', { class: 'owl-feet' }, draw(OWL.feet)), s('g', { class: 'owl-talons' }, draw(OWL.talons))]));
+    // Everything but the feet in one group, which tilts while the feet keep their hold
+    return s('svg', { class: 'watch-owl' + (awake ? ' is-awake' : ''), viewBox: '0 0 40 40', 'aria-hidden': 'true', focusable: 'false' }, [
+      s('g', { class: 'owl-body' }, draw(OWL.body).concat([s('g', { class: 'owl-eyes' }, draw(eyes.slice(0, 2)).concat(pupils))], draw(OWL.beak))),
+      s('g', { class: 'owl-feet' }, draw(OWL.feet)), s('g', { class: 'owl-talons' }, draw(OWL.talons))
+    ]);
   }
 
   /**
@@ -348,6 +351,7 @@
     renderRunState();
     renderBanner();
     renderWatch();
+    greet();
     renderAttention();
     renderGroups();
     // No list to show or filter before the first site
@@ -488,7 +492,12 @@
     if (average !== null) stats.push(h('li', {}, [h('b', {}, average + '%'), h('span', {}, 'Up, 30 days')]));
     if (t.paused) stats.push(h('li', {}, [h('b', {}, String(t.paused)), h('span', {}, 'Paused')]));
 
-    append(node, h('div', { class: 'watch is-' + kind }, [
+    // Outages that end while someone watches: the red glow fades and the owl's eyes relax, once (CSS). A snooze
+    // or a maintenance window quiets an outage without ending it, so it leaves the number down as it was
+    var relieved = Boolean(state.watched) && state.watched.kind === 'alert' && kind !== 'alert' && t.down < state.watched.down;
+    state.watched = { kind: kind, down: t.down };
+
+    append(node, h('div', { class: 'watch is-' + kind + (relieved ? ' is-relieved' : '') }, [
       h('div', {}, [
         h('p', { class: 'watch-kicker' }, kicker),
         h('h1', {}, title),
@@ -499,6 +508,24 @@
     ]));
     // A refresh draws a new owl: it goes on looking where the pointer is
     lookAt(gaze);
+  }
+
+  var greeted = false;
+
+  /** For whoever opens the browser's console, once a page: the owl, wide awake while a site is down, and where to read on. */
+  function greet() {
+    if (greeted) return;
+    greeted = true;
+    var owlLines = [' ,___, ', document.querySelector('.watch-owl.is-awake') ? ' (O,O) ' : ' (o,o) ', ' /)__) ', '  " "  '];
+    var words = ['', 'Vaka ' + document.querySelector('[data-foot]').getAttribute('data-version') + ' keeps watch.',
+      'Open source: https://github.com/webready-se/vaka',
+      'Its data for a script or an AI assistant: https://github.com/webready-se/vaka/blob/main/docs/api.md'];
+    var styles = [];
+    var text = owlLines.map(function (part, i) {
+      styles.push('color: #19acca; font-weight: bold', 'color: inherit');
+      return '%c' + part + '%c  ' + words[i];
+    }).join('\n');
+    console.log.apply(console, [text].concat(styles));
   }
 
   function command(text) {
@@ -2475,27 +2502,42 @@
 
   // The owl's eyes follow a mouse over the night panel: both look the same way, from between the eyes, and go all
   // the way when it is far (1.5 of the owl's 40 units, the white still showing round them); only near the beak do
-  // they cross. Never for a finger, never while the owl is wide awake, and never for people who prefer reduced
+  // they cross. A mouse that rests near it for a moment makes it curious: it tilts its head towards it until the
+  // mouse moves on. Never for a finger, never while the owl is wide awake, and never for people who prefer reduced
   // motion (a CSS reset does not reach this)
   var stillness = window.matchMedia('(prefers-reduced-motion: reduce)');
   var gaze = null;
   var gazeFrame = 0;
+  var curiosity = 0;
 
   function lookAt(point) {
     var looking = Boolean(point) && !stillness.matches;
     document.querySelectorAll('.watch-owl:not(.is-awake)').forEach(function (svg) {
       var box = svg.getBoundingClientRect();
       var unit = box.width / 40;
+      var body = svg.querySelector('.owl-body');
       var pupils = svg.querySelectorAll('.owl-pupil');
       svg.classList.toggle('is-following', looking);
       if (!looking) {
+        svg.classList.remove('is-curious');
+        body.style.transform = '';
         pupils.forEach(function (pupil) { pupil.style.transform = ''; });
         return;
       }
-      // In the owl's units: the pointer from between the eyes (20, 19), as if 8 of them in front of the face,
-      // and how close it is to the beak (20, 24.5), which pulls each pupil in
+      // In the owl's units. Curious about a pointer within 60 of them, it tilts 10 degrees round its feet (20, 35),
+      // and its eyes see the pointer turned back as much
       var x = (point.x - box.left) / unit;
       var y = (point.y - box.top) / unit;
+      var tilt = point.curious && Math.hypot(x - 20, y - 20) < 60 ? (x < 20 ? -10 : 10) : 0;
+      var turn = -tilt * Math.PI / 180;
+      var tx = x - 20;
+      var ty = y - 35;
+      x = 20 + tx * Math.cos(turn) - ty * Math.sin(turn);
+      y = 35 + tx * Math.sin(turn) + ty * Math.cos(turn);
+      svg.classList.toggle('is-curious', Boolean(tilt));
+      body.style.transform = tilt ? 'rotate(' + tilt + 'deg)' : '';
+      // The pointer from between the eyes (20, 19), as if 8 of them in front of the face, and how close it is to
+      // the beak (20, 24.5), which pulls each pupil in
       var reach = 1.5 / Math.hypot(x - 20, y - 19, 8);
       var cross = 1.2 * Math.max(0, 1 - Math.hypot(x - 20, y - 24.5) / 10);
       pupils.forEach(function (pupil) {
@@ -2511,13 +2553,25 @@
   document.addEventListener('pointermove', function (event) {
     if (event.pointerType !== 'mouse' && event.pointerType !== 'pen') return;
     if (!(event.target.closest && event.target.closest('.watch'))) return;
-    gaze = { x: event.clientX, y: event.clientY };
+    // A few pixels of a resting hand are not a move: the owl stays curious, and the moment it waits for goes on
+    if (!gaze || Math.hypot(event.clientX - gaze.restX, event.clientY - gaze.restY) > 6) {
+      gaze = { restX: event.clientX, restY: event.clientY, curious: false };
+      clearTimeout(curiosity);
+      curiosity = setTimeout(function () {
+        if (!gaze) return;
+        gaze.curious = true;
+        lookAt(gaze);
+      }, 2000);
+    }
+    gaze.x = event.clientX;
+    gaze.y = event.clientY;
     // Once a frame, however often the mouse reports
     if (!gazeFrame) gazeFrame = requestAnimationFrame(function () { gazeFrame = 0; lookAt(gaze); });
   });
   document.addEventListener('pointerout', function (event) {
     var panel = event.target.closest && event.target.closest('.watch');
     if (!panel || panel.contains(event.relatedTarget)) return;
+    clearTimeout(curiosity);
     gaze = null;
     lookAt(null);
   });
