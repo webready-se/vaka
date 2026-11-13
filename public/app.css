@@ -394,6 +394,9 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .is-down .medallion, .is-down > .medallion { background: var(--down-soft); color: var(--down); }
 .is-failing .medallion, .is-warn .medallion { background: var(--warn-soft); color: var(--warn); }
 .is-quiet .medallion { background: var(--quiet-soft); color: var(--quiet); }
+/* Up has its tile too, like every other state, so the detail's head never shows a bare mark; paused and not checked yet are neutral */
+.is-up .medallion { background: var(--up-soft); color: var(--up); }
+.is-paused .medallion, .is-pending .medallion { background: var(--surface-2); color: var(--text-3); }
 .incident-title { min-width: 0; font-size: 15.5px; }
 .incident-title b { font-weight: 700; overflow-wrap: anywhere; }
 .incident-what { font-weight: 600; color: var(--text-2); }

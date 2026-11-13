@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Fixed
 
+- **A site that is up shows its status in a tile in the site detail's head, like every other state.** Down, failing and quiet each had a tinted tile behind the mark, and up had none, so its mark stood bare and thin. Up now has a light green one, and paused and not checked yet a neutral one.
 - **The CSP line Vaka drafts lets a script from another host send back to it.** A statistics script loaded from its own host sends each visit there, which falls under `connect-src`, and the draft only had the host in `script-src`. Tried as Report-Only, the browser's console filled with warnings; enforced, the statistics would have stopped without a word. Each script's origin now goes in `connect-src` too.
 
 ## [0.4.0] - 2026-11-11
