@@ -251,10 +251,19 @@ async function main() {
     expect(rows.every((row) => row.getBoundingClientRect().height < 90), 'closed rows are compact');
 
     // A row opens on click and stays open across a refresh
+    const listHeight = () => Math.round(q('.attention').getBoundingClientRect().height);
+    const closedHeight = listHeight();
     rows[5].querySelector('summary').click();
     expect(q('.attention details[data-key^="cert:"]').open, 'a click opens the row');
-    document.dispatchEvent(new Event('visibilitychange'));
+    const opening = listHeight();
     await sleep(400);
+    const opened = listHeight();
+    expect(opening < opened && opened > closedHeight, `a row opened by a click grows to its height, so the rows under it slide down (${closedHeight}, ${opening}, ${opened})`);
+    // Every frame through the refresh: a row drawn open again never grows again
+    const heights = new Set();
+    document.dispatchEvent(new Event('visibilitychange'));
+    for (const until = performance.now() + 400; performance.now() < until; await sleep(16)) heights.add(listHeight());
+    expect(heights.size === 1 && heights.has(opened), `and a refresh does not grow it again (heights ${[...heights].join(', ')})`);
     expect(q('.attention details[data-key^="cert:"]')?.open, 'an open row stays open when the page refreshes');
 
     // Every site, by group, with its numbers
@@ -319,8 +328,9 @@ async function main() {
       // Hover, then the keyboard: only today is in the tab order, the arrow keys move along
       point(bars[20], 'pointermove');
       expect(note?.textContent === bars[20].getAttribute('data-tip') && bars[20].classList.contains('is-picked'), 'hovering a bar in the detail tells its day in the line');
+      expect(getComputedStyle(bars[20]).boxShadow === 'none' && note.classList.contains('is-picked') && getComputedStyle(bars[3], '::after').opacity === '0.35' && getComputedStyle(bars[20], '::after').opacity === '0', 'the picked day has no ring and its line is in the accent, and the other days step back');
       point(bars[20], 'pointerout', { relatedTarget: note });
-      expect(note?.textContent === note?.getAttribute('data-day-note'), 'moving away brings back the summary');
+      expect(note?.textContent === note?.getAttribute('data-day-note') && !note.classList.contains('is-picked'), 'moving away brings back the summary');
       expect(bars.filter((b) => b.tabIndex === 0).length === 1 && bars[29].tabIndex === 0, 'one bar, today, is in the tab order');
       expect(/^Today: down once, 14 min$/.test(bars[29].getAttribute('aria-label') || ''), `today's bar says it was down (got "${bars[29].getAttribute('aria-label')}")`);
       bars[29].focus();

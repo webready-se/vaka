@@ -2556,13 +2556,19 @@
     var note = regions.detail.querySelector('[data-day-note]');
     bar.parentNode.querySelectorAll('.is-picked').forEach(function (other) { other.classList.remove('is-picked'); });
     bar.classList.add('is-picked');
-    if (note) note.textContent = bar.getAttribute('data-tip');
+    if (note) {
+      note.textContent = bar.getAttribute('data-tip');
+      note.classList.add('is-picked');
+    }
   }
 
   function unpickDays() {
     var note = regions.detail.querySelector('[data-day-note]');
     regions.detail.querySelectorAll('[data-days] .is-picked').forEach(function (bar) { bar.classList.remove('is-picked'); });
-    if (note) note.textContent = note.getAttribute('data-day-note');
+    if (note) {
+      note.textContent = note.getAttribute('data-day-note');
+      note.classList.remove('is-picked');
+    }
   }
 
   // The bar under the pointer, by where it is along the row: the gaps count too,
@@ -2587,9 +2593,10 @@
     // Onto the next bar, or the gap between two: nothing changes yet
     if (!bars || bars.contains(event.relatedTarget)) return;
     hideTip();
-    // A finger lifts as it taps, so only a mouse that moves away changes the line: back to a clicked day, or the summary
+    // A finger lifts as it taps, so only a mouse that moves away changes the line: back to a day the keyboard is on, or the
+    // summary; a day clicked with the mouse does not stay picked, since pointing at it already shows it
     if (!bars.hasAttribute('data-days') || event.pointerType !== 'mouse') return;
-    if (bars.contains(document.activeElement)) pickDay(document.activeElement);
+    if (bars.contains(document.activeElement) && document.activeElement.matches(':focus-visible')) pickDay(document.activeElement);
     else unpickDays();
   });
   window.addEventListener('scroll', hideTip, { passive: true });

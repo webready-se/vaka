@@ -425,6 +425,7 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 14px; }
 .button { display: inline-flex; align-items: center; gap: 7px; height: 34px; padding: 0 13px; border-radius: 10px; border: 1px solid var(--line); background: var(--surface); color: var(--text); font-size: 14px; font-weight: 650; cursor: pointer; text-decoration: none; }
 .button:hover { border-color: var(--line-strong); background: var(--surface-2); }
+.button, .close-button { transition: background-color 0.12s ease-out, border-color 0.12s ease-out; }
 .button[disabled] { opacity: 0.55; cursor: progress; }
 .button .icon { width: 15px; height: 15px; }
 .segmented { display: inline-flex; align-items: center; border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface); }
@@ -545,8 +546,12 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 }
 /* The page behind stays put while the drawer is open; the gutter keeps it from shifting sideways */
 html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
-.drawer[open] { animation: slide-in 0.22s ease-out; }
-@keyframes slide-in { from { transform: translateX(40px); opacity: 0; } to { transform: none; opacity: 1; } }
+/* Opens over the page (the design kit's motion.md, 0.15 s): the panel slides in from its edge, opaque, and the dimmed backdrop
+   fades in with it; a panel that faded in showed the blurred page through it for a moment, which read as a blink */
+.drawer[open] { animation: slide-in 0.15s ease-out; }
+.drawer[open]::backdrop { animation: backdrop-in 0.15s ease-out; }
+@keyframes slide-in { from { transform: translateX(40px); } }
+@keyframes backdrop-in { from { opacity: 0; } }
 .drawer::backdrop { background: rgb(15 23 42 / 0.45); backdrop-filter: blur(2px); }
 .drawer-inner { padding: 22px 24px 32px; }
 .drawer-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; }
@@ -567,7 +572,13 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .days.is-large { height: 44px; gap: 3px; touch-action: pan-y; }
 .days > button { padding: 0; border: 0; cursor: pointer; }
 .days > button:focus-visible { border-radius: 2px; outline-offset: 1px; }
-.days > .is-picked { opacity: 1; box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--text-3); }
+/* A picked day (the design kit's charts.md): its bar a half step deeper, no ring, its line in the accent; the others step back
+   toward the surface at once (a veil, not transparency) and come back over 0.35 s when it is let go */
+.days > button { position: relative; }
+.days > button::after { content: ''; position: absolute; inset: 0; border-radius: inherit; background: var(--surface); opacity: 0; pointer-events: none; transition: opacity 0.35s ease-out; }
+.days:has(.is-picked) > :not(.is-picked)::after { opacity: 0.35; transition: none; }
+.days > .is-picked { opacity: 1; filter: brightness(0.88); }
+.day-note.is-picked { color: var(--accent); }
 .days-legend { display: flex; justify-content: space-between; margin: 6px 0 0; color: var(--text-3); font-size: 12px; }
 .day-note { margin: 10px 0 0; min-height: 1.45em; font-weight: 600; font-variant-numeric: tabular-nums; }
 .day-key { display: flex; flex-wrap: wrap; gap: 4px 14px; margin: 8px 0 0; padding: 0; list-style: none; color: var(--text-3); font-size: 12.5px; }
@@ -690,8 +701,16 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 @keyframes spin { to { transform: rotate(360deg); } }
 .checking-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: 1px; animation: checking 1.2s ease-in-out infinite; }
 @keyframes checking { 50% { opacity: 0.25; } }
-.tile.is-fresh, .fact.is-fresh { animation: fresh 1.2s ease-out; }
-@keyframes fresh { from { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); } }
+.tile.is-fresh, .fact.is-fresh { animation: fresh 0.35s ease-out; }
+.tile.is-fresh :is(.tile-value, .tile-sub, .tile-was), .fact.is-fresh dd:not(.fact-when) { animation: undim 0.35s ease-out; }
+@keyframes fresh { from { box-shadow: inset 0 0 0 1.5px var(--accent); } }
+@keyframes undim { from { opacity: 0.45; } }
+/* A folded section opens in place: it grows to its height and fades in over 0.2 s, so what is under it slides down rather than
+   jumping (the design kit drops it 4 px, which in a list of rows read as the text jumping); closing is at once. A transition needs
+   a change, so a section drawn open by a refresh never plays it; a browser without ::details-content opens it at once */
+details { interpolate-size: allow-keywords; }
+details::details-content { block-size: 0; opacity: 0; overflow-y: clip; overflow-clip-margin: 6px; }
+details[open]::details-content { block-size: auto; opacity: 1; transition: block-size 0.2s ease-out, opacity 0.2s ease-out; }
 .tile .link-button { margin-top: 6px; }
 
 /* Settings: what the site is set to do, a card of its own */
@@ -710,7 +729,7 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 
 /* Toast */
 /* A popover (above the site detail, which is a modal dialog): inset, border and overflow undo the browser's popover style */
-.toast { position: fixed; inset: auto auto 22px 50%; z-index: 30; transform: translate(-50%, 8px); margin: 0; padding: 11px 16px; border: 0; overflow: visible; border-radius: 12px; background: var(--night); color: var(--night-text); font-weight: 650; box-shadow: 0 12px 30px -12px rgb(15 23 42 / 0.6); opacity: 0; pointer-events: none; transition: opacity 0.18s, transform 0.18s; }
+.toast { position: fixed; inset: auto auto 22px 50%; z-index: 30; transform: translate(-50%, 8px); margin: 0; padding: 11px 16px; border: 0; overflow: visible; border-radius: 12px; background: var(--night); color: var(--night-text); font-weight: 650; box-shadow: 0 12px 30px -12px rgb(15 23 42 / 0.6); opacity: 0; pointer-events: none; transition: opacity 0.15s ease-out, transform 0.15s ease-out; }
 .toast.is-visible { opacity: 1; transform: translate(-50%, 0); }
 
 /* ===================================================================
