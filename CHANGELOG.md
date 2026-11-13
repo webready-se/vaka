@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - **The CSP item names the page Vaka read: "on the start page", or "on example.com/guide/".** Vaka reads one page, and "Enforced, it would block nothing on the page, so it is safe to rename" read like a verdict on the whole site, where another kind of page, or a second app under a path of the same domain, can have inline scripts of its own. A Report-Only policy that would block nothing now says to look at the site's other kinds of page in the browser's console before renaming. The read API's CSP `note` names the page the same way.
+- **The Google tag for Analytics is no longer called a tag manager, and the drafted CSP gets the hosts it sends to.** It loads from Tag Manager's host (`googletagmanager.com/gtag/js`), so a page with only Google Analytics was told "a tag manager makes this hard" and to use nonces, where the Google tag sends to a known set of Google's hosts. The draft now adds them from Google's own guide for Analytics, and the tip says that Google Ads features need more, which Report-Only shows. Google Tag Manager (`gtm.js`) is still told about nonces.
 
 ### Fixed
 
