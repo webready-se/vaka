@@ -373,15 +373,33 @@ function csp_blocked(array $policies, array $page, string $pageUrl): array
 const CSP_TAG_MANAGERS = ['googletagmanager.com' => 'Google Tag Manager'];
 
 /**
+ * Where the Google tag for Analytics (gtag/js) loads images from and sends
+ * to, without its ads features: Google's own list, from its guide to a CSP
+ * for its tags. A known set of hosts, unlike Tag Manager's.
+ */
+const GOOGLE_TAG_SOURCES = ['img-src' => ['https://www.googletagmanager.com', 'https://*.google-analytics.com'], 'connect-src' => ['https://www.googletagmanager.com', 'https://*.google-analytics.com', 'https://*.google.com']];
+
+const GOOGLE_TAG_TIP = "The Google tag sends to Google's own hosts, from Google's guide for Analytics. With Google Ads features on, it needs more, which Report-Only shows in the console.";
+
+/** Whether a script is the Google tag (gtag/js), which loads from Tag Manager's host but is no tag manager. */
+function google_tag(string $url): bool
+{
+    return preg_match('#^https://www\.googletagmanager\.com/gtag/js(?:\?|$)#i', $url) === 1;
+}
+
+/**
  * The honest word on a page that loads a tag manager: a strict CSP needs
  * nonces from the site's own code, or stays weak. Empty for other pages.
  */
-/** The tag manager's name when the page loads one, or ''. */
+/** The tag manager's name when the page loads one, or ''. Only the Google tag from its host is none; data stored before the scripts were has only the hosts. */
 function tag_manager(array $page): string
 {
     foreach ($page['hosts'] ?? [] as $host) {
         foreach (CSP_TAG_MANAGERS as $domain => $name) {
-            if ($host === $domain || str_ends_with($host, ".{$domain}")) return $name;
+            if ($host !== $domain && !str_ends_with($host, ".{$domain}")) continue;
+            $from = array_filter($page['external'] ?? [], fn (array $script) => url_host($script['url']) === $host);
+            if ($from && !array_filter($from, fn (array $script) => !google_tag($script['url']))) continue;
+            return $name;
         }
     }
     return '';
@@ -400,13 +418,17 @@ function tag_manager_caution(array $page): string
     return tag_manager($page) !== '' ? 'a tag manager makes this hard' : '';
 }
 
+/** For a drafted line: where the Google tag sends, when the page has it and no tag manager. Empty for other pages. */
+function google_tag_tip(array $page): string
+{
+    if (tag_manager($page) !== '') return '';
+    return array_filter($page['external'] ?? [], fn (array $script) => google_tag($script['url'])) ? ' ' . GOOGLE_TAG_TIP : '';
+}
+
 function tag_manager_tip(array $page): string
 {
-    foreach ($page['hosts'] ?? [] as $host) {
-        foreach (CSP_TAG_MANAGERS as $domain => $name) {
-            if ($host === $domain || str_ends_with($host, ".{$domain}")) return " {$name} loads more later, by what is set up in its own interface, so no line drawn from the page stays complete. **A strict CSP with it needs nonces from the site's own code**; otherwise it stays weak with 'unsafe-inline'. Report-Only with reporting is the middle.";
-        }
-    }
+    $name = tag_manager($page);
+    if ($name !== '') return " {$name} loads more later, by what is set up in its own interface, so no line drawn from the page stays complete. **A strict CSP with it needs nonces from the site's own code**; otherwise it stays weak with 'unsafe-inline'. Report-Only with reporting is the middle.";
     return '';
 }
 
@@ -419,7 +441,8 @@ const CSP_COMPANIONS = ['fonts.googleapis.com' => ['font-src', 'https://fonts.gs
  * hash for each inline script and <style> block as they are today, and
  * 'unsafe-inline' for styles when the page has style="..." attributes, which
  * nothing else lets through. Known companions are added (Google Fonts loads
- * from fonts.gstatic.com), and each script's origin again in connect-src,
+ * from fonts.gstatic.com; the Google tag sends to the hosts Google lists for
+ * it, GOOGLE_TAG_SOURCES), and each script's origin again in connect-src,
  * where it sends what it collects. Only what the page shows: a tag manager loads
  * more later, which Report-Only reports in the console. Empty when the page
  * needs nothing beyond the site itself.
@@ -452,6 +475,9 @@ function csp_draft(array $page, string $pageUrl): string
     if ($connect) $directives['connect-src'] = $connect;
     $frames = $origins($page['frames'] ?? []);
     if ($frames) $directives['frame-src'] = $frames;
+    if (array_filter($page['external'] ?? [], fn (array $script) => google_tag($script['url']))) {
+        foreach (GOOGLE_TAG_SOURCES as $name => $sources) $directives[$name] = [...($directives[$name] ?? []), ...$sources];
+    }
     if (!$directives) return '';
     $order = ['script-src', 'style-src', 'font-src', 'img-src', 'connect-src', 'frame-src'];
     uksort($directives, fn ($a, $b) => array_search($a, $order, true) <=> array_search($b, $order, true));
@@ -1179,7 +1205,7 @@ function csp_item(array $item, array $details): array
         'fix' => $draft !== '' ? "Content-Security-Policy-Report-Only: {$draft}" : $item['fix'],
         'tip' => 'This is the one that can break a site, so it is fine to do it last. ' . $item['tip']
             . ($draft !== '' ? " The line is drafted from this page: **the hashes are of its inline scripts and styles as they are today and change with them**, so let the build add them or move the code to files. Other pages may need more; Report-Only shows it all in the console." : '')
-            . tag_manager_tip($scripts),
+            . tag_manager_tip($scripts) . google_tag_tip($scripts),
     ] + ($excerpts ? ['inline' => $excerpts] : []) + $item;
 }
 

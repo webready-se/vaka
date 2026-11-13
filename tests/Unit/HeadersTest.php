@@ -1025,6 +1025,23 @@ test('without a CSP, the line to try is the draft when the page needs more than 
         ->and($more['tip'])->toContain('Other pages may need more');
 });
 
+test('the Google tag for Analytics is no tag manager: the draft gets the hosts Google lists for it', function () {
+    $csp = fn (array $h, string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered($h + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
+    $snippet = 'window.dataLayer = window.dataLayer || []; function gtag(){dataLayer.push(arguments);} gtag("js", new Date()); gtag("config", "G-X");';
+    $gtag = '<script async src="https://www.googletagmanager.com/gtag/js?id=G-X"></script><script>' . $snippet . '</script>';
+    $hash = 'sha256-' . base64_encode(hash('sha256', $snippet, true));
+    $item = $csp([], $gtag);
+    expect($item['caution'])->toBe('')
+        ->and($item['note'])->not->toContain('Tag Manager')
+        ->and($item['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://www.googletagmanager.com '{$hash}'; img-src 'self' https://www.googletagmanager.com https://*.google-analytics.com; connect-src 'self' https://www.googletagmanager.com https://*.google-analytics.com https://*.google.com; object-src 'none'")
+        ->and($item['tip'])->toContain(GOOGLE_TAG_TIP)
+        ->and($item['tip'])->not->toContain('nonces')
+        // Tag Manager next to it still is one, and so is the host alone in data stored before the scripts were
+        ->and($csp([], $gtag . '<script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script>')['caution'])->toBe('a tag manager makes this hard')
+        ->and(tag_manager(['hosts' => ['www.googletagmanager.com']]))->toBe('Google Tag Manager')
+        ->and(tag_manager(page_scripts($gtag, 'https://shop.example/')))->toBe('');
+});
+
 test('a page with a tag manager is told that a strict CSP needs nonces, or stays weak', function () {
     $csp = fn (array $h, string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered($h + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
     $gtm = '<script>dataLayer = []</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-X"></script>';
