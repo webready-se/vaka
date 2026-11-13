@@ -728,6 +728,29 @@ test('"Check again" makes every check of a site due on the next run; it needs th
         ->and($this->db->query("SELECT next_at FROM check_state WHERE site_id = {$blog}")->fetchColumn())->toBe(utc_now($now + 3600));
 });
 
+test('while "Check again" waits, the page asks only when each check of the site last ran', function () {
+    add_group($this->db, ['name' => 'Customers']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $blog = add_site($this->db, ['url' => 'https://blog.example']);
+    $now = time();
+    foreach (['uptime' => 60, 'ssl' => 3600] as $check => $ago) {
+        save_check_state($this->db, $shop, $check, ['status' => 'ok', 'summary' => 'Fine', 'details' => [], 'fail_count' => 0, 'changed_at' => utc_now($now - 86400)], utc_now($now - $ago), utc_now($now + 300));
+    }
+    $jar = ($this->login)('anna', 'anna password')['jar'];
+    $times = http_request('GET', WEB . "/?api=site-times&id={$shop}", ['jar' => $jar]);
+
+    // The same times as the site's own answer, so the page can tell a check that ran again
+    expect($times['status'])->toBe(200)
+        ->and($times['json'])->toBe(['times' => ['ssl' => utc_now($now - 3600), 'uptime' => utc_now($now - 60)]])
+        ->and(http_request('GET', WEB . "/?api=site&id={$shop}", ['jar' => $jar])['json']['site']['checked_at'])->toBe(utc_now($now - 60))
+        // A site the user may not see, or none, is a 404; without a login, nothing
+        ->and(http_request('GET', WEB . "/?api=site-times&id={$blog}", ['jar' => $jar])['status'])->toBe(404)
+        ->and(http_request('GET', WEB . "/?api=site-times&id={$shop}")['status'])->not->toBe(200);
+    // A site with no check yet answers an object all the same
+    $new = add_site($this->db, ['url' => 'https://new.example', 'group' => 'Customers']);
+    expect(http_request('GET', WEB . "/?api=site-times&id={$new}", ['jar' => $jar])['body'])->toBe('{"times":{}}');
+});
+
 test('a logged-in user reads the same API for the sites they may see', function () {
     add_group($this->db, ['name' => 'Customers']);
     add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);

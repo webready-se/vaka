@@ -678,6 +678,12 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .tile.is-down .tile-value .icon { color: var(--down); }
 .tile .tile-sub { margin-top: 3px; color: var(--text-3); font-size: 13px; overflow-wrap: anywhere; }
 .tile .tile-when { margin-top: 6px; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
+.tile .tile-was { margin-top: 3px; color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; }
+/* While "Check again" waits for a check: a calm dot; once it has run, the tile lights up and settles, once (still for reduced motion) */
+.checking-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: 1px; animation: checking 1.2s ease-in-out infinite; }
+@keyframes checking { 50% { opacity: 0.25; } }
+.tile.is-fresh, .fact.is-fresh { animation: fresh 1.2s ease-out; }
+@keyframes fresh { from { background: var(--accent-soft); box-shadow: inset 0 0 0 2px var(--accent); } }
 .tile .link-button { margin-top: 6px; }
 
 /* Settings: what the site is set to do, a card of its own */

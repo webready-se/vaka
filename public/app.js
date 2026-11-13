@@ -996,6 +996,7 @@
       state.detail = detail;
       settleRecheck(detail.site);
       renderDetail();
+      markLanded();
       if (!regions.detail.open) regions.detail.showModal();
     }).catch(function (error) {
       if (error.message !== 'Logged out') toast(error.message);
@@ -1023,7 +1024,6 @@
     var d = state.detail;
     var site = d.site;
     var node = regions.detail;
-    clear(node);
 
     var kind = isQuiet(site) && site.status === 'down' ? 'quiet' : site.status;
     var paused = site.status === 'paused';
@@ -1031,7 +1031,7 @@
     var since = site.since ? (site.status === 'up' ? 'Up since ' : site.status === 'down' ? 'Down since ' : 'Since ') + clock(site.since) + ' (' + duration(secondsSince(site.since)) + ')' : STATUS_WORDS[site.status];
     var editable = Boolean(state.data.setup);
 
-    append(node, h('div', { class: 'drawer-inner is-' + kind }, [
+    var fresh = h('div', { class: 'drawer-inner is-' + kind, 'data-site': site.id }, [
       h('div', { class: 'drawer-head' }, [
         h('div', { class: 'medallion' }, icon(kind === 'quiet' ? 'quiet' : site.status)),
         // The address leads, the name goes with it, as in the site list
@@ -1051,9 +1051,9 @@
         ['Up, 7 days', percent(d.uptime['7d'])],
         ['Up, 30 days', percent(d.uptime['30d'])],
         // When, like the tiles below, so a response time from a while ago is not taken for one from just now
-        ['Response now', site.ms !== null ? site.ms + ' ms' : '–', site.checked_at ? 'Checked ' + clock(site.checked_at) : null]
+        ['Response now', site.ms !== null ? site.ms + ' ms' : '–', site.checked_at ? checkedWords(site, 'uptime', site.checked_at) : null, 'uptime']
       ].map(function (fact) {
-        return h('div', { class: 'fact' }, [h('dt', {}, fact[0]), h('dd', {}, fact[1]), fact[2] ? h('dd', { class: 'fact-when' }, fact[2]) : null]);
+        return h('div', { class: 'fact', 'data-check': fact[3] || null }, [h('dt', {}, fact[0]), h('dd', {}, fact[1]), fact[2] ? h('dd', { class: 'fact-when' }, fact[2]) : null]);
       })),
       h('h3', {}, 'Last 30 days'),
       dayStrip(d.days, paused),
@@ -1072,7 +1072,33 @@
       settingsCard(site, d.maintenance, editable),
       h('h3', {}, 'History'),
       timeline(d.events)
-    ]));
+    ]);
+    // The same site again (a refresh, "Check again"): only what changed is replaced
+    var old = node.firstElementChild;
+    if (old && old.getAttribute('data-site') === String(site.id) && old.className === fresh.className) patch(old, fresh);
+    else { clear(node); append(node, fresh); }
+  }
+
+  /**
+   * Bring a part of the page to a freshly built copy, replacing only what
+   * differs, as Puls's islands do: the rest keeps its DOM, so focus, hover
+   * and open sections survive a refresh, and what changed is what moves.
+   * The highlight of a check that just ran is left to finish (markLanded()).
+   */
+  function patch(old, fresh) {
+    if (old.isEqualNode(fresh)) return;
+    if (old.nodeType !== 1 || old.tagName !== fresh.tagName || old.childNodes.length !== fresh.childNodes.length || !sameAttributes(old, fresh)) {
+      old.replaceWith(fresh);
+      return;
+    }
+    var freshChildren = Array.prototype.slice.call(fresh.childNodes);
+    Array.prototype.slice.call(old.childNodes).forEach(function (child, i) { patch(child, freshChildren[i]); });
+  }
+
+  function sameAttributes(a, b) {
+    var value = function (node, name) { return name === 'class' ? (node.getAttribute('class') || '').replace(/(^| )is-fresh\b/, '') : node.getAttribute(name); };
+    var names = function (node) { return Array.prototype.map.call(node.attributes, function (attr) { return attr.name; }).sort().join(' '); };
+    return names(a) === names(b) && Array.prototype.every.call(a.attributes, function (attr) { return value(a, attr.name) === value(b, attr.name); });
   }
 
   /**
@@ -1093,12 +1119,67 @@
     return [h('button', { type: 'button', class: 'button', 'data-action': 'recheck', 'data-site': site.id, disabled: busy ? '' : null, 'aria-label': busy ? 'Checking ' + site.label + ' again' : 'Check ' + site.label + ' again now' }, [icon('pending'), words])];
   }
 
-  /** After three minutes of waiting, the checks that have not run again yet, and why they may wait. */
+  /**
+   * Under the button: after three minutes of waiting, the checks that have
+   * not run again yet, and why they may wait; and mail records that came back
+   * the same while something is missing, since one just added may not show yet.
+   */
   function recheckNote(site) {
-    var current = state.recheck && state.recheck.id === site.id ? state.recheck : null;
-    if (!current || !current.left || !current.left.length) return null;
-    var why = site.status === 'down' || site.status === 'failing' ? 'They wait while the site does not answer.' : 'They are still due, so one of the next runs takes them.';
-    return h('p', { class: 'recheck-note' }, 'Not checked again yet: ' + listWords(current.left) + '. ' + why);
+    var current = recheckOf(site);
+    if (!current) return null;
+    var notes = [];
+    if (current.left && current.left.length) notes.push('Not checked again yet: ' + listWords(current.left) + '. ' + (site.status === 'down' || site.status === 'failing' ? 'They wait while the site does not answer.' : 'They are still due, so one of the next runs takes them.'));
+    if (site.dns && site.dns.status !== 'ok' && landed(current, site, 'dns') && !changed(current, site, 'dns')) notes.push('Mail is the same as before: a record just added can take up to 30 minutes to show, as DNS answers are remembered for a while.');
+    return notes.length ? h('p', { class: 'recheck-note' }, notes.join(' ')) : null;
+  }
+
+  /** The "Check again" under way for this site, or null. */
+  function recheckOf(site) {
+    return state.recheck && state.recheck.id === Number(site.id) ? state.recheck : null;
+  }
+
+  /** What a check said, to tell whether it changed: uptime by its status, the others by their summary. */
+  function checkSummary(site, key) {
+    return key === 'uptime' ? site.status : site[key] ? site[key].summary : null;
+  }
+
+  /** Whether a check has run since "Check again" was pressed. */
+  function landed(current, site, key) {
+    return current.before[key] !== undefined && checkTimes(site)[key] !== current.before[key];
+  }
+
+  function changed(current, site, key) {
+    return landed(current, site, key) && checkSummary(site, key) !== current.summaries[key];
+  }
+
+  /** When a check ran, in the words of its tile: "Checking…" while "Check again" waits for it, "Checked just now" once it has run. */
+  function checkedWords(site, key, at) {
+    var current = recheckOf(site);
+    if (current && current.before[key] !== undefined && !current.done) {
+      if (!landed(current, site, key)) return current.left ? 'Checked ' + clock(at) : [h('span', { class: 'checking-dot', 'aria-hidden': 'true' }), 'Checking…'];
+    }
+    return current && landed(current, site, key) ? 'Checked just now' : 'Checked ' + clock(at);
+  }
+
+  /** A tile's value as read, without the words only a screen reader gets. */
+  function tileValue(node) {
+    var value = node.querySelector('.tile-value');
+    if (!value) return null;
+    var copy = value.cloneNode(true);
+    Array.prototype.forEach.call(copy.querySelectorAll('.visually-hidden'), function (hidden) { hidden.remove(); });
+    return copy.textContent;
+  }
+
+  /** Light up each check that has just run again, once: the class goes at animationend, so a refresh never plays it again. */
+  function markLanded() {
+    var current = state.detail && recheckOf(state.detail.site);
+    if (!current || window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    Object.keys(current.before).forEach(function (key) {
+      if (current.shown[key] || !landed(current, state.detail.site, key)) return;
+      current.shown[key] = true;
+      var node = regions.detail.querySelector('[data-check="' + key + '"]');
+      if (node) node.classList.add('is-fresh');
+    });
   }
 
   // The checks "Check again" waits for, by their key in the site and in plain words
@@ -1123,7 +1204,7 @@
     }).map(function (check) { return check[1]; });
   }
 
-  /** With a fresh detail: once every check has run again, say so, and stop looking. */
+  /** With a fresh detail: once every check has run again, say so, with what changed, and stop looking. */
   function settleRecheck(site) {
     var current = state.recheck;
     if (!current || current.id !== Number(site.id) || current.done || current.left || !Object.keys(current.before).length) return;
@@ -1131,7 +1212,8 @@
     var times = checkTimes(site);
     current.done = Object.keys(times).map(function (key) { return times[key]; }).sort().pop();
     clearTimeout(current.timer);
-    toast('Every check of ' + site.label + ' ran again');
+    var moved = RECHECKED.filter(function (check) { return changed(current, site, check[0]); }).map(function (check) { return check[1]; });
+    toast('Every check of ' + site.label + ' ran again: ' + (moved.length ? listWords(moved) + ' changed' : 'nothing changed'));
   }
 
   var TILE_ICONS = { ok: 'up', warn: 'failing', down: 'down', none: 'info' };
@@ -1165,9 +1247,15 @@
     var quiet = function (iconName) { return { tone: 'none', icon: iconName }; };
     var waiting = function (label) { return tile(label, quiet('pending'), 'Not checked yet'); };
     var turnedOff = function (label) { return tile(label, quiet('paused'), 'Turned off', 'In the settings below'); };
-    // When the check ran, so a result from hours ago is not taken for one from just now
-    var stamped = function (node, check) {
-      if (check && check.checked_at) node.appendChild(h('p', { class: 'tile-when' }, 'Checked ' + clock(check.checked_at)));
+    // When the check ran, so a result from hours ago is not taken for one from just now; while "Check again" waits, that it is
+    // checking, and once it has run, what it said before if that changed
+    var current = recheckOf(site);
+    var stamped = function (node, check, key) {
+      if (!check || !check.checked_at) return node;
+      node.setAttribute('data-check', key);
+      var was = current && landed(current, site, key) ? current.values[key] : undefined;
+      if (was !== undefined && was !== null && was !== tileValue(node)) node.appendChild(h('p', { class: 'tile-was' }, 'Was: ' + was));
+      node.appendChild(h('p', { class: 'tile-when' }, checkedWords(site, key, check.checked_at)));
       return node;
     };
     var tiles = [];
@@ -1185,35 +1273,35 @@
     if (off('ssl')) tiles.push(turnedOff('Certificate'));
     else if (!/^https:/.test(site.url)) tiles.push(tile('Certificate', quiet('info'), 'No https', 'The address starts with http://'));
     else if (!ssl) tiles.push(waiting('Certificate'));
-    else if (ssl.status === 'fail' || ssl.days_left === null) tiles.push(stamped(tile('Certificate', { tone: tone(ssl.status) }, ssl.status === 'fail' ? 'Not valid' : 'Unknown', ssl.summary), ssl));
-    else tiles.push(stamped(tile('Certificate', { tone: tone(ssl.status) }, daysLeft(ssl.days_left), 'Until ' + date(ssl.valid_to) + (ssl.renewed_by ? ', renewed by ' + ssl.renewed_by : issuer ? ', ' + issuer[1] : '')), ssl));
+    else if (ssl.status === 'fail' || ssl.days_left === null) tiles.push(stamped(tile('Certificate', { tone: tone(ssl.status) }, ssl.status === 'fail' ? 'Not valid' : 'Unknown', ssl.summary), ssl, 'ssl'));
+    else tiles.push(stamped(tile('Certificate', { tone: tone(ssl.status) }, daysLeft(ssl.days_left), 'Until ' + date(ssl.valid_to) + (ssl.renewed_by ? ', renewed by ' + ssl.renewed_by : issuer ? ', ' + issuer[1] : '')), ssl, 'ssl'));
 
     var domain = site.domain;
     if (off('domain')) tiles.push(turnedOff('Domain'));
     else if (!domain) tiles.push(waiting('Domain'));
-    else if (domain.status === 'fail') tiles.push(stamped(tile('Domain', { tone: 'down' }, 'Expired', domain.summary), domain));
-    else if (domain.days_left === null) tiles.push(stamped(tile('Domain', { tone: 'none' }, 'Unknown', domain.summary), domain));
-    else tiles.push(stamped(tile('Domain', { tone: tone(domain.status) }, daysLeft(domain.days_left), 'Until ' + date(domain.expires) + (domain.registrar ? ', ' + domain.registrar : '')), domain));
+    else if (domain.status === 'fail') tiles.push(stamped(tile('Domain', { tone: 'down' }, 'Expired', domain.summary), domain, 'domain'));
+    else if (domain.days_left === null) tiles.push(stamped(tile('Domain', { tone: 'none' }, 'Unknown', domain.summary), domain, 'domain'));
+    else tiles.push(stamped(tile('Domain', { tone: tone(domain.status) }, daysLeft(domain.days_left), 'Until ' + date(domain.expires) + (domain.registrar ? ', ' + domain.registrar : '')), domain, 'domain'));
 
     var exposed = site.exposed;
     var checked = exposed && /\((\d+ files? checked)\)/.exec(exposed.summary);
     if (off('exposed')) tiles.push(turnedOff('Exposed files'));
     else if (!exposed) tiles.push(waiting('Exposed files'));
-    else if (exposed.found.length) tiles.push(stamped(tile('Exposed files', { tone: tone(exposed.status) }, plural(exposed.found.length, 'file', 'files') + ' public', exposed.found.map(function (file) { return file.label; }).join(', ')), exposed));
-    else tiles.push(stamped(tile('Exposed files', { tone: tone(exposed.status) }, exposed.status === 'ok' ? 'None public' : exposed.summary, checked ? capitalize(checked[1]) : null), exposed));
+    else if (exposed.found.length) tiles.push(stamped(tile('Exposed files', { tone: tone(exposed.status) }, plural(exposed.found.length, 'file', 'files') + ' public', exposed.found.map(function (file) { return file.label; }).join(', ')), exposed, 'exposed'));
+    else tiles.push(stamped(tile('Exposed files', { tone: tone(exposed.status) }, exposed.status === 'ok' ? 'None public' : exposed.summary, checked ? capitalize(checked[1]) : null), exposed, 'exposed'));
 
     var headers = site.headers;
     if (off('headers')) tiles.push(turnedOff('Security headers'));
     else if (!headers) tiles.push(waiting('Security headers'));
-    else if (!headers.grade) tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, headers.summary), headers));
+    else if (!headers.grade) tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, headers.summary), headers, 'headers'));
     // "Grade E: 2 of 6 in place, missing ...": the first part, the rest is further down
-    else tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, 'Grade ' + headers.grade, capitalize(headers.summary.replace(/^Grade [A-F]: /, '').split(', ')[0])), headers));
+    else tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, 'Grade ' + headers.grade, capitalize(headers.summary.replace(/^Grade [A-F]: /, '').split(', ')[0])), headers, 'headers'));
 
     var dns = site.dns;
     var mail = dns && /^Mail for ([^:]+): (.+)$/.exec(dns.summary);
     if (off('dns')) tiles.push(turnedOff('Mail'));
     else if (!dns) tiles.push(waiting('Mail'));
-    else tiles.push(stamped(tile('Mail', { tone: tone(dns.status) }, mail ? capitalize(mail[2]) : dns.summary, mail ? 'For ' + mail[1] : null), dns));
+    else tiles.push(stamped(tile('Mail', { tone: tone(dns.status) }, mail ? capitalize(mail[2]) : dns.summary, mail ? 'For ' + mail[1] : null), dns, 'dns'));
 
     return h('ul', { class: 'tiles', 'aria-labelledby': 'seen-title' }, tiles);
   }
@@ -2235,8 +2323,16 @@
    */
   function recheck(id, button) {
     if (button) button.disabled = true;
-    // What to compare with: a check has run again once its time has moved
-    var before = state.detail && Number(state.detail.site.id) === Number(id) ? checkTimes(state.detail.site) : {};
+    // What to compare with: a check has run again once its time has moved; what each said, to tell what changed
+    var site = state.detail && Number(state.detail.site.id) === Number(id) ? state.detail.site : null;
+    var before = site ? checkTimes(site) : {};
+    var summaries = {};
+    var values = {};
+    Object.keys(before).forEach(function (key) {
+      summaries[key] = checkSummary(site, key);
+      var node = regions.detail.querySelector('.tile[data-check="' + key + '"]');
+      if (node) values[key] = tileValue(node);
+    });
     return api('/?api=site-recheck', {
       method: 'POST',
       headers: { Accept: 'application/json', 'Content-Type': 'application/json', 'X-CSRF-Token': csrf },
@@ -2244,21 +2340,28 @@
     }).then(function (result) {
       toast('Checking ' + result.site.label + ' again: the results come within a minute');
       clearTimeout(state.recheck && state.recheck.timer);
-      var current = state.recheck = { id: Number(id), before: before, rounds: 0 };
-      // Every 30 seconds for three minutes, until every check has run again
+      var current = state.recheck = { id: Number(id), before: before, summaries: summaries, values: values, seen: before, shown: {}, polls: 0 };
+      // Every 5 seconds for three minutes: when each check last ran, a few bytes, and the site itself once one has run again,
+      // so each tile lands within seconds of its check; nothing while the tab is hidden
       var look = function () {
         if (state.recheck !== current || current.done) return;
         if (state.detailId === null || Number(state.detailId) !== Number(id)) { state.recheck = null; return; }
-        current.rounds++;
-        openDetail(id).then(function () {
+        current.polls++;
+        var asked = document.hidden ? Promise.resolve() : api('/?api=site-times&id=' + encodeURIComponent(id)).then(function (result) {
+          var times = result.times || {};
+          var moved = Object.keys(current.before).some(function (key) { return times[key] !== current.seen[key]; });
+          current.seen = times;
+          return moved ? openDetail(id) : null;
+        }).catch(function () {});
+        asked.then(function () {
           if (state.recheck !== current || current.done) return;
-          if (current.rounds < 6) { current.timer = setTimeout(look, 30000); return; }
+          if (current.polls < 36) { current.timer = setTimeout(look, 5000); return; }
           current.left = state.detail ? recheckLeft(current, state.detail.site) : [];
           renderDetail();
         });
       };
       if (state.detailId !== null) openDetail(id);
-      current.timer = setTimeout(look, 30000);
+      current.timer = setTimeout(look, 5000);
     }).catch(function (error) {
       if (error.message !== 'Logged out') toast(error.message);
       if (button) button.disabled = false;
@@ -2587,6 +2690,11 @@
   // Esc closes it too. The event comes a moment later, so one from an earlier close must not shut a drawer opened since
   regions.detail.addEventListener('close', function () {
     if (!regions.detail.open && (state.detailId || state.form)) closeDetail();
+  });
+
+  // A check's highlight plays once: gone at its end, so a refresh never plays it again
+  regions.detail.addEventListener('animationend', function (event) {
+    if (event.animationName === 'fresh') event.target.classList.remove('is-fresh');
   });
 
   // Remember which rows people opened or closed, so a refresh does not undo it

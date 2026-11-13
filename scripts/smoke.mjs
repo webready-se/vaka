@@ -383,26 +383,40 @@ async function main() {
       expect(/Checking shop\.example again/.test(q('.toast')?.textContent || ''), 'Check again says when the results come');
       // The detail is a modal dialog in the top layer; only a popover shown after it lies above it (and hit tests cannot tell, since all outside a modal is inert)
       expect(q('.toast').matches(':popover-open') && q('dialog.drawer').matches(':modal'), 'the message shows above the open site detail, not behind it');
-      expect(/^Checked \d/.test(q('dialog.drawer .fact-when')?.textContent || ''), 'the response time says when uptime was checked');
-      // As if the next run had come: first one check has run again, then all of them
+      // Each check says it is checking until it has run again, the response time too
+      expect(/^Checking…$/.test(q('dialog.drawer .fact-when')?.textContent || '') && all('dialog.drawer .tile-when').every((p) => p.textContent === 'Checking…' && p.querySelector('.checking-dot')), 'while Check again waits, each check says it is checking');
+      // As if the next run had come: first one check has run again, then all of them, and the page finds out by asking when each ran
       const realFetch = window.fetch;
       const later = new Date(Date.now() + 60000).toISOString();
       let ran = ['ssl'];
+      const json = (data) => new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
       window.fetch = (url, options) => realFetch(url, options).then((response) => {
+        if (/[?&]api=site-times&id=1$/.test(String(url))) {
+          return response.json().then((data) => { ran.forEach((key) => { if (data.times[key]) data.times[key] = later; }); return json(data); });
+        }
         if (!/[?&]api=site&id=1$/.test(String(url))) return response;
         return response.json().then((data) => {
           if (ran.includes('uptime')) data.site.checked_at = later;
           ['ssl', 'domain', 'exposed', 'headers', 'dns'].forEach((key) => { if (data.site[key]?.checked_at && ran.includes(key)) data.site[key].checked_at = later; });
-          return new Response(JSON.stringify(data), { status: 200, headers: { 'Content-Type': 'application/json' } });
+          // The headers were fixed; the mail records came back the same, with something still missing
+          if (ran.includes('headers')) Object.assign(data.site.headers, { grade: 'A', summary: 'Grade A: all 6 in place' });
+          if (data.site.dns) data.site.dns.status = 'warn';
+          return json(data);
         });
       });
-      const shopRow = () => all('.site-row').find((r) => /shop\.example/.test(r.textContent));
-      shopRow().click();
-      await waitFor(() => /^Checking… 1 of \d done$/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to say how many checks have run again');
+      const closeButton = q('dialog.drawer [data-action="close"]');
+      closeButton.focus();
+      await waitFor(() => /^Checking… 1 of \d done$/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to find a check that ran again by itself, within seconds', 9000);
+      const sslTile = q('dialog.drawer .tile[data-check="ssl"]');
+      expect(sslTile?.querySelector('.tile-when')?.textContent === 'Checked just now' && sslTile.classList.contains('is-fresh'), 'a check that has run again says so and lights up');
+      expect(q('dialog.drawer .tile[data-check="headers"] .tile-when')?.textContent === 'Checking…', 'the others still say they are checking');
+      expect(document.activeElement === closeButton && q('dialog.drawer [data-action="close"]') === closeButton, 'only what changed is replaced: focus stays where it was');
       ran = ['uptime', 'ssl', 'domain', 'exposed', 'headers', 'dns'];
-      shopRow().click();
-      await waitFor(() => /^Checked again \d/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to say when every check had run again');
-      expect(!q('dialog.drawer [data-action="recheck"]').disabled && /^Every check of shop\.example ran again$/.test(q('.toast')?.textContent || ''), 'once all have run, the button can be pressed again, and a message says so');
+      await waitFor(() => /^Checked again \d/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to say when every check had run again', 9000);
+      expect(!q('dialog.drawer [data-action="recheck"]').disabled && q('.toast')?.textContent === 'Every check of shop.example ran again: security headers changed', `once all have run, the button can be pressed again, and a message says what changed (got "${q('.toast')?.textContent}")`);
+      expect(q('dialog.drawer .tile[data-check="headers"] .tile-was')?.textContent === 'Was: Grade C', `a check whose result changed says what it was (got "${q('dialog.drawer .tile[data-check="headers"] .tile-was')?.textContent}")`);
+      expect(!q('dialog.drawer .tile[data-check="ssl"] .tile-was'), 'and one that did not, nothing');
+      expect(/^Mail is the same as before: a record just added can take up to 30 minutes to show/.test(q('dialog.drawer .recheck-note')?.textContent || ''), 'mail that came back the same with something missing says why it may not show yet');
       window.fetch = realFetch;
       expect(location.hash === '#site-1', 'the detail has its own address');
       q('dialog.drawer [data-action="close"]').click();
