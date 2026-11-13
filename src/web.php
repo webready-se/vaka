@@ -307,6 +307,14 @@ function handle_api(array $config, array $user, string $endpoint, string $method
         if (!$site) respond_json(404, ['error' => 'No such site']);
         respond_json(200, api_site($db, $config, $site, $now));
     }
+    // While "Check again" waits: when each check of a site last ran, a few bytes, so the page fetches the site only once one has run
+    if ($endpoint === 'site-times' && $method === 'GET') {
+        $site = visible_site($db, (int) ($_GET['id'] ?? 0), $allowed);
+        if (!$site) respond_json(404, ['error' => 'No such site']);
+        $times = $db->prepare('SELECT check_name, checked_at FROM check_state WHERE site_id = ? ORDER BY check_name');
+        $times->execute([$site['id']]);
+        respond_json(200, ['times' => (object) $times->fetchAll(PDO::FETCH_KEY_PAIR)]);
+    }
     if ($endpoint === 'snooze' && $method === 'POST') {
         if (!check_csrf((string) ($_SERVER['HTTP_X_CSRF_TOKEN'] ?? ''))) respond_json(403, ['error' => 'The page expired. Reload it and try again.']);
         $input = json_decode((string) file_get_contents('php://input'), true) ?: [];
