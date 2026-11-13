@@ -340,6 +340,26 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 /* Its eyes follow a mouse over the panel (lookAt() in app.js): quick while it looks, back to the middle after a moment when the mouse leaves */
 .watch-owl .owl-pupil { transition: transform 0.6s ease-in-out 0.4s; }
 .watch-owl.is-following .owl-pupil { transition: transform 0.12s ease-out; }
+/* Curious about a mouse resting near it, it tilts its head round its feet (20, 35 of its 40 units), which keep their hold */
+.watch-owl .owl-body { transform-origin: 20px 35px; transition: transform 0.5s ease-in-out; }
+
+/* Outages that end while someone watches: the red glow fades into the new one, the owl's eyes relax from wide awake
+   (whites 5.3 to 4.6, pupils 1.4 to 2.4), and it lets out a slow blink, like a sigh */
+.watch.is-relieved { isolation: isolate; }
+.watch.is-relieved::before {
+  content: ""; position: absolute; inset: 0; z-index: -1; border-radius: inherit; pointer-events: none;
+  background: radial-gradient(60% 120% at 92% 40%, rgb(239 68 68 / 0.38), transparent 70%);
+  /* Seen only while it fades, so without motion it is never there */
+  opacity: 0; animation: relief-glow 2.4s ease-out;
+}
+.watch.is-relieved .owl-eyes > circle, .watch.is-relieved .owl-pupil > circle:first-child { transform-box: fill-box; transform-origin: center; }
+.watch.is-relieved .owl-eyes > circle { animation: relief-whites 1.4s ease-in-out; }
+.watch.is-relieved .owl-pupil > circle:first-child { animation: relief-pupils 1.4s ease-in-out; }
+.watch.is-relieved .watch-owl .owl-eyes { animation: sigh 1.2s ease-in-out 1.4s, blink 7s 2.6s infinite; }
+@keyframes relief-glow { from { opacity: 1; } }
+@keyframes relief-whites { from { transform: scale(1.15); } }
+@keyframes relief-pupils { from { transform: scale(0.58); } }
+@keyframes sigh { 0%, 100% { transform: scaleY(1); } 45%, 60% { transform: scaleY(0.1); } }
 
 /* ===================================================================
    Needs your attention

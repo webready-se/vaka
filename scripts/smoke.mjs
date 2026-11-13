@@ -109,6 +109,7 @@ async function main() {
   let id = 0;
   const pending = new Map();
   const errors = [];
+  const logs = [];
   const listeners = [];
   ws.onmessage = (msg) => {
     const data = JSON.parse(msg.data);
@@ -125,6 +126,7 @@ async function main() {
     if (data.method === 'Runtime.consoleAPICalled' && data.params.type === 'error') {
       errors.push(`console.error: ${data.params.args.map((a) => a.value ?? a.description).join(' ')}`);
     }
+    if (data.method === 'Runtime.consoleAPICalled' && data.params.type === 'log') logs.push(data.params.args.map((a) => a.value ?? '').join(' '));
     if (data.method === 'Log.entryAdded') {
       const entry = data.params.entry;
       if (/Content Security Policy|Refused to/i.test(entry.text)) errors.push(`CSP: ${entry.text}`);
@@ -648,6 +650,9 @@ async function main() {
   await screenshot('first-view');
 
   const fails = await evaluate(steps);
+  // Whoever opens the console meets the owl, once a page, wide awake while a site is down
+  const greetings = logs.filter((line) => /keeps watch/.test(line));
+  if (greetings.length !== 1 || !/\(O,O\)/.test(greetings[0])) fails.push(`the console greets once, the owl wide awake while a site is down (got ${JSON.stringify(greetings)})`);
   await screenshot('dashboard-light');
   await evaluate(() => document.documentElement.setAttribute('data-theme', 'dark'));
   await screenshot('dashboard-dark');
@@ -673,6 +678,30 @@ async function main() {
   await evaluate(() => document.querySelector('.site-row').click());
   await sleep(600);
   await screenshot('phone-detail');
+
+  // While someone watches, the outages end: the red glow fades and the owl's eyes relax, once
+  await send('Emulation.clearDeviceMetricsOverride');
+  wait = loaded();
+  await send('Page.navigate', { url: `${base}/` });
+  await wait;
+  await evaluate(async () => {
+    for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
+  });
+  execFileSync('php', ['-r', '(new PDO("sqlite:" . $argv[1]))->exec("UPDATE check_state SET status = \'ok\' WHERE check_name = \'uptime\'");', dbPath]);
+  const relief = await evaluate(async () => {
+    const refresh = async () => {
+      const old = document.querySelector('.watch');
+      document.dispatchEvent(new Event('visibilitychange'));
+      for (let t = 0; t < 5000 && document.querySelector('.watch') === old; t += 50) await new Promise((r) => setTimeout(r, 50));
+      return document.querySelector('.watch').className;
+    };
+    const before = document.querySelector('.watch').className;
+    const after = await refresh();
+    const awake = Boolean(document.querySelector('.watch-owl.is-awake'));
+    return { before, after, awake, again: await refresh() };
+  });
+  if (!/is-alert/.test(relief.before) || !/is-relieved/.test(relief.after) || relief.awake) fails.push(`when the outages end while someone watches, the panel and the owl show the relief (got "${relief.before}", then "${relief.after}")`);
+  if (/is-relieved/.test(relief.again)) fails.push('the relief shows once, not on every refresh after it');
 
   // 7. Times: a reader in another time zone is told whose clock the times are on, and TIME_FORMAT=12h shows AM and PM
   await send('Emulation.clearDeviceMetricsOverride');
@@ -772,37 +801,51 @@ async function main() {
   if (waiting.figures[1] !== '–') fails.push(`a site not checked yet shows no uptime (got "${waiting.figures[1]}")`);
   if (/Up, 30 days/.test(waiting.watch)) fails.push('the watch shows no 30-day uptime before the first check');
 
-  // The calm owl's eyes follow a mouse over the panel and go back when it leaves; for Reduce Motion they stand still
+  // The calm owl's eyes follow a mouse over the panel and go back when it leaves, and a pointer that rests near it
+  // makes it tilt its head; for Reduce Motion nothing moves
   const gaze = () => evaluate(async () => {
     const frame = () => new Promise((r) => requestAnimationFrame(r));
+    const rest = () => new Promise((r) => setTimeout(r, 2100));
     const box = document.querySelector('.watch').getBoundingClientRect();
-    const pupils = [...document.querySelectorAll('.watch-owl:not(.is-awake) .owl-pupil')];
-    const point = (type, x, relatedTarget) => document.querySelector('.watch h1').dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse', clientX: x, clientY: box.top + 10, relatedTarget }));
-    point('pointermove', box.left + 10, null);
+    const svg = document.querySelector('.watch-owl:not(.is-awake)');
+    const owl = svg.getBoundingClientRect();
+    const pupils = [...svg.querySelectorAll('.owl-pupil')];
+    const point = (x, y) => svg.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: x, clientY: y }));
+    const transforms = () => pupils.map((pupil) => pupil.style.transform);
+    point(box.left + 10, box.top + 10);
     await frame();
-    const looking = pupils.map((pupil) => pupil.style.transform);
+    const looking = transforms();
+    await rest();
+    const curiousFar = svg.classList.contains('is-curious');
     // At the beak (20, 24.5 of the owl's 40 units) both pupils turn in
-    const owl = document.querySelector('.watch-owl').getBoundingClientRect();
-    document.querySelector('.watch-owl').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: owl.left + owl.width / 2, clientY: owl.top + owl.height * 24.5 / 40 }));
+    point(owl.left + owl.width / 2, owl.top + owl.height * 24.5 / 40);
     await frame();
     const crossed = pupils.map((pupil) => parseFloat((/translate\((-?[\d.]+)px/.exec(pupil.style.transform) || [])[1]));
-    // Down and to the side, near it but away from the beak, they keep together
-    document.querySelector('.watch-owl').dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: owl.left - owl.width / 2, clientY: owl.top + owl.height * 0.9 }));
+    // Down and to the side, near it but away from the beak, they keep together, and resting there it tilts its head
+    point(owl.left - owl.width / 2, owl.top + owl.height * 0.9);
     await frame();
-    const together = pupils.map((pupil) => pupil.style.transform);
-    point('pointerout', box.left - 10, document.body);
+    const together = transforms();
+    await rest();
+    const curious = svg.classList.contains('is-curious');
+    point(box.left + 10, box.top + 10);
     await frame();
-    return { pupils: pupils.length, looking, crossed, together, after: pupils.map((pupil) => pupil.style.transform) };
+    const straight = !svg.classList.contains('is-curious');
+    svg.dispatchEvent(new PointerEvent('pointerout', { bubbles: true, pointerType: 'mouse', relatedTarget: document.body }));
+    await frame();
+    return { pupils: pupils.length, looking, crossed, together, curiousFar, curious, straight, after: transforms() };
   });
   const calm = await gaze();
   if (calm.pupils !== 2 || !calm.looking.every((t) => /^translate\(-[\d.]+px, -[\d.]+px\)$/.test(t))) fails.push(`the calm owl looks up and left at a pointer there (got ${JSON.stringify(calm.looking)})`);
   if (!(calm.crossed[0] > 0.8 && calm.crossed[1] < -0.8)) fails.push(`at the beak the owl's eyes cross (got ${JSON.stringify(calm.crossed)})`);
   if (!calm.together[0] || calm.together[0] !== calm.together[1]) fails.push(`away from the beak both eyes look the same way (got ${JSON.stringify(calm.together)})`);
+  if (calm.curiousFar) fails.push('a pointer resting far from the owl leaves its head straight');
+  if (!calm.curious) fails.push('a pointer resting near the owl makes it tilt its head');
+  if (!calm.straight) fails.push('the owl straightens its head when the pointer moves on');
   if (!calm.after.every((t) => t === '')) fails.push(`the owl looks ahead again when the pointer leaves the panel (got ${JSON.stringify(calm.after)})`);
   await send('Emulation.setEmulatedMedia', { features: [{ name: 'prefers-reduced-motion', value: 'reduce' }] });
   const still = await gaze();
   await send('Emulation.setEmulatedMedia', { features: [] });
-  if (still.pupils !== 2 || !still.looking.every((t) => t === '')) fails.push(`for Reduce Motion the owl's eyes stand still (got ${JSON.stringify(still.looking)})`);
+  if (still.pupils !== 2 || !still.looking.every((t) => t === '') || still.curious) fails.push(`for Reduce Motion the owl's eyes and head stand still (got ${JSON.stringify(still.looking)}, tilted: ${still.curious})`);
 
   ws.close();
   const problems = [...fails, ...errors];
