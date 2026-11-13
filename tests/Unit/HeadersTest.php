@@ -1012,6 +1012,48 @@ test('a policy that would stop a script sending back says so, with the line that
         ->and($two['fix_label'])->toBe('Your policy under the name that enforces it, with stats.example and chat.example added to connect-src:');
 });
 
+test('a CSP set in the page with a meta tag counts like the header, without what a meta tag cannot do', function () {
+    $hash = "'sha256-" . base64_encode(hash('sha256', 'go()', true)) . "'";
+    $head = fn (string $policy, string $attr = 'http-equiv="content-security-policy"') => "<!doctype html><html><head><meta charset=\"utf-8\"><meta {$attr} content=\"{$policy}\"><script>go()</script></head><body></body></html>";
+    $graded = fn (array $h, string $body) => evaluate_headers(['body' => $body] + answered($h + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0])), 10);
+    $items = fn (array $result) => array_column(header_items($result['details']), null, 'key');
+
+    $result = $graded(['X-Frame-Options' => 'DENY'], $head("default-src 'self'; script-src 'self' {$hash}; frame-ancestors 'none'; report-uri /csp"));
+    $csp = $items($result)['csp'];
+    expect($result['details']['grade'])->toBe('A')
+        ->and($result['summary'])->toBe('Grade A: all 6 in place')
+        ->and($csp['level'])->toBe('good')
+        ->and($csp['blocks'])->toBeFalse()
+        ->and($csp['meta'])->toBeTrue()
+        ->and($csp['note'])->toBe('set in the page with a meta tag, which browsers follow like the header. It cannot stop other sites from framing the page (X-Frame-Options does that) or send reports')
+        ->and($csp['tip'])->toBe(META_CSP_TIP)
+        // What browsers ignore in a meta tag is left out of the policy as read
+        ->and($csp['value'])->toBe("default-src 'self'; script-src 'self' {$hash}");
+
+    // frame-ancestors in the page frames nothing: without X-Frame-Options, frame protection is missing
+    expect($items($graded([], $head("default-src 'self'; frame-ancestors 'none'")))['frames']['level'])->toBe('missing')
+        // Read as browsers do: any case, and only in the head
+        ->and($items($graded(['X-Frame-Options' => 'DENY'], $head("default-src 'self'", 'HTTP-EQUIV="Content-Security-Policy"')))['csp']['meta'])->toBeTrue()
+        ->and($items($graded(['X-Frame-Options' => 'DENY'], "<html><head></head><body><meta http-equiv=\"content-security-policy\" content=\"default-src 'self'\"></body></html>"))['csp']['level'])->toBe('missing')
+        // A header wins: the meta tag is not what is graded
+        ->and($items($graded(['X-Frame-Options' => 'DENY', 'Content-Security-Policy' => "default-src 'self'"], $head("default-src *")))['csp'])->not->toHaveKey('meta')
+        // A meta tag with only what it cannot have sets nothing
+        ->and($items($graded(['X-Frame-Options' => 'DENY'], $head("frame-ancestors 'none'")))['csp']['level'])->toBe('missing');
+
+    // A script it lets run but not send back: the line would be a second policy next to the page's, so where to add it is said instead
+    $stats = $graded(['X-Frame-Options' => 'DENY'], $head("default-src 'self'; script-src 'self' https://stats.example {$hash}") . '<script src="https://stats.example/?js"></script>');
+    $csp = $items($stats)['csp'];
+    expect($csp['unsent'])->toBeTrue()
+        ->and($csp['fix'])->toBe('')
+        ->and($csp['note'])->toEndWith(". The script from stats.example may not send anything back, such as visits for statistics: if they have stopped, add it to connect-src where the page's policy is written");
+});
+
+test('a drafted line with hashes says to let a framework write the policy into the page', function () {
+    $csp = fn (string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered(['X-Frame-Options' => 'DENY'] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0])), 10)['details']), null, 'key')['csp'];
+    expect($csp('<script>theme()</script>')['tip'])->toContain(CSP_FRAMEWORK_TIP)
+        ->and($csp('<script src="https://analytics.example/a.js"></script>')['tip'])->not->toContain(CSP_FRAMEWORK_TIP);
+});
+
 test('without a CSP, the line to try is the draft when the page needs more than itself', function () {
     $csp = fn (string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered(['X-Frame-Options' => 'DENY'] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0])), 10)['details']), null, 'key')['csp'];
     $bare = $csp('<script src="/app.js"></script>');
