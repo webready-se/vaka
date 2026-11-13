@@ -36,7 +36,16 @@ const CSP_REPORT_ONLY_NOTE = 'only as Report-Only, which blocks nothing';
 /** What to do about a CSP that blocks parts of the page; the alert adds where they are named. */
 const CSP_CONNECT_TIP = 'A script from another host usually sends what it collects back there: statistics send each visit, a chat its messages. That is connect-src, which the page never shows, so Vaka cannot see it; the browser\'s console does. Allowing it adds little, since that host already runs code on the page.';
 
-const CSP_BLOCKS_TIP ="Visitors do not get them: a blocked script stops working, a blocked style makes the page look broken. Allow what the page needs (a host goes in script-src, style-src, img-src or frame-src; an inline script needs a 'sha256-...' hash there or a file of its own; inline styles need 'unsafe-inline' in style-src, or classes instead), or take them off the page.";
+const META_CSP_NOTE = 'set in the page with a meta tag, which browsers follow like the header. It cannot stop other sites from framing the page (X-Frame-Options does that) or send reports';
+
+const META_CSP_TIP = 'Frameworks such as Astro write this tag themselves, with hashes of their own inline scripts on every build: **leave it there rather than moving it to the server**, where the hashes would go stale at the next update. A policy in the page ignores frame-ancestors, report-uri, report-to and sandbox, and cannot be Report-Only.';
+
+const CSP_FRAMEWORK_TIP = 'If your framework can write the policy into the page itself (Astro does), let it: the hashes then follow every build.';
+
+/** Directives a policy in a meta tag cannot have: browsers ignore them there (the CSP standard). */
+const META_CSP_IGNORED = ['frame-ancestors', 'report-uri', 'report-to', 'sandbox'];
+
+const CSP_BLOCKS_TIP = "Visitors do not get them: a blocked script stops working, a blocked style makes the page look broken. Allow what the page needs (a host goes in script-src, style-src, img-src or frame-src; an inline script needs a 'sha256-...' hash there or a file of its own; inline styles need 'unsafe-inline' in style-src, or classes instead), or take them off the page.";
 
 /** The headers where a second, different value is a conflict. Not a CSP: several all apply. */
 const HEADERS_SENT_ONCE = ['hsts' => 'strict-transport-security', 'nosniff' => 'x-content-type-options', 'frames' => 'x-frame-options', 'referrer' => 'referrer-policy', 'permissions' => 'permissions-policy'];
@@ -763,6 +772,24 @@ function html_attributes(string $source): array
     return $attributes;
 }
 
+/**
+ * The CSP a page sets in its head with <meta http-equiv="Content-Security-Policy">,
+ * as browsers read it there: without the directives a meta tag cannot have
+ * (META_CSP_IGNORED). The first such tag; '' for none, or one with nothing else.
+ */
+function meta_csp(string $html): string
+{
+    $head = stristr($html, '</head>', true);
+    preg_match_all('/<meta\b((?:[^>"\']|"[^"]*"|\'[^\']*\')*)>/i', $head === false ? $html : $head, $tags);
+    foreach ($tags[1] as $source) {
+        $meta = html_attributes($source);
+        if (strtolower(trim($meta['http-equiv'] ?? '')) !== 'content-security-policy') continue;
+        $kept = array_filter(array_map('trim', explode(';', $meta['content'] ?? '')), fn (string $part) => $part !== '' && !in_array(strtolower(preg_split('/\s+/', $part)[0]), META_CSP_IGNORED, true));
+        return implode('; ', $kept);
+    }
+    return '';
+}
+
 /** A link on a page as an absolute http(s) URL without its fragment, or null for anything else (data:, javascript:, empty). */
 function resolve_url(string $ref, string $base): ?string
 {
@@ -902,6 +929,10 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
         return ['status' => 'unknown', 'summary' => 'Could not check: the site answered ' . trim($response['status'] . ' ' . status_text($response['status'])), 'details' => []];
     }
 
+    // A policy set in the page when no header sets one: browsers follow it like the header, but for what a meta tag cannot have
+    $meta = isset($response['headers']['content-security-policy']) ? '' : meta_csp($response['body'] ?? '');
+    if ($meta !== '') $response['headers']['content-security-policy'] = [$meta];
+
     $https = str_starts_with($response['url'], 'https://');
     $headers = $twice = [];
     foreach (array_keys(SECURITY_HEADERS) as $key) {
@@ -912,6 +943,7 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     }
     $details = ['headers' => $headers];
     if ($twice) $details['twice'] = $twice;
+    if ($meta !== '') $details['csp_meta'] = true;
     // What the site sends, for the detail to show
     $details['sent'] = sent_headers($response['headers']);
     // The policy tried as Report-Only, as sent: the line to add is that policy under the name that enforces it
@@ -1174,11 +1206,17 @@ function csp_item(array $item, array $details): array
         // A Report-Only next to the policy in force adds nothing: said, since the one in force may come from somewhere else than the line just added
         $also = isset($details['csp_report_only']) ? 'also sent as Report-Only, which adds nothing next to a policy in force: if that line was meant to be the only one, something else sets the first (the application, or another server rule)' : '';
         $join = fn (string ...$parts) => implode('. ', array_map(fn ($part, $i) => $i > 0 ? ucfirst($part) : $part, $filtered = array_values(array_filter($parts)), array_keys($filtered)));
+        $inPage = !empty($details['csp_meta']) ? META_CSP_NOTE : '';
+        $meta = $inPage !== '' ? ['meta' => true] : [];
+        // In the page, a header line would be a second policy next to it, which still stops the script: where to add it is said instead
+        if (!$blocks && $unsent && $meta) {
+            return ['blocks' => false, 'note' => $join($item['note'], $inPage, "{$from} may not send anything back, such as visits for statistics: if they have stopped, add it to connect-src where the page's policy is written", $also), 'fix' => '', 'tip' => CSP_CONNECT_TIP] + $sends + $meta + $item;
+        }
         if (!$blocks && $unsent && isset($details['csp_policy'])) {
             return ['blocks' => false, 'note' => $join($item['note'], "{$from} may not send anything back, such as visits for statistics: if they have stopped, the line below allows it", $also), 'fix' => 'Content-Security-Policy: ' . csp_with_connect($details['csp_policy'], $unsent), 'tip' => CSP_CONNECT_TIP] + $sends + $item;
         }
-        if (!$blocks) return ['blocks' => false, 'note' => $join($item['note'], $also)] + $item;
-        return ['blocks' => true, 'note' => $join($item['note'], 'it blocks ' . csp_blocked_words($blocked) . $on, $also), 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
+        if (!$blocks) return ['blocks' => false, 'note' => $join($item['note'], $inPage, $also)] + ($meta ? ['tip' => META_CSP_TIP] : []) + $meta + $item;
+        return ['blocks' => true, 'note' => $join($item['note'], $inPage, 'it blocks ' . csp_blocked_words($blocked) . $on, $also), 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $meta + $item;
     }
     if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
         $send = "stop {$from} sending anything back, such as visits for statistics: the line below allows that";
@@ -1205,6 +1243,7 @@ function csp_item(array $item, array $details): array
         'fix' => $draft !== '' ? "Content-Security-Policy-Report-Only: {$draft}" : $item['fix'],
         'tip' => 'This is the one that can break a site, so it is fine to do it last. ' . $item['tip']
             . ($draft !== '' ? " The line is drafted from this page: **the hashes are of its inline scripts and styles as they are today and change with them**, so let the build add them or move the code to files. Other pages may need more; Report-Only shows it all in the console." : '')
+            . (preg_match("/'sha(?:256|384|512)-/", $draft) ? ' ' . CSP_FRAMEWORK_TIP : '')
             . tag_manager_tip($scripts) . google_tag_tip($scripts),
     ] + ($excerpts ? ['inline' => $excerpts] : []) + $item;
 }

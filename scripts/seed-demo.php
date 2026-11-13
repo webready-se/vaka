@@ -152,7 +152,8 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         $strong = ['strict-transport-security' => ['max-age=31536000'], 'content-security-policy' => ["default-src 'self'; frame-ancestors 'self'"], 'x-content-type-options' => ['nosniff'], 'referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=(), microphone=()']];
         $forge = ['x-frame-options' => ['SAMEORIGIN'], 'x-content-type-options' => ['nosniff']];
         $sent = match ($url) {
-            'https://www.example.com' => $strong,
+            // The CSP set in the page with a meta tag, as a framework writes it, so frame protection is X-Frame-Options'
+            'https://www.example.com' => ['x-frame-options' => ['SAMEORIGIN']] + array_diff_key($strong, ['content-security-policy' => 0]),
             // A statistics script the policy lets run but not send back to its host
             'https://example.org' => ['content-security-policy' => ["default-src 'self'; script-src 'self' https://stats.example; frame-ancestors 'self'"]] + $strong,
             'https://store.example', 'https://docs.example' => ['content-security-policy' => ["default-src 'self'; script-src 'self' 'unsafe-inline'; frame-ancestors 'self'"]] + $strong,
@@ -180,6 +181,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             // A CSP in force that blocks a script the page loads: the policy has no cdn.example
             'https://docs.example' => '<script src="https://cdn.example/widget.js"></script><p style="margin:0">x</p><img src="https://images.example/a.jpg" alt="">',
             'https://example.org' => '<script src="https://stats.example/?js"></script>',
+            'https://www.example.com' => '<html><head><meta http-equiv="content-security-policy" content="default-src \'self\'; frame-ancestors \'self\'"></head><body></body></html>',
             // A tag manager and Google Fonts: the case a drafted policy cannot finish
             'https://builder.example' => '<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({"gtm.start":new Date().getTime(),event:"gtm.js"})})(window,document,"script","dataLayer","GTM-XXXX")</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-XXXX"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter"><p style="margin:0">x</p><script src="https://widgets.example/chat.js"></script>',
             default => '',

@@ -453,6 +453,16 @@ async function main() {
       q('dialog.drawer [data-action="close"]').click();
     }
 
+    // A CSP set in the page with a meta tag: in place, said so, with why to leave it there
+    all('.site-row').find((r) => /www\.example\.com/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'www.example.com', 'the www.example.com detail to open')) {
+      expect(/CSP \(in the page\)/.test(q('dialog.drawer .headers-done summary')?.textContent || ''), `a CSP in a meta tag is in place, said to be in the page (got "${q('dialog.drawer .headers-done summary')?.textContent}")`);
+      const cspValue = all('dialog.drawer .header-values > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
+      expect(cspValue?.querySelector('code')?.textContent === "default-src 'self'" && /^Set in the page with a meta tag/.test(cspValue?.querySelector('.header-why')?.textContent || ''), `the policy as browsers read it, without frame-ancestors, and where it is set (got "${cspValue?.querySelector('code')?.textContent}")`);
+      expect([...(cspValue?.querySelectorAll('.header-tip strong') || [])].some((b) => b.textContent === 'leave it there rather than moving it to the server'), 'the tip says to leave it in the page');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // A CSP in force that may stop a statistics script sending back: something to look at, with the policy and connect-src
     all('.site-row').find((r) => /example\.org/.test(r.textContent)).click();
     if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'example.org', 'the example.org detail to open')) {

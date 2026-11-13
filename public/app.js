@@ -2073,11 +2073,12 @@
       })) : null,
       // What is in place, one line, and what the site sends for each one click away
       done.length ? h('details', { class: 'headers-done' }, [
-        h('summary', {}, [icon('up'), h('span', {}, 'In place: ' + done.map(function (item) { return item.label + (item.twice ? ' (sent twice)' : ''); }).join(', ')), icon('chevron')]),
+        h('summary', {}, [icon('up'), h('span', {}, 'In place: ' + done.map(function (item) { return item.label + (item.twice ? ' (sent twice)' : item.meta ? ' (in the page)' : ''); }).join(', ')), icon('chevron')]),
         h('ul', { class: 'header-values' }, done.map(function (item) {
           return h('li', {}, [h('b', {}, capitalize(item.label)), item.value ? h('code', {}, item.value) : h('span', { class: 'header-sent' }, item.note ? capitalize(item.note) : 'In place'),
-            item.twice ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
-            item.twice ? h('p', { class: 'header-tip' }, rich(item.tip)) : null]);
+            // Sent twice, or set in the page: said, with where to look or why to leave it there
+            item.twice || item.meta ? h('p', { class: 'header-why' }, capitalize(item.note) + '.') : null,
+            item.twice || item.meta ? h('p', { class: 'header-tip' }, rich(item.tip)) : null]);
         }))
       ]) : null,
       // Once under the list, while there is something to add, for the server the lines are for
