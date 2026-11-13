@@ -482,6 +482,7 @@ async function main() {
     // A CSP set in the page with a meta tag: in place, said so, with why to leave it there
     all('.site-row').find((r) => /www\.example\.com/.test(r.textContent)).click();
     if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'www.example.com', 'the www.example.com detail to open')) {
+      expect(getComputedStyle(q('dialog.drawer .drawer-head .medallion')).backgroundColor !== 'rgba(0, 0, 0, 0)', 'an up site\'s status sits in a tile of its own, like every other state');
       expect(/CSP \(in the page\)/.test(q('dialog.drawer .headers-done summary')?.textContent || ''), `a CSP in a meta tag is in place, said to be in the page (got "${q('dialog.drawer .headers-done summary')?.textContent}")`);
       const cspValue = all('dialog.drawer .header-values > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
       expect(cspValue?.querySelector('code')?.textContent === "default-src 'self'" && /^Set in the page with a meta tag/.test(cspValue?.querySelector('.header-why')?.textContent || ''), `the policy as browsers read it, without frame-ancestors, and where it is set (got "${cspValue?.querySelector('code')?.textContent}")`);
