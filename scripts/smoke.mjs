@@ -385,6 +385,7 @@ async function main() {
       expect(q('.toast').matches(':popover-open') && q('dialog.drawer').matches(':modal'), 'the message shows above the open site detail, not behind it');
       // Each check says it is checking until it has run again, the response time too
       expect(/^Checking…$/.test(q('dialog.drawer .fact-when')?.textContent || '') && all('dialog.drawer .tile-when').every((p) => p.textContent === 'Checking…' && p.querySelector('.checking-dot')), 'while Check again waits, each check says it is checking');
+      expect(q('dialog.drawer [data-action="recheck"].is-busy .spinner') && all('dialog.drawer .tile[data-check]').every((t) => t.classList.contains('is-checking')) && q('dialog.drawer .fact[data-check="uptime"]')?.classList.contains('is-checking'), 'the button turns while it works, and every check it waits for is ringed');
       // As if the next run had come: first one check has run again, then all of them, and the page finds out by asking when each ran
       const realFetch = window.fetch;
       const later = new Date(Date.now() + 60000).toISOString();
@@ -408,6 +409,7 @@ async function main() {
       closeButton.focus();
       await waitFor(() => /^Checking… 1 of \d done$/.test(q('dialog.drawer [data-action="recheck"]')?.textContent || ''), 'Check again to find a check that ran again by itself, within seconds', 9000);
       const sslTile = q('dialog.drawer .tile[data-check="ssl"]');
+      expect(parseFloat(q('dialog.drawer [data-action="recheck"]')?.style.getPropertyValue('--progress')) > 0 && !sslTile?.classList.contains('is-checking') && q('dialog.drawer .tile[data-check="headers"]')?.classList.contains('is-checking'), 'the button fills as checks come back, and a check that has run is no longer ringed');
       expect(sslTile?.querySelector('.tile-when')?.textContent === 'Checked just now' && sslTile.classList.contains('is-fresh'), 'a check that has run again says so and lights up');
       expect(q('dialog.drawer .tile[data-check="headers"] .tile-when')?.textContent === 'Checking…', 'the others still say they are checking');
       expect(document.activeElement === closeButton && q('dialog.drawer [data-action="close"]') === closeButton, 'only what changed is replaced: focus stays where it was');

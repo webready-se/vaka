@@ -1053,7 +1053,7 @@
         // When, like the tiles below, so a response time from a while ago is not taken for one from just now
         ['Response now', site.ms !== null ? site.ms + ' ms' : '–', site.checked_at ? checkedWords(site, 'uptime', site.checked_at) : null, 'uptime']
       ].map(function (fact) {
-        return h('div', { class: 'fact', 'data-check': fact[3] || null }, [h('dt', {}, fact[0]), h('dd', {}, fact[1]), fact[2] ? h('dd', { class: 'fact-when' }, fact[2]) : null]);
+        return h('div', { class: fact[3] && pending(site, fact[3]) ? 'fact is-checking' : 'fact', 'data-check': fact[3] || null }, [h('dt', {}, fact[0]), h('dd', {}, fact[1]), fact[2] ? h('dd', { class: 'fact-when' }, fact[2]) : null]);
       })),
       h('h3', {}, 'Last 30 days'),
       dayStrip(d.days, paused),
@@ -1116,7 +1116,10 @@
     var total = current ? Object.keys(current.before).length : 0;
     var ran = busy && total ? total - recheckLeft(current, site).length : 0;
     var words = !busy ? 'Check again' : ran ? 'Checking… ' + ran + ' of ' + total + ' done' : 'Checking…';
-    return [h('button', { type: 'button', class: 'button', 'data-action': 'recheck', 'data-site': site.id, disabled: busy ? '' : null, 'aria-label': busy ? 'Checking ' + site.label + ' again' : 'Check ' + site.label + ' again now' }, [icon('pending'), words])];
+    var button = h('button', { type: 'button', class: busy ? 'button is-busy' : 'button', 'data-action': 'recheck', 'data-site': site.id, disabled: busy ? '' : null, 'aria-label': busy ? 'Checking ' + site.label + ' again' : 'Check ' + site.label + ' again now' }, [busy ? h('span', { class: 'spinner', 'aria-hidden': 'true' }) : icon('pending'), words]);
+    // While it works, the button fills as the checks come back (through the CSSOM, which the CSP allows)
+    if (busy) button.style.setProperty('--progress', String(total ? ran / total : 0));
+    return [button];
   }
 
   /**
@@ -1152,12 +1155,16 @@
     return landed(current, site, key) && checkSummary(site, key) !== current.summaries[key];
   }
 
+  /** Whether "Check again" still waits for a check (not after three minutes, when the note says which are left). */
+  function pending(site, key) {
+    var current = recheckOf(site);
+    return Boolean(current) && !current.done && !current.left && current.before[key] !== undefined && !landed(current, site, key);
+  }
+
   /** When a check ran, in the words of its tile: "Checking…" while "Check again" waits for it, "Checked just now" once it has run. */
   function checkedWords(site, key, at) {
     var current = recheckOf(site);
-    if (current && current.before[key] !== undefined && !current.done) {
-      if (!landed(current, site, key)) return current.left ? 'Checked ' + clock(at) : [h('span', { class: 'checking-dot', 'aria-hidden': 'true' }), 'Checking…'];
-    }
+    if (pending(site, key)) return [h('span', { class: 'checking-dot', 'aria-hidden': 'true' }), 'Checking…'];
     return current && landed(current, site, key) ? 'Checked just now' : 'Checked ' + clock(at);
   }
 
@@ -1253,6 +1260,7 @@
     var stamped = function (node, check, key) {
       if (!check || !check.checked_at) return node;
       node.setAttribute('data-check', key);
+      if (pending(site, key)) node.classList.add('is-checking');
       var was = current && landed(current, site, key) ? current.values[key] : undefined;
       if (was !== undefined && was !== null && was !== tileValue(node)) node.appendChild(h('p', { class: 'tile-was' }, 'Was: ' + was));
       node.appendChild(h('p', { class: 'tile-when' }, checkedWords(site, key, check.checked_at)));

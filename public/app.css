@@ -680,6 +680,14 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .tile .tile-when { margin-top: 6px; color: var(--text-3); font-size: 12px; font-variant-numeric: tabular-nums; }
 .tile .tile-was { margin-top: 3px; color: var(--text-2); font-size: 13px; overflow-wrap: anywhere; }
 /* While "Check again" waits for a check: a calm dot; once it has run, the tile lights up and settles, once (still for reduced motion) */
+/* A check "Check again" waits for: ringed in the accent, its old result dimmed, "Checking…" in the accent */
+.tile.is-checking, .fact.is-checking { box-shadow: inset 0 0 0 1.5px var(--accent); }
+.tile.is-checking .tile-value, .tile.is-checking .tile-sub, .tile.is-checking .tile-was, .fact.is-checking dd:not(.fact-when) { opacity: 0.45; }
+.tile.is-checking .tile-when, .fact.is-checking .fact-when { color: var(--accent); font-weight: 650; }
+/* "Check again" at work: a turning ring, and the button fills as the checks come back */
+.button.is-busy[disabled] { opacity: 1; border-color: var(--accent); color: var(--text-2); background: linear-gradient(to right, var(--accent-soft) calc(var(--progress, 0) * 100%), var(--surface) 0); }
+.spinner { flex: none; width: 13px; height: 13px; box-sizing: border-box; border-radius: 50%; border: 2px solid var(--accent); border-right-color: transparent; animation: spin 0.9s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
 .checking-dot { display: inline-block; width: 6px; height: 6px; margin-right: 6px; border-radius: 50%; background: var(--accent); vertical-align: 1px; animation: checking 1.2s ease-in-out infinite; }
 @keyframes checking { 50% { opacity: 0.25; } }
 .tile.is-fresh, .fact.is-fresh { animation: fresh 1.2s ease-out; }
