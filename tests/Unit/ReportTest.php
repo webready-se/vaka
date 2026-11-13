@@ -136,6 +136,14 @@ test('one site: the CSP item names the inline scripts it would block by their st
     expect($md)->toContain("Add `Content-Security-Policy-Report-Only: default-src 'self'`. Do it last. The inline scripts start: " . md_code('window.dataLayer = window.dataLayer || [];…') . ', ' . md_code('document.write("<b>`x`</b>")') . '.');
 });
 
+test('one site: a CSP in place that may stop a script sending back is listed, with its own policy to change', function () {
+    $csp = ['key' => 'csp', 'label' => 'CSP', 'level' => 'good', 'blocks' => false, 'unsent' => true, 'note' => 'the script from stats.example may not send anything back, such as visits for statistics: if they have stopped, the line below allows it', 'what' => 'Limits which scripts may run',
+        'fix_label' => 'Your policy with stats.example added to connect-src:', 'fix' => "Content-Security-Policy: default-src 'self'; script-src 'self' https://stats.example; connect-src 'self' https://stats.example", 'tip' => CSP_CONNECT_TIP];
+    $md = read_api_markdown_site(report_about(), report_detail(['headers' => ['status' => 'ok', 'grade' => 'A', 'summary' => 'Grade A: all 6 in place', 'items' => [$csp], 'tip' => '']]), REPORT_CONFIG);
+
+    expect($md)->toContain("- **CSP** is in place: " . md_code($csp['note']) . ". What it does: limits which scripts may run. Your policy with stats.example added to connect-src: `Content-Security-Policy: default-src 'self'; script-src 'self' https://stats.example; connect-src 'self' https://stats.example`. " . CSP_CONNECT_TIP);
+});
+
 test('one site: the last 30 days, response times, maintenance and the latest changes', function () {
     $detail = report_detail(['keyword' => 'Add to cart'], [
         'samples' => [['checked_at' => '2026-10-28T12:00:00Z', 'status_code' => 200, 'ms' => 200, 'ok' => true], ['checked_at' => '2026-10-28T12:05:00Z', 'status_code' => 200, 'ms' => 300, 'ok' => true], ['checked_at' => '2026-10-28T12:10:00Z', 'status_code' => 200, 'ms' => 900, 'ok' => true], ['checked_at' => '2026-10-28T12:15:00Z', 'status_code' => 503, 'ms' => 50, 'ok' => false]],

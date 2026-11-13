@@ -952,6 +952,66 @@ test('a first CSP is drafted from what the page has, to try as Report-Only, and 
         ->and(csp_blocks_anything(csp_blocked([csp_directives($draft($html))], page_scripts($html, $page), $page)))->toBeFalse();
 });
 
+test('a script a policy lets run but not send back to its host is found, and the policy gets it in connect-src', function () {
+    $page = 'https://shop.example/';
+    $unsent = fn (string $policy, string $html) => csp_unsent([csp_directives($policy)], page_scripts($html, $page), $page);
+    $stats = '<script src="https://stats.example/?js"></script>';
+    expect($unsent("default-src 'self'; script-src 'self' https://stats.example", $stats))->toBe(['https://stats.example'])
+        ->and($unsent("default-src 'self'; script-src 'self' https://stats.example; connect-src 'self' https://stats.example", $stats))->toBe([])
+        ->and($unsent("default-src 'self' https://stats.example", $stats))->toBe([])
+        // Nothing limits what the page sends without connect-src or default-src
+        ->and($unsent("script-src 'self' https://stats.example", $stats))->toBe([])
+        // A script the policy blocks is said as a block, and the site's own scripts send to the site
+        ->and($unsent("default-src 'self'", $stats))->toBe([])
+        ->and($unsent("default-src 'self'", '<script src="/app.js"></script>'))->toBe([])
+        ->and($unsent("default-src 'self'; script-src 'self' https://stats.example https://chat.example", $stats . '<script src="https://chat.example/w.js"></script>'))->toBe(['https://stats.example', 'https://chat.example']);
+
+    $policy = "default-src 'self'; script-src 'self' https://stats.example; object-src 'none'";
+    expect(csp_with_connect($policy, ['https://stats.example']))->toBe("default-src 'self'; script-src 'self' https://stats.example; object-src 'none'; connect-src 'self' https://stats.example")
+        ->and(csp_with_connect("default-src 'self'; connect-src 'self'", ['https://stats.example']))->toBe("default-src 'self'; connect-src 'self' https://stats.example")
+        ->and(csp_with_connect("default-src 'self'; connect-src 'none'", ['https://stats.example']))->toBe("default-src 'self'; connect-src https://stats.example")
+        // connect-src replaces default-src for what the page sends: what default-src allowed is kept, but not what only scripts use
+        ->and(csp_with_connect("default-src 'none'", ['https://stats.example']))->toBe("default-src 'none'; connect-src https://stats.example")
+        ->and(csp_with_connect("default-src 'self' https://cdn.example 'unsafe-inline' 'sha256-abc'", ['https://stats.example']))->toBe("default-src 'self' https://cdn.example 'unsafe-inline' 'sha256-abc'; connect-src 'self' https://cdn.example https://stats.example");
+});
+
+test('a policy that would stop a script sending back says so, with the line that allows it', function () {
+    $csp = fn (array $h, string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered($h + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
+    $stats = '<script src="https://stats.example/?js"></script>';
+    $policy = "default-src 'self'; script-src 'self' https://stats.example; object-src 'none'";
+    $added = "{$policy}; connect-src 'self' https://stats.example";
+
+    // Report-Only: not ready as it is, so the line to add has the host in connect-src
+    $tried = $csp(['Content-Security-Policy-Report-Only' => $policy], $stats);
+    expect($tried['note'])->toBe('it blocks nothing yet. Enforced, it would stop the script from stats.example sending anything back, such as visits for statistics: the line below allows that')
+        ->and($tried['fix'])->toBe("Content-Security-Policy: {$added}")
+        ->and($tried['fix_label'])->toBe('Your policy under the name that enforces it, with stats.example added to connect-src:')
+        ->and($tried['unsent'])->toBeTrue()
+        ->and($tried['tip'])->toStartWith('The line above is the policy the site sends as Report-Only, under the name that enforces it, with stats.example added to connect-src.')
+        ->and($tried['tip'])->toContain(CSP_CONNECT_TIP)
+        // With connect-src in place, as before
+        ->and($csp(['Content-Security-Policy-Report-Only' => $added], $stats)['fix'])->toBe("Content-Security-Policy: {$added}")
+        ->and($csp(['Content-Security-Policy-Report-Only' => $added], $stats))->not->toHaveKey('unsent');
+
+    // In force: a guess, so it is something to look at, never a block, and the grade stays
+    $enforced = $csp(['Content-Security-Policy' => $policy], $stats);
+    expect($enforced['level'])->toBe('good')
+        ->and($enforced['blocks'])->toBeFalse()
+        ->and($enforced['unsent'])->toBeTrue()
+        ->and($enforced['note'])->toEndWith('the script from stats.example may not send anything back, such as visits for statistics: if they have stopped, the line below allows it')
+        ->and($enforced['fix'])->toBe("Content-Security-Policy: {$added}")
+        ->and($enforced['fix_label'])->toBe('Your policy with stats.example added to connect-src:')
+        ->and($enforced['tip'])->toBe(CSP_CONNECT_TIP)
+        ->and($csp(['Content-Security-Policy' => $added], $stats))->not->toHaveKey('unsent');
+    $grade = fn (string $body) => evaluate_headers(['body' => $body] + answered(['Content-Security-Policy' => $policy] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']['grade'] ?? null;
+    expect($grade($stats))->toBe($grade(''));
+
+    // Two hosts, in words
+    $two = $csp(['Content-Security-Policy-Report-Only' => "default-src 'self'; script-src 'self' https://stats.example https://chat.example"], $stats . '<script src="https://chat.example/w.js"></script>');
+    expect($two['note'])->toContain('stop the scripts from stats.example and chat.example sending anything back')
+        ->and($two['fix_label'])->toBe('Your policy under the name that enforces it, with stats.example and chat.example added to connect-src:');
+});
+
 test('without a CSP, the line to try is the draft when the page needs more than itself', function () {
     $csp = fn (string $body) => array_column(header_items(evaluate_headers(['body' => $body] + answered(['X-Frame-Options' => 'DENY'] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0])), 10)['details']), null, 'key')['csp'];
     $bare = $csp('<script src="/app.js"></script>');

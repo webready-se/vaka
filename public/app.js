@@ -2023,8 +2023,9 @@
     if (!headers) return h('p', { class: 'chart-note' }, 'Not checked yet.');
     if (!headers.items || !headers.items.length) return h('p', { class: 'chart-note' }, headers.summary);
     var words = { weak: 'Weak', missing: 'Missing' };
-    var todo = headers.items.filter(function (item) { return item.level !== 'good' || item.blocks; });
-    var done = headers.items.filter(function (item) { return item.level === 'good' && !item.blocks; });
+    // A policy that may stop a script sending back is something to look at, though in place
+    var todo = headers.items.filter(function (item) { return item.level !== 'good' || item.blocks || item.unsent; });
+    var done = headers.items.filter(function (item) { return item.level === 'good' && !item.blocks && !item.unsent; });
     var format = headerFormat(headers);
     var where = format === 'apache' ? 'Apache' : 'nginx';
     var tip = format === 'apache' ? headers.tip_apache : headers.tip;
@@ -2040,14 +2041,15 @@
       todo.length ? h('ul', { class: 'header-list' }, todo.map(function (item) {
         // The one that can break a site, said where it is not the only thing to do
         var last = item.key === 'csp' && item.level === 'missing' && todo.length > 1;
-        var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks parts of the page' : 'In place, but it blocks parts of the page') : item.report_only ? 'Sent as Report-Only, not in force' : words[item.level];
+        var word = item.blocks ? (item.level === 'weak' ? 'Weak, and it blocks parts of the page' : 'In place, but it blocks parts of the page') : item.report_only ? 'Sent as Report-Only, not in force' : item.level === 'good' ? 'In place' : words[item.level];
         // What the item names: what the CSP blocks, what a Report-Only one would, or what the page has that a first one would
         var would = item.blocks ? 'it blocks' : item.blocked || /would block/.test(item.note || '') ? 'it would block' : null;
         var remark = item.caution || (last ? 'do it last, it can break the site' : '');
         var named = Boolean(item.inline || item.blocked || item.blocked_assets);
         var note = item.note ? capitalize(item.note) + '.' : '';
-        return h('li', { class: 'is-' + (item.blocks ? 'weak' : item.level) }, [
-          icon(item.level === 'weak' || item.blocks ? 'failing' : 'down'),
+        var look = item.blocks || item.level === 'good';
+        return h('li', { class: 'is-' + (look ? 'weak' : item.level) }, [
+          icon(item.level === 'weak' || look ? 'failing' : 'down'),
           h('div', {}, [
             // The state in the level's weight; a remark after it lighter, so the two read apart
             h('p', {}, [h('b', {}, capitalize(item.label)), h('span', { class: 'header-level' }, [' · ' + word, remark ? h('span', { class: 'header-remark' }, ' · ' + remark) : null])]),
