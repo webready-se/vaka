@@ -34,7 +34,9 @@ const HEADERS_FIX_ORDER = ['nosniff', 'referrer', 'frames', 'hsts', 'permissions
 const CSP_REPORT_ONLY_NOTE = 'only as Report-Only, which blocks nothing';
 
 /** What to do about a CSP that blocks parts of the page; the alert adds where they are named. */
-const CSP_BLOCKS_TIP = "Visitors do not get them: a blocked script stops working, a blocked style makes the page look broken. Allow what the page needs (a host goes in script-src, style-src, img-src or frame-src; an inline script needs a 'sha256-...' hash there or a file of its own; inline styles need 'unsafe-inline' in style-src, or classes instead), or take them off the page.";
+const CSP_CONNECT_TIP = 'A script from another host usually sends what it collects back there: statistics send each visit, a chat its messages. That is connect-src, which the page never shows, so Vaka cannot see it; the browser\'s console does. Allowing it adds little, since that host already runs code on the page.';
+
+const CSP_BLOCKS_TIP ="Visitors do not get them: a blocked script stops working, a blocked style makes the page look broken. Allow what the page needs (a host goes in script-src, style-src, img-src or frame-src; an inline script needs a 'sha256-...' hash there or a file of its own; inline styles need 'unsafe-inline' in style-src, or classes instead), or take them off the page.";
 
 /** The headers where a second, different value is a conflict. Not a CSP: several all apply. */
 const HEADERS_SENT_ONCE = ['hsts' => 'strict-transport-security', 'nosniff' => 'x-content-type-options', 'frames' => 'x-frame-options', 'referrer' => 'referrer-policy', 'permissions' => 'permissions-policy'];
@@ -460,6 +462,54 @@ function csp_draft(array $page, string $pageUrl): string
 }
 
 /**
+ * The origins of the page's scripts from another host that the policies let
+ * run but not send anything back to (connect-src, or default-src without
+ * it): a statistics script sends each visit to its own host. A guess, since
+ * what a script sends never shows on the page, and a script from a CDN
+ * sends nothing. A script the policy blocks is left out, as that is said as
+ * a block, and so are the site's own hosts. At most ten.
+ *
+ * @param list<array> $policies  parsed with csp_directives()
+ * @return list<string> origins, such as https://stats.example
+ */
+function csp_unsent(array $policies, array $page, string $pageUrl): array
+{
+    $unsent = [];
+    foreach ($page['external'] ?? [] as $script) {
+        $parts = parse_url($script['url']);
+        if (!isset($parts['scheme'], $parts['host']) || own_host($script['url'], $pageUrl)) continue;
+        if (csp_blocked($policies, ['external' => [$script]], $pageUrl)['scripts']) continue;
+        $origin = strtolower($parts['scheme'] . '://' . $parts['host']) . (isset($parts['port']) ? ':' . $parts['port'] : '');
+        foreach ($policies as $directives) {
+            $sources = $directives['connect-src'] ?? $directives['default-src'] ?? null;
+            if ($sources !== null && !array_filter($sources, fn ($source) => csp_source_allows($source, $origin . '/', $pageUrl))) $unsent[$origin] = true;
+        }
+    }
+    return array_slice(array_keys($unsent), 0, 10);
+}
+
+/**
+ * A policy with origins added to connect-src: to the directive where it is,
+ * else as a new one at the end that starts from what default-src allowed,
+ * since connect-src replaces it for what the page sends (only 'self' and
+ * addresses: hashes and the like are for scripts and styles).
+ */
+function csp_with_connect(string $policy, array $origins): string
+{
+    $parts = array_values(array_filter(array_map('trim', explode(';', $policy)), fn ($part) => $part !== ''));
+    foreach ($parts as $i => $part) {
+        $words = preg_split('/\s+/', $part);
+        if (strtolower($words[0]) !== 'connect-src') continue;
+        $sources = array_filter(array_slice($words, 1), fn ($source) => strtolower($source) !== "'none'");
+        $parts[$i] = implode(' ', ['connect-src', ...$sources, ...$origins]);
+        return implode('; ', $parts);
+    }
+    $base = array_filter(csp_directives($policy)['default-src'] ?? [], fn ($source) => $source === "'self'" || !str_starts_with($source, "'"));
+    $parts[] = implode(' ', ['connect-src', ...$base, ...$origins]);
+    return implode('; ', $parts);
+}
+
+/**
  * What a policy blocks, in words: "2 inline scripts, a script from
  * cdn.example, 15 inline styles and images from cdn.example", or '' for
  * nothing. Inline styles are the <style> blocks and the style attributes.
@@ -851,10 +901,13 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
     $policies = fn (string $name) => array_map('csp_directives', $response['headers'][$name] ?? []);
     if ($headers['csp']['level'] !== 'missing') {
         $details['csp_blocks'] = csp_blocked($policies('content-security-policy'), $scripts, $response['url']);
+        // A script that may not send back to its host: a guess, so never part of the levels, with the policy to add it to
+        if ($unsent = csp_unsent($policies('content-security-policy'), $scripts, $response['url'])) $details += ['csp_unsent' => $unsent, 'csp_policy' => mb_substr(trim((string) $response['headers']['content-security-policy'][0]), 0, 1000)];
     } else {
         $details['scripts'] = $scripts;
         if (isset($response['headers']['content-security-policy-report-only'])) {
             $details['csp_would_block'] = csp_blocked($policies('content-security-policy-report-only'), $scripts, $response['url']);
+            if ($unsent = csp_unsent($policies('content-security-policy-report-only'), $scripts, $response['url'])) $details['csp_unsent'] = $unsent;
         } else {
             // What the simplest first policy would block, and a draft that allows it, to try as Report-Only
             $details['csp_first'] = csp_blocked([csp_directives("default-src 'self'")], $scripts, $response['url']);
@@ -1025,7 +1078,8 @@ function fix_label(array $item): string
     if ($item['key'] === 'csp') {
         return match (true) {
             ($item['report_only'] ?? false) && !($item['ready'] ?? true) => 'Your policy under the name that enforces it, once the list above is empty:',
-            $item['report_only'] ?? false => 'Your policy under the name that enforces it:',
+            $item['report_only'] ?? false => 'Your policy under the name that enforces it' . (isset($item['unsent_hosts']) ? ', with ' . list_words($item['unsent_hosts']) . ' added to connect-src' : '') . ':',
+            isset($item['unsent_hosts']) => 'Your policy with ' . list_words($item['unsent_hosts']) . ' added to connect-src:',
             $item['level'] === 'weak' => 'A stricter policy to try first as Report-Only, which blocks nothing:',
             default => 'Try this line first; as Report-Only it blocks nothing:',
         };
@@ -1085,22 +1139,32 @@ function csp_item(array $item, array $details): array
     $blocks = csp_blocks_anything($blocked);
     $named = $blocks ? array_filter(['inline' => $blocked['inline'], 'blocked' => $blocked['scripts'], 'blocked_assets' => csp_blocked_assets($blocked)]) : [];
     $on = ' on ' . csp_page_words($details['page'] ?? '');
+    // Scripts that may not send back to their host: a guess, said with the policy that lets them, never as a block
+    $unsent = $details['csp_unsent'] ?? [];
+    $hosts = array_map('url_host', $unsent);
+    $from = (count($hosts) === 1 ? 'the script from ' : 'the scripts from ') . list_words($hosts);
+    $sends = $unsent ? ['unsent' => true, 'unsent_hosts' => $hosts] : [];
     if ($item['level'] !== 'missing') {
         // A Report-Only next to the policy in force adds nothing: said, since the one in force may come from somewhere else than the line just added
         $also = isset($details['csp_report_only']) ? 'also sent as Report-Only, which adds nothing next to a policy in force: if that line was meant to be the only one, something else sets the first (the application, or another server rule)' : '';
         $join = fn (string ...$parts) => implode('. ', array_map(fn ($part, $i) => $i > 0 ? ucfirst($part) : $part, $filtered = array_values(array_filter($parts)), array_keys($filtered)));
+        if (!$blocks && $unsent && isset($details['csp_policy'])) {
+            return ['blocks' => false, 'note' => $join($item['note'], "{$from} may not send anything back, such as visits for statistics: if they have stopped, the line below allows it", $also), 'fix' => 'Content-Security-Policy: ' . csp_with_connect($details['csp_policy'], $unsent), 'tip' => CSP_CONNECT_TIP] + $sends + $item;
+        }
         if (!$blocks) return ['blocks' => false, 'note' => $join($item['note'], $also)] + $item;
         return ['blocks' => true, 'note' => $join($item['note'], 'it blocks ' . csp_blocked_words($blocked) . $on, $also), 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $item;
     }
     if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
+        $send = "stop {$from} sending anything back, such as visits for statistics: the line below allows that";
         $would = match (true) {
             $blocked === null => '',
-            $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . $on,
+            $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . $on . ($unsent ? ". It would also {$send}" : ''),
+            (bool) $unsent => ". Enforced, it would {$send}",
             default => ". Enforced, it would block nothing{$on}. Vaka reads only that page, so look at the site's other kinds of page in the browser's console before renaming",
         };
         // A hash is of the code as it is today: a build that writes a date or a version into the script breaks it
         $hashes = preg_match("/'sha(?:256|384|512)-/i", $details['csp_report_only'] ?? '') ? " Its hashes are of inline scripts and styles as they are today: a build that writes something new into one (a date, a version) changes its hash, and once the policy is enforced, browsers block it. Let the build add the hashes, or move the code to files." : '';
-        return ['blocks' => false, 'report_only' => true, 'ready' => $blocked !== null && !$blocks, 'caution' => tag_manager_caution($details['scripts'] ?? []), 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => 'Content-Security-Policy: ' . ($details['csp_report_only'] ?? '<the same policy>'), 'tip' => "The line above is the policy the site sends as Report-Only, under the name that enforces it. **Add it once the browser's console, and the list above, show nothing it would block that the site needs**, and remove the Report-Only line." . $hashes . " Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $named + $item;
+        return ['blocks' => false, 'report_only' => true, 'ready' => $blocked !== null && !$blocks, 'caution' => tag_manager_caution($details['scripts'] ?? []), 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => 'Content-Security-Policy: ' . ($unsent && isset($details['csp_report_only']) ? csp_with_connect($details['csp_report_only'], $unsent) : ($details['csp_report_only'] ?? '<the same policy>')), 'tip' => 'The line above is the policy the site sends as Report-Only, under the name that enforces it' . ($unsent ? ', with ' . list_words($hosts) . ' added to connect-src' : '') . ". **Add it once the browser's console, and the list above, show nothing it would block that the site needs**, and remove the Report-Only line." . ($unsent ? ' ' . CSP_CONNECT_TIP : '') . $hashes . " Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it." . tag_manager_tip($details['scripts'] ?? [])] + $sends + $named + $item;
     }
     // No CSP at all: what default-src 'self' would stop on the page, and a draft that allows it (old data: the scripts only)
     $scripts = $details['scripts'] ?? [];

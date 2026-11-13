@@ -15,6 +15,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **The owl tilts its head at a mouse that rests near it,** until the mouse moves on, its feet keeping their hold on the panel's edge.
 - **Outages that end while the dashboard is open show the relief:** the red glow fades into the new one, and the owl's eyes relax from wide awake with one slow blink. Once, and not for a snooze or a maintenance window, which quiet an outage without ending it.
 - **The browser's console greets whoever opens it** with the owl in text, wide awake while a site is down, the version, and links to the source and the read API.
+- **A CSP that lets a statistics script run but not send back to its host says so, with the line that fixes it.** A Report-Only policy without the host in `connect-src` was called ready to enforce, and the day it was, the statistics would have stopped counting without a word. The CSP item now says "Enforced, it would stop the script from stats.example sending anything back, such as visits for statistics", and the line to add is the site's own policy with the host in `connect-src`. A policy in force is listed with what to do, as "In place". It is a guess, since what a script sends never shows on the page, so it never counts as blocking, alerts or changes the grade. The read API's CSP item gains `unsent`.
 
 ### Changed
 

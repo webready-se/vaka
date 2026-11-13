@@ -453,6 +453,17 @@ async function main() {
       q('dialog.drawer [data-action="close"]').click();
     }
 
+    // A CSP in force that may stop a statistics script sending back: something to look at, with the policy and connect-src
+    all('.site-row').find((r) => /example\.org/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'example.org', 'the example.org detail to open')) {
+      const cspItem = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
+      expect(cspItem && /^ · In place$/.test(cspItem.querySelector('.header-level')?.textContent || '') && cspItem.classList.contains('is-weak'), `a CSP that may stop a script sending back is listed as in place, to look at (got "${cspItem?.querySelector('.header-level')?.textContent}")`);
+      expect(/The script from stats\.example may not send anything back, such as visits for statistics: if they have stopped, the line below allows it\.$/.test(cspItem?.querySelector('.header-why')?.textContent || ''), `the note says which script and what to do (got "${cspItem?.querySelector('.header-why')?.textContent}")`);
+      expect(cspItem?.querySelector('.fix-label')?.textContent === 'Your policy with stats.example added to connect-src:' && /connect-src 'self' https:\/\/stats\.example/.test(cspItem?.querySelector('.header-fix code')?.textContent || ''), 'the line is the policy with the host in connect-src');
+      expect(!/CSP/.test(q('dialog.drawer .headers-done summary')?.textContent || ''), 'and it is not in the "In place" line');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // A CSP sent only as Report-Only: said so, with what it would block and the policy itself as the line to add
     all('.site-row').find((r) => /builder\.example/.test(r.textContent)).click();
     if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'builder.example', 'the builder site\'s detail to open')) {
