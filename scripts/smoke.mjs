@@ -369,6 +369,16 @@ async function main() {
       expect(document.activeElement === plot && q('dialog.drawer [data-chart-note] .told-pick').textContent === told.textContent && told.textContent !== '', 'the detail drawn again keeps the check the keyboard is on');
       plot.blur();
       expect(q('dialog.drawer [data-chart-note] .told-pick').textContent === '', 'leaving the chart brings back its summary');
+      // A finger: what it taps stays told after it lifts, and a press anywhere else lets it go, for the chart and the days alike
+      const finger = (node, x, y) => node.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, pointerType: 'touch', clientX: x, clientY: y }));
+      const aDay = all('dialog.drawer .days button')[20];
+      const dayBox = aDay.getBoundingClientRect();
+      finger(plot, plotBox.left + plotBox.width * 0.3, plotBox.top + 40);
+      expect(told.textContent !== '' && getComputedStyle(q('dialog.drawer .chart-cursor')).opacity === '1', 'a finger on the chart picks a check, which stays after it lifts');
+      finger(aDay, dayBox.left + 1, dayBox.top + 5);
+      expect(told.textContent === '' && getComputedStyle(q('dialog.drawer .chart-cursor')).opacity === '0' && dayPick.textContent === aDay.getAttribute('data-tip'), 'a press outside the chart lets its check go, and a finger on the days picks a day');
+      finger(q('dialog.drawer h2'), 40, 40);
+      expect(dayPick.textContent === '' && !q('dialog.drawer .days .is-picked'), 'a press outside the days lets the day go');
       // What Vaka sees, a tile per check, and the settings in a card of their own
       const tiles = all('dialog.drawer .tile');
       const tileText = (i, part) => tiles[i]?.querySelector(part)?.textContent || '';

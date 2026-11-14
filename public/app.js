@@ -2720,6 +2720,13 @@
   document.addEventListener('focusout', function (event) {
     if (event.target.matches && event.target.matches('[data-chart]')) pickSample(-1);
   });
+  // A finger leaves what it tapped picked, so a press anywhere else is how to let it go: the day or the check gives
+  // the line back to its summary (a scroll starts with a press too, so reading on clears it)
+  document.addEventListener('pointerdown', function (event) {
+    var inside = function (selector) { return event.target.closest && event.target.closest(selector); };
+    if (!inside('[data-chart]')) pickSample(-1);
+    if (!inside('[data-days]')) unpickDays();
+  });
   // The arrow keys move from check to check (from the latest, when none is picked), Home and End to the first and last
   document.addEventListener('keydown', function (event) {
     var svg = event.target.closest && event.target.closest('[data-chart]');

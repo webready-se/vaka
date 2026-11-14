@@ -13,7 +13,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
-- **The line that tells a day of the 30 days, and now a check of the response times, is above its chart.** Under it, the line was covered by the finger and the hand that point. The summary ("Down on 1 of 30 days, 14 min in all.") is there until something is pointed at, and what is pointed at takes its place in the accent. The line keeps the height of the taller of the two, so the chart never moves under the finger.
+- **The line that tells a day of the 30 days, and now a check of the response times, is above its chart.** Under it, the line was covered by the finger and the hand that point. The summary ("Down on 1 of 30 days, 14 min in all.") is there until something is pointed at, and what is pointed at takes its place in the accent. The line keeps the height of the taller of the two, so the chart never moves under the finger. A finger leaves what it tapped picked, and a press anywhere else lets it go.
 
 ## [0.5.0] - 2026-11-14
 
