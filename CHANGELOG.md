@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **The response time chart tells each check it is pointed at.** A mouse over it, a finger sliding along it or the arrow keys pick the nearest check: a line and a dot mark it, and the line above the chart says "14:35: 412 ms" in its summary's place. A red mark says what failed, "14:40: failed, the site answered 503" or "no answer", where before it was only called red. The summary now says when the slowest check was: "Typically 180 ms, slowest 950 ms at 14:35". A screen reader meets the chart as a slider that reads out each check.
+
+### Changed
+
+- **The line that tells a day of the 30 days, and now a check of the response times, is above its chart.** Under it, the line was covered by the finger and the hand that point. The summary ("Down on 1 of 30 days, 14 min in all.") is there until something is pointed at, and what is pointed at takes its place in the accent. The line keeps the height of the taller of the two, so the chart never moves under the finger. A finger leaves what it tapped picked, and a press anywhere else lets it go.
+
 ## [0.5.0] - 2026-11-14
 
 ### Added
