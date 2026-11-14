@@ -1018,6 +1018,25 @@
     state.opener = null;
   }
 
+  /**
+   * The line above a chart: what the chart sums up to, and in its place what
+   * is pointed at. Above, since a finger and the hand that point cover what is
+   * under them. Both texts lie in the same cell (the CSS), so the line is as
+   * tall as the taller one and the chart never moves under the finger.
+   */
+  function toldLine(tag, name, summary) {
+    var attrs = { class: 'told' };
+    attrs[name] = '';
+    return h(tag, attrs, [h('span', { class: 'told-summary' }, summary), h('span', { class: 'told-pick' })]);
+  }
+
+  /** What is pointed at, in the line's place; nothing brings the summary back. */
+  function tell(line, words) {
+    if (!line) return;
+    line.querySelector('.told-pick').textContent = words || '';
+    line.classList.toggle('is-picked', Boolean(words));
+  }
+
   function percent(value) {
     return value === null || value === undefined ? '–' : value + '%';
   }
@@ -1058,9 +1077,9 @@
         return h('div', { class: fact[3] && pending(site, fact[3]) ? 'fact is-checking' : 'fact', 'data-check': fact[3] || null }, [h('dt', {}, fact[0]), h('dd', {}, fact[1]), fact[2] ? h('dd', { class: 'fact-when' }, fact[2]) : null]);
       })),
       h('h3', {}, 'Last 30 days'),
+      toldLine('p', 'data-day-note', summary),
       dayStrip(d.days, paused),
       h('p', { class: 'days-legend', 'aria-hidden': 'true' }, [h('span', {}, '30 days ago'), h('span', {}, 'Today')]),
-      h('p', { class: 'day-note', 'data-day-note': summary }, summary),
       dayKey(d.days, paused),
       // Uptime first, all of it (Vaka's main job), then what the other checks see, then their detail
       h('h3', {}, 'Response time, last 24 hours'),
@@ -2276,16 +2295,13 @@
       y: function (sample) { return sample.ok ? y(sample.ms).toFixed(1) : String(bottom - 3.5); }
     };
     var figure = h('figure', {}, [
-      // The check pointed at is told above the chart, where the finger and the hand that point do not cover it; the
-      // line keeps its height while empty, so the chart never moves under the finger
-      h('p', { class: 'chart-pick', 'data-chart-pick': '', 'aria-hidden': 'true' }),
+      toldLine('figcaption', 'data-chart-note', label + '.'),
       h('div', { class: 'chart-plot' }, [
         h('div', { class: 'chart-y', 'aria-hidden': 'true' }, [h('span', {}, max + ' ms'), h('span', {}, max / 2 + ' ms'), h('span', {}, '0')]),
         // A slider to a screen reader: the arrow keys move from check to check, and each is read out
         s('svg', { class: 'chart', viewBox: '0 0 ' + width + ' ' + height, preserveAspectRatio: 'none', role: 'slider', tabindex: '0', 'data-chart': '', 'aria-label': 'Response time, last 24 hours', 'aria-valuemin': '0', 'aria-valuemax': String(samples.length - 1) }, nodes)
       ]),
-      h('p', { class: 'chart-x', 'aria-hidden': 'true' }, [h('span', {}, '24 h ago'), h('span', {}, '12 h ago'), h('span', {}, 'now')]),
-      h('figcaption', { class: 'chart-note' }, label + '.')
+      h('p', { class: 'chart-x', 'aria-hidden': 'true' }, [h('span', {}, '24 h ago'), h('span', {}, '12 h ago'), h('span', {}, 'now')])
     ]);
     // A check that was pointed at stays so through a refresh: drawn picked, the chart is the same as the one on
     // the page, so patch() leaves it (and the keyboard's focus) in place
@@ -2293,13 +2309,12 @@
     return figure;
   }
 
-  /** Show one check of the chart, in the chart and in the line above it; none (-1) clears both. */
+  /** Show one check of the chart, in the chart and in the line above it; none (-1) brings back the summary. */
   function showSample(figure, i) {
     var sample = charted.samples[i];
     var svg = figure.querySelector('[data-chart]');
     var cursor = svg.querySelector('.chart-cursor');
     var dot = svg.querySelector('.chart-dot');
-    var pick = figure.querySelector('[data-chart-pick]');
     cursor.setAttribute('class', sample ? 'chart-cursor is-shown' : 'chart-cursor');
     dot.setAttribute('class', !sample ? 'chart-dot' : sample.ok ? 'chart-dot is-shown' : 'chart-dot is-shown is-fail');
     if (sample) {
@@ -2311,7 +2326,7 @@
     }
     svg.setAttribute('aria-valuenow', String(sample ? i : charted.samples.length - 1));
     svg.setAttribute('aria-valuetext', sample ? sampleWords(sample) : charted.label);
-    pick.textContent = sample ? sampleWords(sample) : '';
+    tell(figure.querySelector('[data-chart-note]'), sample ? sampleWords(sample) : '');
   }
 
   function pickSample(i) {
@@ -2623,19 +2638,13 @@
     var note = regions.detail.querySelector('[data-day-note]');
     bar.parentNode.querySelectorAll('.is-picked').forEach(function (other) { other.classList.remove('is-picked'); });
     bar.classList.add('is-picked');
-    if (note) {
-      note.textContent = bar.getAttribute('data-tip');
-      note.classList.add('is-picked');
-    }
+    tell(note, bar.getAttribute('data-tip'));
   }
 
   function unpickDays() {
     var note = regions.detail.querySelector('[data-day-note]');
     regions.detail.querySelectorAll('[data-days] .is-picked').forEach(function (bar) { bar.classList.remove('is-picked'); });
-    if (note) {
-      note.textContent = note.getAttribute('data-day-note');
-      note.classList.remove('is-picked');
-    }
+    tell(note, '');
   }
 
   // The bar under the pointer, by where it is along the row: the gaps count too,
@@ -2689,7 +2698,7 @@
   });
 
   // The response time chart: the check nearest the pointer, by where it is along the 24 hours. A finger can tap or
-  // slide along it, and the check stays told after it lifts; a mouse that moves away clears it
+  // slide along it, and the check stays told after it lifts; a mouse that moves away brings back the summary
   function pointAtSample(event) {
     var svg = event.target.closest && event.target.closest('[data-chart]');
     if (!svg || !charted) return;

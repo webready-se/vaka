@@ -321,38 +321,42 @@ async function main() {
       expect(getComputedStyle(document.documentElement).overflow === 'hidden', 'the page behind the detail does not scroll');
       expect(q('dialog.drawer .chart'), 'a response time chart');
       const bars = all('dialog.drawer .days button');
-      const note = q('dialog.drawer .day-note');
+      const note = q('dialog.drawer [data-day-note]');
+      const daySum = note?.querySelector('.told-summary');
+      const dayPick = note?.querySelector('.told-pick');
+      const barsTop = bars[0].getBoundingClientRect().top;
       expect(bars.length === 30, 'thirty days in the detail');
-      expect(note?.textContent === 'Down on 1 of 30 days, 14 min in all.', `the line under the bars sums up the 30 days (got "${note?.textContent}")`);
+      expect(daySum?.textContent === 'Down on 1 of 30 days, 14 min in all.' && note.getBoundingClientRect().bottom <= barsTop, `the line above the bars sums up the 30 days (got "${daySum?.textContent}")`);
       expect(all('dialog.drawer .day-key li').length === 3, 'the colours are explained: no outage, under an hour, an hour or more');
       // Hover, then the keyboard: only today is in the tab order, the arrow keys move along
       point(bars[20], 'pointermove');
-      expect(note?.textContent === bars[20].getAttribute('data-tip') && bars[20].classList.contains('is-picked'), 'hovering a bar in the detail tells its day in the line');
+      expect(dayPick?.textContent === bars[20].getAttribute('data-tip') && bars[20].classList.contains('is-picked') && getComputedStyle(daySum).visibility === 'hidden' && bars[0].getBoundingClientRect().top === barsTop, 'hovering a bar in the detail tells its day in the line above, in the summary\'s place, and the bars stay where they are');
       expect(getComputedStyle(bars[20]).boxShadow === 'none' && note.classList.contains('is-picked') && getComputedStyle(bars[3], '::after').opacity === '0.35' && getComputedStyle(bars[20], '::after').opacity === '0', 'the picked day has no ring and its line is in the accent, and the other days step back');
       point(bars[20], 'pointerout', { relatedTarget: note });
-      expect(note?.textContent === note?.getAttribute('data-day-note') && !note.classList.contains('is-picked'), 'moving away brings back the summary');
+      expect(dayPick?.textContent === '' && !note.classList.contains('is-picked') && getComputedStyle(daySum).visibility === 'visible', 'moving away brings back the summary');
       expect(bars.filter((b) => b.tabIndex === 0).length === 1 && bars[29].tabIndex === 0, 'one bar, today, is in the tab order');
       expect(/^Today: down once, 14 min$/.test(bars[29].getAttribute('aria-label') || ''), `today's bar says it was down (got "${bars[29].getAttribute('aria-label')}")`);
       bars[29].focus();
       bars[29].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
       expect(document.activeElement === bars[28] && bars[28].tabIndex === 0 && bars[29].tabIndex === -1, 'the left arrow moves to yesterday');
-      expect(note?.textContent === 'Yesterday: up all day', `the line follows the keyboard (got "${note?.textContent}")`);
-      // The response time chart: pointing along it tells each check in the line above it, clear of the finger, a red mark what failed
+      expect(dayPick?.textContent === 'Yesterday: up all day', `the line follows the keyboard (got "${dayPick?.textContent}")`);
+      // The response time chart: pointing along it tells each check in the line above it, as the day bars do, a red mark what failed
       const plot = q('dialog.drawer .chart');
-      const told = q('dialog.drawer [data-chart-pick]');
-      const summary = q('dialog.drawer figcaption.chart-note')?.textContent || '';
+      const chartNote = q('dialog.drawer [data-chart-note]');
+      const told = chartNote.querySelector('.told-pick');
+      const summary = chartNote.querySelector('.told-summary').textContent;
       const plotTop = plot.getBoundingClientRect().top;
-      expect(/^Typically \d+ ms, slowest \d+ ms at \d\d:\d\d( yesterday)?, \d+ failed checks? \(red\)\.$/.test(summary), `the line under the chart says when the slowest check was (got "${summary}")`);
+      expect(/^Typically \d+ ms, slowest \d+ ms at \d\d:\d\d( yesterday)?, \d+ failed checks? \(red\)\.$/.test(summary), `the line above the chart says when the slowest check was (got "${summary}")`);
       const plotBox = plot.getBoundingClientRect();
       const along = (share, type = 'pointermove', extra = {}) => plot.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse', clientX: plotBox.left + plotBox.width * share, clientY: plotBox.top + 40, ...extra }));
       along(0.5);
-      expect(/^\d\d:\d\d( yesterday)?: \d+ ms$/.test(told.textContent) && told.getBoundingClientRect().bottom <= plotTop && plot.getBoundingClientRect().top === plotTop && q('dialog.drawer figcaption.chart-note').textContent === summary, `pointing at the chart tells the check there, above the chart, which stays where it is (got "${told.textContent}")`);
+      expect(/^\d\d:\d\d( yesterday)?: \d+ ms$/.test(told.textContent) && told.getBoundingClientRect().bottom <= plotTop && plot.getBoundingClientRect().top === plotTop && getComputedStyle(chartNote.querySelector('.told-summary')).visibility === 'hidden', `pointing at the chart tells the check there, above the chart, which stays where it is (got "${told.textContent}")`);
       expect(getComputedStyle(q('dialog.drawer .chart-cursor')).opacity === '1' && getComputedStyle(q('dialog.drawer .chart-dot')).opacity === '1', 'a line and a dot mark the check pointed at');
       const mark = q('dialog.drawer .chart-fail').getBoundingClientRect();
       plot.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: mark.left + mark.width / 2, clientY: mark.top }));
       expect(/^\d\d:\d\d( yesterday)?: failed, the site answered 503$/.test(told.textContent), `pointing at a red mark says what failed (got "${told.textContent}")`);
       along(0.5, 'pointerout', { relatedTarget: told });
-      expect(told.textContent === '' && getComputedStyle(q('dialog.drawer .chart-cursor')).opacity === '0', 'moving away from the chart clears the line and the mark');
+      expect(told.textContent === '' && !chartNote.classList.contains('is-picked') && getComputedStyle(q('dialog.drawer .chart-cursor')).opacity === '0', 'moving away from the chart brings back its summary');
       // The keyboard: the arrows move from check to check, from the latest
       plot.focus();
       plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
@@ -362,9 +366,9 @@ async function main() {
       // Drawn again (as "Check again" does), the chart keeps its check and the keyboard's place
       all('.site-row').find((r) => /shop\.example/.test(r.textContent)).click();
       await sleep(600);
-      expect(document.activeElement === plot && q('dialog.drawer [data-chart-pick]').textContent === told.textContent && told.textContent !== '', 'the detail drawn again keeps the check the keyboard is on');
+      expect(document.activeElement === plot && q('dialog.drawer [data-chart-note] .told-pick').textContent === told.textContent && told.textContent !== '', 'the detail drawn again keeps the check the keyboard is on');
       plot.blur();
-      expect(q('dialog.drawer [data-chart-pick]').textContent === '', 'leaving the chart clears the line');
+      expect(q('dialog.drawer [data-chart-note] .told-pick').textContent === '', 'leaving the chart brings back its summary');
       // What Vaka sees, a tile per check, and the settings in a card of their own
       const tiles = all('dialog.drawer .tile');
       const tileText = (i, part) => tiles[i]?.querySelector(part)?.textContent || '';
