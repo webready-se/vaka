@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-11-14
+
 ### Added
 
 - **Moving a site to another group says who that shows it to, and who it hides it from.** A user limited to groups and a read token for groups follow the sites in them, so a move changes who sees a site without saying so. `site:edit --group`, for one site, a server or sites picked from a list, ends with "Now also visible to: user anna, read token #3 (Claude Code)." and "No longer visible to: ...", and the dashboard's site and server forms say it under the group as it is picked, before anything is saved. Users who see every site and tokens for one site are not named, since a move changes nothing for them, and nothing is said when no one gains or loses a site. The overview's `setup` gains `readers`, and the server form `groups`.
@@ -178,7 +180,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `scripts/seed-demo.php` builds a demo database with fake sites; `scripts/smoke.mjs` drives the dashboard in headless Chrome and fails on JavaScript errors, CSP violations and markup from the data.
 - Every release comes as a zip with only the files Vaka needs to run, and its docs: download, unpack, run.
 
-[Unreleased]: https://github.com/webready-se/vaka/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/webready-se/vaka/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/webready-se/vaka/releases/tag/v0.5.0
 [0.4.0]: https://github.com/webready-se/vaka/releases/tag/v0.4.0
 [0.3.0]: https://github.com/webready-se/vaka/releases/tag/v0.3.0
 [0.2.0]: https://github.com/webready-se/vaka/releases/tag/v0.2.0
