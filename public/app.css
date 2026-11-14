@@ -608,8 +608,8 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .chart .chart-dot { stroke: var(--accent); stroke-width: 9; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: 0; }
 .chart .chart-dot.is-fail { stroke: var(--down-bar); }
 .chart .is-shown { opacity: 1; }
-.chart-note { margin: 6px 0 0; color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
-.chart-note.is-picked { color: var(--accent); font-weight: 600; }
+.chart-note { margin: 6px 0 0; color: var(--text-3); font-size: 13px; }
+.chart-pick { margin: 0 0 4px; height: 1.45em; line-height: 1.45; overflow: hidden; color: var(--accent); font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; text-overflow: ellipsis; }
 .timeline { position: relative; margin: 0; padding: 0 0 0 22px; list-style: none; }
 .timeline::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
 .timeline li { position: relative; padding: 0 0 14px; }

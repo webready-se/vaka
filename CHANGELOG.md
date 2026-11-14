@@ -9,7 +9,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Added
 
-- **The response time chart tells each check it is pointed at.** A mouse over it, a finger sliding along it or the arrow keys pick the nearest check: a line and a dot mark it, and the line under the chart says "14:35: 412 ms". A red mark says what failed, "14:40: failed, the site answered 503" or "no answer", where before it was only called red. Without pointing, the line says when the slowest check was: "Typically 180 ms, slowest 950 ms at 14:35". A screen reader meets the chart as a slider that reads out each check.
+- **The response time chart tells each check it is pointed at.** A mouse over it, a finger sliding along it or the arrow keys pick the nearest check: a line and a dot mark it, and a line above the chart, clear of the finger that points, says "14:35: 412 ms". A red mark says what failed, "14:40: failed, the site answered 503" or "no answer", where before it was only called red. The line under the chart now says when the slowest check was: "Typically 180 ms, slowest 950 ms at 14:35". A screen reader meets the chart as a slider that reads out each check.
 
 ## [0.5.0] - 2026-11-14
 

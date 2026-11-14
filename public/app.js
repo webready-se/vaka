@@ -2231,7 +2231,7 @@
   function sampleWords(sample) {
     if (sample.ok) return sampleTime(sample.checked_at) + ': ' + sample.ms + ' ms';
     var code = Number(sample.status_code);
-    return sampleTime(sample.checked_at) + ': failed, ' + (!code ? 'no answer' : code >= 400 ? 'the site answered ' + code : 'the page answered ' + code + ' without the keyword');
+    return sampleTime(sample.checked_at) + ': failed, ' + (!code ? 'no answer' : code >= 400 ? 'the site answered ' + code : 'answered ' + code + ' without the keyword');
   }
 
   function chart(samples) {
@@ -2276,13 +2276,16 @@
       y: function (sample) { return sample.ok ? y(sample.ms).toFixed(1) : String(bottom - 3.5); }
     };
     var figure = h('figure', {}, [
+      // The check pointed at is told above the chart, where the finger and the hand that point do not cover it; the
+      // line keeps its height while empty, so the chart never moves under the finger
+      h('p', { class: 'chart-pick', 'data-chart-pick': '', 'aria-hidden': 'true' }),
       h('div', { class: 'chart-plot' }, [
         h('div', { class: 'chart-y', 'aria-hidden': 'true' }, [h('span', {}, max + ' ms'), h('span', {}, max / 2 + ' ms'), h('span', {}, '0')]),
         // A slider to a screen reader: the arrow keys move from check to check, and each is read out
         s('svg', { class: 'chart', viewBox: '0 0 ' + width + ' ' + height, preserveAspectRatio: 'none', role: 'slider', tabindex: '0', 'data-chart': '', 'aria-label': 'Response time, last 24 hours', 'aria-valuemin': '0', 'aria-valuemax': String(samples.length - 1) }, nodes)
       ]),
       h('p', { class: 'chart-x', 'aria-hidden': 'true' }, [h('span', {}, '24 h ago'), h('span', {}, '12 h ago'), h('span', {}, 'now')]),
-      h('figcaption', { class: 'chart-note', 'data-chart-note': '' })
+      h('figcaption', { class: 'chart-note' }, label + '.')
     ]);
     // A check that was pointed at stays so through a refresh: drawn picked, the chart is the same as the one on
     // the page, so patch() leaves it (and the keyboard's focus) in place
@@ -2290,13 +2293,13 @@
     return figure;
   }
 
-  /** Show one check of the chart, in the chart and in the line under it; none (-1) brings back the summary. */
+  /** Show one check of the chart, in the chart and in the line above it; none (-1) clears both. */
   function showSample(figure, i) {
     var sample = charted.samples[i];
     var svg = figure.querySelector('[data-chart]');
     var cursor = svg.querySelector('.chart-cursor');
     var dot = svg.querySelector('.chart-dot');
-    var note = figure.querySelector('[data-chart-note]');
+    var pick = figure.querySelector('[data-chart-pick]');
     cursor.setAttribute('class', sample ? 'chart-cursor is-shown' : 'chart-cursor');
     dot.setAttribute('class', !sample ? 'chart-dot' : sample.ok ? 'chart-dot is-shown' : 'chart-dot is-shown is-fail');
     if (sample) {
@@ -2308,8 +2311,7 @@
     }
     svg.setAttribute('aria-valuenow', String(sample ? i : charted.samples.length - 1));
     svg.setAttribute('aria-valuetext', sample ? sampleWords(sample) : charted.label);
-    note.textContent = sample ? sampleWords(sample) : charted.label;
-    note.className = sample ? 'chart-note is-picked' : 'chart-note';
+    pick.textContent = sample ? sampleWords(sample) : '';
   }
 
   function pickSample(i) {
@@ -2687,7 +2689,7 @@
   });
 
   // The response time chart: the check nearest the pointer, by where it is along the 24 hours. A finger can tap or
-  // slide along it, and the check stays told after it lifts; a mouse that moves away brings back the summary
+  // slide along it, and the check stays told after it lifts; a mouse that moves away clears it
   function pointAtSample(event) {
     var svg = event.target.closest && event.target.closest('[data-chart]');
     if (!svg || !charted) return;
