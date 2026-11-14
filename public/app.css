@@ -602,7 +602,14 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .chart .chart-area { fill: var(--accent); opacity: 0.1; }
 .chart .chart-grid { stroke: var(--line); stroke-width: 1; vector-effect: non-scaling-stroke; }
 .chart .chart-fail { fill: var(--down-bar); }
-.chart-note { margin: 6px 0 0; color: var(--text-3); font-size: 13px; }
+/* The check pointed at (showSample() in app.js): a finger slides along the chart, so only up and down scroll the detail */
+.chart { touch-action: pan-y; }
+.chart .chart-cursor { stroke: var(--text-3); stroke-width: 1; vector-effect: non-scaling-stroke; opacity: 0; }
+.chart .chart-dot { stroke: var(--accent); stroke-width: 9; stroke-linecap: round; vector-effect: non-scaling-stroke; opacity: 0; }
+.chart .chart-dot.is-fail { stroke: var(--down-bar); }
+.chart .is-shown { opacity: 1; }
+.chart-note { margin: 6px 0 0; color: var(--text-3); font-size: 13px; font-variant-numeric: tabular-nums; }
+.chart-note.is-picked { color: var(--accent); font-weight: 600; }
 .timeline { position: relative; margin: 0; padding: 0 0 0 22px; list-style: none; }
 .timeline::before { content: ""; position: absolute; left: 6px; top: 6px; bottom: 6px; width: 2px; background: var(--line); }
 .timeline li { position: relative; padding: 0 0 14px; }

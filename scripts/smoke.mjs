@@ -337,6 +337,33 @@ async function main() {
       bars[29].dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
       expect(document.activeElement === bars[28] && bars[28].tabIndex === 0 && bars[29].tabIndex === -1, 'the left arrow moves to yesterday');
       expect(note?.textContent === 'Yesterday: up all day', `the line follows the keyboard (got "${note?.textContent}")`);
+      // The response time chart: pointing along it tells each check in the line under it, a red mark what failed
+      const plot = q('dialog.drawer .chart');
+      const told = q('dialog.drawer [data-chart-note]');
+      const summary = told?.textContent || '';
+      expect(/^Typically \d+ ms, slowest \d+ ms at \d\d:\d\d( yesterday)?, \d+ failed checks? \(red\)\.$/.test(summary), `the line under the chart says when the slowest check was (got "${summary}")`);
+      const plotBox = plot.getBoundingClientRect();
+      const along = (share, type = 'pointermove', extra = {}) => plot.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'mouse', clientX: plotBox.left + plotBox.width * share, clientY: plotBox.top + 40, ...extra }));
+      along(0.5);
+      expect(/^\d\d:\d\d( yesterday)?: \d+ ms$/.test(told.textContent) && told.classList.contains('is-picked'), `pointing at the chart tells the check there (got "${told.textContent}")`);
+      expect(getComputedStyle(q('dialog.drawer .chart-cursor')).opacity === '1' && getComputedStyle(q('dialog.drawer .chart-dot')).opacity === '1', 'a line and a dot mark the check pointed at');
+      const mark = q('dialog.drawer .chart-fail').getBoundingClientRect();
+      plot.dispatchEvent(new PointerEvent('pointermove', { bubbles: true, pointerType: 'mouse', clientX: mark.left + mark.width / 2, clientY: mark.top }));
+      expect(/^\d\d:\d\d( yesterday)?: failed, the site answered 503$/.test(told.textContent), `pointing at a red mark says what failed (got "${told.textContent}")`);
+      along(0.5, 'pointerout', { relatedTarget: told });
+      expect(told.textContent === summary && !told.classList.contains('is-picked') && getComputedStyle(q('dialog.drawer .chart-cursor')).opacity === '0', 'moving away from the chart brings back its summary');
+      // The keyboard: the arrows move from check to check, from the latest
+      plot.focus();
+      plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      const latest = told.textContent;
+      plot.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft', bubbles: true }));
+      expect(plot.getAttribute('role') === 'slider' && latest !== summary && told.textContent !== latest && plot.getAttribute('aria-valuetext') === told.textContent, `the arrow keys step through the checks, each read out (got "${latest}", then "${told.textContent}")`);
+      // Drawn again (as "Check again" does), the chart keeps its check and the keyboard's place
+      all('.site-row').find((r) => /shop\.example/.test(r.textContent)).click();
+      await sleep(600);
+      expect(document.activeElement === plot && q('dialog.drawer [data-chart-note]').textContent === told.textContent && told.textContent !== summary, 'the detail drawn again keeps the check the keyboard is on');
+      plot.blur();
+      expect(q('dialog.drawer [data-chart-note]').textContent === summary, 'leaving the chart brings back its summary');
       // What Vaka sees, a tile per check, and the settings in a card of their own
       const tiles = all('dialog.drawer .tile');
       const tileText = (i, part) => tiles[i]?.querySelector(part)?.textContent || '';

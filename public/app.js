@@ -13,7 +13,7 @@
     regions[node.getAttribute('data-region')] = node;
   });
   var filterInput = document.querySelector('[data-filter]');
-  var state = { data: null, filter: '', detailId: null, detail: null, headerFormat: null, form: null, timezone: undefined, failed: false, open: {}, autoOpen: null, recheck: null, watched: null };
+  var state = { data: null, filter: '', detailId: null, detail: null, headerFormat: null, form: null, sample: null, timezone: undefined, failed: false, open: {}, autoOpen: null, recheck: null, watched: null };
 
   // =================================================================
   // DOM helpers
@@ -989,6 +989,7 @@
   // =================================================================
 
   function openDetail(id, opener) {
+    if (String(state.detailId) !== String(id)) state.sample = null;
     state.detailId = id;
     if (opener) state.opener = opener;
     if (window.location.hash !== '#site-' + id) history.replaceState(null, '', '#site-' + id);
@@ -1009,6 +1010,7 @@
     state.recheck = null;
     state.detailId = null;
     state.detail = null;
+    state.sample = null;
     state.form = null;
     if (regions.detail.open) regions.detail.close();
     if (window.location.hash) history.replaceState(null, '', window.location.pathname + window.location.search);
@@ -2215,7 +2217,25 @@
     ]);
   }
 
+  // What the chart last drew, for the pointer and the keyboard: its samples and how they lie along it
+  var charted = null;
+
+  /** "14:35" today, "23:40 yesterday" before that: the chart's 24 hours hold nothing older. */
+  function sampleTime(iso) {
+    var p = dateParts(new Date(iso));
+    var time = hourMinute(Number(p.hour), p.minute);
+    return p.day === dateParts(new Date()).day ? time : time + ' yesterday';
+  }
+
+  /** One check in words: "14:35: 412 ms", or what a red mark stands for. */
+  function sampleWords(sample) {
+    if (sample.ok) return sampleTime(sample.checked_at) + ': ' + sample.ms + ' ms';
+    var code = Number(sample.status_code);
+    return sampleTime(sample.checked_at) + ': failed, ' + (!code ? 'no answer' : code >= 400 ? 'the site answered ' + code : 'the page answered ' + code + ' without the keyword');
+  }
+
   function chart(samples) {
+    charted = null;
     if (!samples.length) return h('p', { class: 'chart-note' }, 'No checks in the last 24 hours.');
     // Only lines and shapes in the SVG, which stretches to the width; the labels are HTML, so text is never squeezed
     var width = 500, height = 150, top = 8, bottom = 142, left = 0;
@@ -2239,21 +2259,66 @@
     fails.forEach(function (sample) {
       nodes.push(s('rect', { class: 'chart-fail', x: x(sample.checked_at).toFixed(1), y: bottom - 7, width: 3, height: 7, rx: 1 }));
     });
+    // The check pointed at: a line down the chart and a dot on it (a line without length and with round ends, which
+    // stays round where a circle would be stretched with the chart)
+    nodes.push(s('line', { class: 'chart-cursor', y1: top, y2: bottom }), s('line', { class: 'chart-dot' }));
 
-    var slowest = good.reduce(function (m, sample) { return Math.max(m, sample.ms); }, 0);
+    var slowest = good.reduce(function (m, sample) { return m && m.ms >= sample.ms ? m : sample; }, null);
     var typical = median(good.map(function (sample) { return sample.ms; }));
     var label = good.length
-      ? 'Typically ' + typical + ' ms, slowest ' + slowest + ' ms' + (fails.length ? ', ' + plural(fails.length, 'failed check', 'failed checks') + ' (red)' : '')
-      : 'Every check in the last 24 hours failed.';
+      ? 'Typically ' + typical + ' ms, slowest ' + slowest.ms + ' ms at ' + sampleTime(slowest.checked_at) + (fails.length ? ', ' + plural(fails.length, 'failed check', 'failed checks') + ' (red)' : '')
+      : 'Every check in the last 24 hours failed';
 
-    return h('figure', {}, [
+    charted = {
+      samples: samples,
+      label: label + '.',
+      x: function (sample) { return x(sample.checked_at).toFixed(1); },
+      y: function (sample) { return sample.ok ? y(sample.ms).toFixed(1) : String(bottom - 3.5); }
+    };
+    var figure = h('figure', {}, [
       h('div', { class: 'chart-plot' }, [
         h('div', { class: 'chart-y', 'aria-hidden': 'true' }, [h('span', {}, max + ' ms'), h('span', {}, max / 2 + ' ms'), h('span', {}, '0')]),
-        s('svg', { class: 'chart', viewBox: '0 0 ' + width + ' ' + height, preserveAspectRatio: 'none', role: 'img', 'aria-label': 'Response time, last 24 hours. ' + label }, nodes)
+        // A slider to a screen reader: the arrow keys move from check to check, and each is read out
+        s('svg', { class: 'chart', viewBox: '0 0 ' + width + ' ' + height, preserveAspectRatio: 'none', role: 'slider', tabindex: '0', 'data-chart': '', 'aria-label': 'Response time, last 24 hours', 'aria-valuemin': '0', 'aria-valuemax': String(samples.length - 1) }, nodes)
       ]),
       h('p', { class: 'chart-x', 'aria-hidden': 'true' }, [h('span', {}, '24 h ago'), h('span', {}, '12 h ago'), h('span', {}, 'now')]),
-      h('figcaption', { class: 'chart-note' }, label + '.')
+      h('figcaption', { class: 'chart-note', 'data-chart-note': '' })
     ]);
+    // A check that was pointed at stays so through a refresh: drawn picked, the chart is the same as the one on
+    // the page, so patch() leaves it (and the keyboard's focus) in place
+    showSample(figure, samples.map(function (sample) { return sample.checked_at; }).indexOf(state.sample));
+    return figure;
+  }
+
+  /** Show one check of the chart, in the chart and in the line under it; none (-1) brings back the summary. */
+  function showSample(figure, i) {
+    var sample = charted.samples[i];
+    var svg = figure.querySelector('[data-chart]');
+    var cursor = svg.querySelector('.chart-cursor');
+    var dot = svg.querySelector('.chart-dot');
+    var note = figure.querySelector('[data-chart-note]');
+    cursor.setAttribute('class', sample ? 'chart-cursor is-shown' : 'chart-cursor');
+    dot.setAttribute('class', !sample ? 'chart-dot' : sample.ok ? 'chart-dot is-shown' : 'chart-dot is-shown is-fail');
+    if (sample) {
+      ['x1', 'x2'].forEach(function (name) { cursor.setAttribute(name, charted.x(sample)); dot.setAttribute(name, charted.x(sample)); });
+      ['y1', 'y2'].forEach(function (name) { dot.setAttribute(name, charted.y(sample)); });
+    } else {
+      ['x1', 'x2'].forEach(function (name) { cursor.removeAttribute(name); dot.removeAttribute(name); });
+      ['y1', 'y2'].forEach(function (name) { dot.removeAttribute(name); });
+    }
+    svg.setAttribute('aria-valuenow', String(sample ? i : charted.samples.length - 1));
+    svg.setAttribute('aria-valuetext', sample ? sampleWords(sample) : charted.label);
+    note.textContent = sample ? sampleWords(sample) : charted.label;
+    note.className = sample ? 'chart-note is-picked' : 'chart-note';
+  }
+
+  function pickSample(i) {
+    var svg = regions.detail.querySelector('[data-chart]');
+    if (!svg || !charted) return;
+    var sample = charted.samples[i];
+    if ((sample ? sample.checked_at : null) === state.sample) return;
+    state.sample = sample ? sample.checked_at : null;
+    showSample(svg.closest('figure'), i);
   }
 
   function timeline(events) {
@@ -2619,6 +2684,39 @@
     bar.setAttribute('tabindex', '-1');
     next.setAttribute('tabindex', '0');
     next.focus();
+  });
+
+  // The response time chart: the check nearest the pointer, by where it is along the 24 hours. A finger can tap or
+  // slide along it, and the check stays told after it lifts; a mouse that moves away brings back the summary
+  function pointAtSample(event) {
+    var svg = event.target.closest && event.target.closest('[data-chart]');
+    if (!svg || !charted) return;
+    var box = svg.getBoundingClientRect();
+    var at = (event.clientX - box.left) / box.width * 500;
+    var nearest = 0;
+    charted.samples.forEach(function (sample, i) {
+      if (Math.abs(charted.x(sample) - at) < Math.abs(charted.x(charted.samples[nearest]) - at)) nearest = i;
+    });
+    pickSample(nearest);
+  }
+  document.addEventListener('pointermove', pointAtSample);
+  document.addEventListener('pointerdown', pointAtSample);
+  document.addEventListener('pointerout', function (event) {
+    var svg = event.target.closest && event.target.closest('[data-chart]');
+    if (!svg || svg.contains(event.relatedTarget) || event.pointerType !== 'mouse') return;
+    if (!svg.matches(':focus-visible')) pickSample(-1);
+  });
+  document.addEventListener('focusout', function (event) {
+    if (event.target.matches && event.target.matches('[data-chart]')) pickSample(-1);
+  });
+  // The arrow keys move from check to check (from the latest, when none is picked), Home and End to the first and last
+  document.addEventListener('keydown', function (event) {
+    var svg = event.target.closest && event.target.closest('[data-chart]');
+    if (!svg || !charted || !/^(ArrowLeft|ArrowRight|Home|End)$/.test(event.key)) return;
+    var last = charted.samples.length - 1;
+    var i = charted.samples.map(function (sample) { return sample.checked_at; }).indexOf(state.sample);
+    event.preventDefault();
+    pickSample(event.key === 'Home' ? 0 : event.key === 'End' || i < 0 ? last : Math.max(0, Math.min(last, i + (event.key === 'ArrowLeft' ? -1 : 1))));
   });
 
   // The owl's eyes follow a mouse over the night panel: both look the same way, from between the eyes, and go all
