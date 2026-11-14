@@ -2814,6 +2814,80 @@
   });
   stillness.addEventListener('change', function () { lookAt(gaze); });
 
+  // A finger drags the site detail back out to the right, where it came from. It follows the finger, closes when let
+  // go past a third of its width or with a flick, and slides back otherwise, so a drag can be taken back by letting
+  // go early or dragging it home. Up and down still scroll (touch-action in the CSS leaves only sideways to us). Not
+  // from the day bars, the chart or a command line, where a finger slides along, and not a form, whose typed words a
+  // slip would lose
+  var swipe = null;
+  var swipedAt = 0;
+
+  function dragDetail(by) {
+    var drawer = regions.detail;
+    // Through the CSSOM, which the CSP allows; --dim lets the backdrop clear as the panel leaves
+    drawer.style.transform = 'translateX(' + by + 'px)';
+    drawer.style.setProperty('--dim', String(Math.max(0, 1 - by / drawer.offsetWidth)));
+  }
+
+  function settleSwipe(close) {
+    var drawer = regions.detail;
+    var done = function () {
+      drawer.classList.remove('is-settling');
+      drawer.style.transform = '';
+      drawer.style.removeProperty('--dim');
+      if (close) closeDetail();
+    };
+    swipe = null;
+    swipedAt = Date.now();
+    // Let go, it carries on out or eases home in 0.2 s; at once for people who prefer reduced motion
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) return done();
+    drawer.classList.add('is-settling');
+    dragDetail(close ? drawer.offsetWidth : 0);
+    setTimeout(done, 200);
+  }
+
+  regions.detail.addEventListener('pointerdown', function (event) {
+    if (event.pointerType !== 'touch' || !event.isPrimary || swipe || regions.detail.classList.contains('is-settling')) return;
+    if (!regions.detail.querySelector('.drawer-inner:not(.is-form)') || (event.target.closest && event.target.closest('.days, .chart, .command'))) return;
+    swipe = { id: event.pointerId, x: event.clientX, y: event.clientY, dragged: false, lastX: event.clientX, lastAt: event.timeStamp, speed: 0 };
+  });
+  regions.detail.addEventListener('pointermove', function (event) {
+    if (!swipe || event.pointerId !== swipe.id) return;
+    if (!swipe.dragged) {
+      var dx = event.clientX - swipe.x;
+      var dy = Math.abs(event.clientY - swipe.y);
+      if (Math.abs(dx) < 12 && dy < 12) return;
+      // Up, down or to the left is not a drag out: the finger scrolls, or means something else
+      if (dx < dy * 1.5) { swipe = null; return; }
+      swipe.dragged = true;
+      // From where the drag was recognised, so the panel does not jump the first 12 px
+      swipe.x = event.clientX;
+    }
+    if (event.timeStamp > swipe.lastAt) swipe.speed = 0.6 * (event.clientX - swipe.lastX) / (event.timeStamp - swipe.lastAt) + 0.4 * swipe.speed;
+    swipe.lastX = event.clientX;
+    swipe.lastAt = event.timeStamp;
+    dragDetail(Math.max(0, event.clientX - swipe.x));
+  });
+  regions.detail.addEventListener('pointerup', function (event) {
+    if (!swipe || event.pointerId !== swipe.id) return;
+    if (!swipe.dragged) { swipe = null; return; }
+    var by = Math.max(0, event.clientX - swipe.x);
+    // A flick: still moving right, faster than half a pixel a millisecond, when the finger lifts
+    var flick = event.timeStamp - swipe.lastAt < 100 && swipe.speed > 0.5 && by > 24;
+    settleSwipe(by > regions.detail.offsetWidth / 3 || flick);
+  });
+  regions.detail.addEventListener('pointercancel', function (event) {
+    if (!swipe || event.pointerId !== swipe.id) return;
+    if (swipe.dragged) settleSwipe(false);
+    else swipe = null;
+  });
+  // A finger that lifts over a button after a drag did not press it
+  regions.detail.addEventListener('click', function (event) {
+    if (Date.now() - swipedAt > 400) return;
+    event.stopPropagation();
+    event.preventDefault();
+  }, true);
+
   // A click on the backdrop closes the detail, as Esc does
   regions.detail.addEventListener('click', function (event) {
     if (event.target === regions.detail) closeDetail();

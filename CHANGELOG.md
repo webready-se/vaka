@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Added
 
 - **The response time chart tells each check it is pointed at.** A mouse over it, a finger sliding along it or the arrow keys pick the nearest check: a line and a dot mark it, and the line above the chart says "14:35: 412 ms" in its summary's place. A red mark says what failed, "14:40: failed, the site answered 503" or "no answer", where before it was only called red. The summary now says when the slowest check was: "Typically 180 ms, slowest 950 ms at 14:35". A screen reader meets the chart as a slider that reads out each check.
+- **On a phone, a finger drags the site detail closed.** Dragged to the right, where it came from, the panel follows the finger and the page behind clears with it. Let go past a third of its width, or with a flick, it closes; let go earlier, or dragged back, it slides home, so a drag can be taken back. Up and down scroll as before, the 30 days of bars and the response time chart keep the finger that slides along them, and a form is never dragged away, since a slip would lose what was typed. For people who prefer reduced motion the panel closes or returns at once when the finger lifts.
 
 ### Changed
 

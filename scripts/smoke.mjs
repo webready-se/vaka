@@ -768,6 +768,35 @@ async function main() {
   await evaluate(() => document.querySelector('.site-row').click());
   await sleep(600);
   await screenshot('phone-detail');
+  // A finger drags the detail out to the right: let go early it comes home, past a third it closes, and up and down or the day bars never drag it
+  const swiped = await evaluate(async () => {
+    const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+    const drawer = document.querySelector('dialog.drawer');
+    const touch = (node, type, x, y) => node.dispatchEvent(new PointerEvent(type, { bubbles: true, pointerType: 'touch', pointerId: 7, isPrimary: true, clientX: x, clientY: y }));
+    const drag = async (node, toX, toY, lift = true) => {
+      const r = node.getBoundingClientRect();
+      const x = r.left + 20, y = r.top + r.height / 2;
+      touch(node, 'pointerdown', x, y);
+      for (let i = 1; i <= 8; i++) { touch(node, 'pointermove', x + toX * i / 8, y + toY * i / 8); await sleep(30); }
+      const during = drawer.style.transform;
+      if (lift) { await sleep(150); touch(node, 'pointerup', x + toX, y + toY); }
+      return during;
+    };
+    const head = drawer.querySelector('h2');
+    const out = {};
+    out.early = await drag(head, 90, 4);
+    await sleep(300);
+    out.home = drawer.open && drawer.style.transform === '' && !drawer.classList.contains('is-settling');
+    out.down = await drag(head, 10, 120);
+    out.bars = await drag(drawer.querySelector('.days'), 200, 0);
+    out.far = await drag(head, 220, 6);
+    await sleep(300);
+    out.closed = !drawer.open && drawer.style.transform === '';
+    return out;
+  });
+  if (!/^translateX\((6\d)(\.\d+)?px\)$/.test(swiped.early) || !swiped.home) fails.push(`a finger drags the detail to the right, and let go early it comes home (got "${swiped.early}")`);
+  if (swiped.down || swiped.bars) fails.push(`scrolling up and down, or a finger on the day bars, never drags the detail (got "${swiped.down}", "${swiped.bars}")`);
+  if (!swiped.closed) fails.push(`dragged past a third of its width, the detail closes (got "${swiped.far}")`);
 
   // While someone watches, the outages end: the red glow fades and the owl's eyes relax, once
   await send('Emulation.clearDeviceMetricsOverride');
