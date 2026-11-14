@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **On a phone, a finger drags the site detail closed.** Dragged to the right, where it came from, the panel follows the finger and the page behind clears with it. Let go past a third of its width, or with a flick, it closes; let go earlier, or dragged back, it slides home, so a drag can be taken back. Up and down scroll as before, the 30 days of bars and the response time chart keep the finger that slides along them, and a form is never dragged away, since a slip would lose what was typed. For people who prefer reduced motion the panel closes or returns at once when the finger lifts.
+
 ## [0.5.0] - 2026-11-14
 
 ### Added

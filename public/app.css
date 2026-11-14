@@ -555,7 +555,12 @@ html:has(.drawer[open]) { overflow: hidden; scrollbar-gutter: stable; }
 .drawer[open]::backdrop { animation: backdrop-in 0.15s ease-out; }
 @keyframes slide-in { from { transform: translateX(40px); } }
 @keyframes backdrop-in { from { opacity: 0; } }
-.drawer::backdrop { background: rgb(15 23 42 / 0.45); backdrop-filter: blur(2px); }
+.drawer::backdrop { background: rgb(15 23 42 / 0.45); backdrop-filter: blur(2px); opacity: var(--dim); }
+/* A finger drags the detail back out to the right (app.js): up and down scroll it, sideways is the drag. The backdrop
+   clears with it through --dim, registered as a number so that it can ease when the finger lets go */
+@property --dim { syntax: '<number>'; inherits: true; initial-value: 1; }
+.drawer { touch-action: pan-y pinch-zoom; }
+.drawer.is-settling { transition: transform 0.2s ease-out, --dim 0.2s ease-out; }
 .drawer-inner { padding: 22px 24px 32px; }
 .drawer-head { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; gap: 14px; align-items: center; }
 .drawer-head .medallion { grid-row: auto; }
