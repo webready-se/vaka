@@ -19,13 +19,19 @@ const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const out = join(root, 'docs/screenshots');
 // A port the system hands out, never a fixed one: another project's test server on the same machine may hold
 // a fixed port, and then a check that something answers there passes against the wrong server
-const freePort = () => new Promise((resolvePort, reject) => {
-  const srv = createServer();
-  srv.once('error', reject);
-  srv.listen(0, '127.0.0.1', () => { const { port } = srv.address(); srv.close(() => resolvePort(port)); });
-});
-const PHP_PORT = await freePort();
-const CDP_PORT = await freePort();
+const freePorts = async (count) => {
+  // All held open until each is known, so no two are the same: a port handed out twice let a server
+  // fail to start while the wait for it passed against another one
+  const servers = await Promise.all(Array.from({ length: count }, () => new Promise((resolveServer, reject) => {
+    const srv = createServer();
+    srv.once('error', reject);
+    srv.listen(0, '127.0.0.1', () => resolveServer(srv));
+  })));
+  const ports = servers.map((srv) => srv.address().port);
+  await Promise.all(servers.map((srv) => new Promise((resolveClose) => srv.close(resolveClose))));
+  return ports;
+};
+const [PHP_PORT, CDP_PORT] = await freePorts(2);
 const tmp = mkdtempSync(join(tmpdir(), 'vaka-media-'));
 const children = [];
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
