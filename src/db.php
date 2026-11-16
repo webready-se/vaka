@@ -198,6 +198,10 @@ function migrations(): array
             'INSERT INTO share_groups (token_id, group_id) SELECT token_id, group_id FROM share_groups_old',
             'DROP TABLE share_groups_old',
         ],
+        10 => [
+            // A path on the site that uptime asks instead of its address, such as /up: '' for the address itself
+            "ALTER TABLE sites ADD COLUMN check_path TEXT NOT NULL DEFAULT ''",
+        ],
     ];
 }
 

@@ -124,7 +124,8 @@ function run_uptime(PDO $db, array $config, int $now): array
  */
 function check_uptime(PDO $db, array $config, array $sites, int $now, array $windows, array &$summary): array
 {
-    $responses = fetch_many(array_column($sites, 'url', 'id'), $config['uptime_timeout'], user_agent($config), 20, $config['ssl_ca_file']);
+    // Each site's uptime path, if it has one: the other checks stay on its address
+    $responses = fetch_many(array_combine(array_column($sites, 'id'), array_map('uptime_url', $sites)), $config['uptime_timeout'], user_agent($config), 20, $config['ssl_ca_file']);
     $checkedAt = utc_now($now);
     $failing = [];
 

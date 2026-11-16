@@ -87,7 +87,7 @@ src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines 
 src/config.php           parse_env(), load_env(), resolve_path(), int_list(), old_release_warning() (a release that is not current/'s: told on STDERR on every command, which still runs); timezone_setting() and time_format_setting() (TIMEZONE and TIME_FORMAT as in Puls: unset is the server's zone, a wrong value never stops a run and is shown), clock_text()
 src/db.php               get_db(), enable_wal(), migrations(), run_migrations()
 src/cli.php              parse_args(), allow_options(), prompt(), ask(), confirm(), choose(), print_table(), fail()
-src/sites.php            CHECKS, POLICIES, normalize_url(), groups and sites (validation, storage, plain-words descriptions); host_resolves() and unresolved_note() (a new address not in DNS waits for "Add anyway": a typo is caught before it alerts)
+src/sites.php            CHECKS, POLICIES, normalize_url(), clean_check_path() and uptime_url() (an uptime path on the site's own host, for uptime only), groups and sites (validation, storage, plain-words descriptions); host_resolves() and unresolved_note() (a new address not in DNS waits for "Add anyway": a typo is caught before it alerts)
 src/import.php           parse_import_csv(), import_sites() (all or nothing, dry run)
 src/commands/groups.php  group:add, group:edit, group:remove, group:list
 src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:import
@@ -163,7 +163,7 @@ Only `public/` is web-served. `src/`, `data/`, `users.json` and `.env` must stay
 
 ```text
 groups       id, name, policy, delay_minutes, slack_webhook, webhook_url, email, created_at
-sites        id, group_id, url (unique), name, keyword, interval_minutes, paused, disabled_checks,
+sites        id, group_id, url (unique), name, keyword, check_path, interval_minutes, paused, disabled_checks,
              ip, cdn, server, created_at                        (ip and cdn from the last check; server set by hand)
 servers      ip, label                                           (optional label for a server)
 check_state  site_id, check_name, status, summary, details (JSON), fail_count, checked_at, next_at, changed_at,
@@ -188,7 +188,7 @@ Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are sto
 
 | Check | Default interval | How | Status | Alerts |
 |-------|------------------|-----|--------|--------|
-| `uptime` | 5 min (per site), in a minute of its own (`next_uptime_slot()`: site id modulo the interval), so the checks are spread; a failing site is rechecked every run | GET via curl_multi, follows redirects, `UPTIME_TIMEOUT`; records response time and the IP it answered on | `ok` on 2xx/3xx (and keyword found); `fail` after `DOWN_AFTER_FAILURES` consecutive failures | down, still down (every `REMIND_EVERY_HOURS`, 4), recovered |
+| `uptime` | 5 min (per site; the site's uptime path instead of its address when it has one), in a minute of its own (`next_uptime_slot()`: site id modulo the interval), so the checks are spread; a failing site is rechecked every run | GET via curl_multi, follows redirects, `UPTIME_TIMEOUT`; records response time and the IP it answered on | `ok` on 2xx/3xx (and keyword found); `fail` after `DOWN_AFTER_FAILURES` consecutive failures | down, still down (every `REMIND_EVERY_HOURS`, 4), recovered |
 | `ssl` | 6 h | `stream_socket_client` with `capture_peer_cert`, `openssl_x509_parse`; behind Cloudflare the certificate is Cloudflare's (`renewed_by`, `ssl_advice()`) | `warn` within 14 days, `fail` when expired or invalid | at `SSL_ALERT_DAYS` (14, 7, 1), invalid, recovered |
 | `domain` | 24 h (1 h after a failed lookup) | RDAP, base URL from the IANA bootstrap file (cached in `data/` for a week); WHOIS only for the TLDs in `WHOIS_SERVERS` (.se and .nu have no RDAP), reading only the `expires:` line | `warn` within `DOMAIN_ALERT_DAYS`, `fail` when expired, `unknown` when nothing readable (no other WHOIS parsing) | at `DOMAIN_ALERT_DAYS`, expired, renewed; one alert per domain for sites that share it |
 | `exposed` | 24 h (1 h while something is public) | GET each known path next to the site plus a made-up path as baseline, 64 KB each; match content signatures | `fail` for a file with secrets, code or data; `warn` for one that only tells versions and paths | each new file, all private again |
@@ -295,8 +295,8 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka run` | Run due checks and send alerts (cron, every minute) |
 | `php vaka check [<url>]` | Run every check once against a URL and print the result (no state, no alerts) |
 | `php vaka status` | Overview of every site in the terminal |
-| `php vaka site:add [<url>] [--group=] [--name=] [--keyword=] [--interval=]` | Add a site |
-| `php vaka site:edit [<url>]` | Change group, name, keyword, interval, paused, disabled checks, server (`--server=<label>`); `site:edit <server> --group=` moves every site on a server (IP or name, the same rule as `snooze`); `site:edit --group=` without a site moves several picked from a list (ranges, 0 for all), offering to add a missing group |
+| `php vaka site:add [<url>] [--group=] [--name=] [--keyword=] [--check-path=] [--interval=]` | Add a site (`--check-path=/up`: uptime asks that path on the site's host instead, the other checks stay on the address) |
+| `php vaka site:edit [<url>]` | Change group, name, keyword, uptime path (`--check-path=`), interval, paused, disabled checks, server (`--server=<label>`); `site:edit <server> --group=` moves every site on a server (IP or name, the same rule as `snooze`); `site:edit --group=` without a site moves several picked from a list (ranges, 0 for all), offering to add a missing group |
 | `php vaka site:remove [<url>]` / `site:list` | Remove a site and its history / list sites |
 | `php vaka site:import [<file.csv>]` | Import sites from CSV (`group,url,enabled`) |
 | `php vaka group:add [<name>]` / `group:edit` / `group:remove` / `group:list` | Groups: policy, delay, Slack webhook, JSON webhook, email |

@@ -37,6 +37,18 @@ test('group:add with a bad policy fails with a helpful message', function () {
         ->and($r['err'])->toContain('immediate, delayed, digest or silent');
 });
 
+test('site:add --check-path sets the uptime path, site:list shows it, and site:edit clears it', function () {
+    $r = vaka(['site:add', 'shop.example', '--check-path=/up'], $this->env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and(vaka(['site:list'], $this->env)['out'])->toContain('uptime checks /up');
+    $r = vaka(['site:edit', 'shop.example', '--check-path='], $this->env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and(vaka(['site:list'], $this->env)['out'])->not->toContain('uptime checks');
+    $r = vaka(['site:edit', 'shop.example', '--check-path=https://other.example/up'], $this->env);
+    expect($r['exit'])->toBe(1)
+        ->and($r['err'])->toContain('Give the path only, such as /up');
+});
+
 test('site:add, site:list and site:edit', function () {
     vaka(['group:add', 'Customers'], $this->env);
     $r = vaka(['site:add', 'Shop.Example/', '--group=Customers', '--keyword=Add to cart'], $this->env);

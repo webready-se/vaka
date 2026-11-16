@@ -1082,7 +1082,8 @@
       h('p', { class: 'days-legend', 'aria-hidden': 'true' }, [h('span', {}, '30 days ago'), h('span', {}, 'Today')]),
       dayKey(d.days, paused),
       // Uptime first, all of it (Vaka's main job), then what the other checks see, then their detail
-      h('h3', {}, 'Response time, last 24 hours'),
+      // With an uptime path, the times are that path's
+      h('h3', {}, site.check_path ? 'Response time of ' + site.check_path + ', last 24 hours' : 'Response time, last 24 hours'),
       chart(d.samples),
       h('h3', { id: 'seen-title' }, 'What Vaka sees'),
       seenTiles(site, editable),
@@ -1346,6 +1347,7 @@
     rows.push(['Group', site.group || 'No group']);
     rows.push(['Checked every', site.interval_minutes + ' min']);
     if (site.keyword) rows.push(['Looks for the text', '"' + site.keyword + '"']);
+    if (site.check_path) rows.push(['Uptime checks', site.check_path]);
     if (setup) {
       rows.push(['Checks', h('ul', { class: 'check-chips' }, setup.checks.map(function (check) {
         var on = (site.checks_off || []).indexOf(check.key) === -1;
@@ -1386,12 +1388,12 @@
       errors: {},
       confirmRemove: false,
       values: site ? {
-        url: site.url, group: site.group || '', name: site.name, keyword: site.keyword,
+        url: site.url, group: site.group || '', name: site.name, keyword: site.keyword, check_path: site.check_path || '',
         interval: site.interval_custom === null ? '' : String(site.interval_custom), paused: site.status === 'paused',
         checks: setup.checks.map(function (c) { return c.key; }).filter(function (key) { return site.checks_off.indexOf(key) === -1; })
       } : {
         // A good start: every check on, the only group if there is one
-        url: '', group: group || (setup.groups.length === 1 ? setup.groups[0] : ''), name: '', keyword: '', interval: '', paused: false,
+        url: '', group: group || (setup.groups.length === 1 ? setup.groups[0] : ''), name: '', keyword: '', check_path: '', interval: '', paused: false,
         checks: setup.checks.map(function (c) { return c.key; })
       }
     };
@@ -1518,6 +1520,7 @@
         field('group', 'Group', group, groupHint(v.group)),
         field('name', 'Name', textInput('name', v.name, { spellcheck: 'true' }), 'Optional, shown with the address.'),
         field('keyword', 'Text that must be on the page', textInput('keyword', v.keyword), 'Optional. Catches an error page that still answers 200 OK.'),
+        field('check_path', 'Path for uptime', textInput('check_path', v.check_path, { placeholder: '/up', autocapitalize: 'off' }), 'Optional. Uptime checks this path instead, such as /up: a page that tests the database too, where a cached start page would answer without it. The other checks stay on the address.'),
         field('interval', 'Check uptime', interval, 'A site that fails is checked again every minute regardless.'),
         checks,
         paused,
@@ -1538,7 +1541,7 @@
   function formValues(formNode) {
     var data = new FormData(formNode);
     return {
-      url: data.get('url') || '', group: data.get('group') || '', name: data.get('name') || '', keyword: data.get('keyword') || '',
+      url: data.get('url') || '', group: data.get('group') || '', name: data.get('name') || '', keyword: data.get('keyword') || '', check_path: data.get('check_path') || '',
       interval: data.get('interval') || '', paused: data.get('paused') === 'on', checks: data.getAll('checks')
     };
   }

@@ -609,6 +609,15 @@ test('the read API answers a share token with the sites in its scope, in stable 
         ->and(array_column($r['json']['sites'], 'label'))->toBe(['shop.example']);
 });
 
+test('a site in detail says its uptime path', function () {
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'check_path' => '/up']);
+    $now = time();
+    $token = create_share_token($this->db, $shop, [], '', utc_now($now + 86400), $now)['token'];
+    expect(http_request('GET', WEB . '/?api&share=' . $token)['json']['site'])->toMatchArray(['keyword' => '', 'check_path' => '/up']);
+    $admin = ($this->login)('admin', 'admin password')['jar'];
+    expect(http_request('GET', WEB . "/?api=site&id={$shop}", ['jar' => $admin])['json']['site']['check_path'])->toBe('/up');
+});
+
 test('a domain due for renewal is said with what to do, while its status stays ok', function () {
     $shop = add_site($this->db, ['url' => 'https://shop.example']);
     $now = time();

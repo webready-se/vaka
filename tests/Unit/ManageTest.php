@@ -36,6 +36,15 @@ test('save_site_form adds a site, changes it, and writes who did what in its his
     expect($events)->toBe(['Added by admin', 'Changed by admin: address now shop.example/start, named "The shop", looks for "Welcome", Mail DNS turned off']);
 });
 
+test('the dashboard sets an uptime path, says a wrong one under its field, and writes it in the history', function () {
+    $saved = save_site_form($this->db, test_config(), ['url' => 'shop.example', 'check_path' => '/up', 'checks' => CHECKS], null, 'admin', $this->now);
+    expect(find_site($this->db, 'shop.example')['check_path'])->toBe('/up')
+        ->and(site_form_input($this->db, ['url' => 'shop.example', 'check_path' => 'https://other.example/up'], $saved['id'])['errors'])->toBe(['check_path' => "Give the path only, such as /up: it is asked on the site's own address."]);
+    $cleared = save_site_form($this->db, test_config(), ['url' => 'https://shop.example', 'check_path' => '', 'checks' => CHECKS], $saved['id'], 'admin', $this->now + 60);
+    expect($cleared['changes'])->toBe(['uptime checks the address again'])
+        ->and(describe_site_changes($this->db, find_site($this->db, 'shop.example'), ['check_path' => '/health'] + find_site($this->db, 'shop.example'), 5))->toBe(['uptime checks /health']);
+});
+
 test('saving a site without changing what is checked keeps every check on its schedule', function () {
     $saved = save_site_form($this->db, test_config(), ['url' => 'shop.example', 'checks' => CHECKS], null, 'admin', $this->now);
     $schedule = fn () => $this->db->query('SELECT check_name, next_at FROM check_state ORDER BY check_name')->fetchAll(PDO::FETCH_KEY_PAIR);

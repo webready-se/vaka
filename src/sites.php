@@ -422,7 +422,7 @@ function describe_destinations(array $group, array $config): string
 
 /**
  * Validated site columns for the fields present in $input (url, group,
- * name, keyword, interval, paused, disabled_checks, server).
+ * name, keyword, check_path, interval, paused, disabled_checks, server).
  */
 function clean_site_fields(PDO $db, array $input): array
 {
@@ -444,6 +444,7 @@ function clean_site_fields(PDO $db, array $input): array
     }
     if (array_key_exists('name', $input)) $fields['name'] = clean_text((string) $input['name'], 100, 'site name');
     if (array_key_exists('keyword', $input)) $fields['keyword'] = clean_text((string) $input['keyword'], 200, 'keyword');
+    if (array_key_exists('check_path', $input)) $fields['check_path'] = clean_check_path((string) $input['check_path']);
     if (array_key_exists('server', $input)) $fields['server'] = clean_text((string) $input['server'], 100, 'server name');
     if (array_key_exists('interval', $input)) {
         $fields['interval_minutes'] = clean_minutes((string) $input['interval'], 'The interval is a number of minutes between 1 and 1440');
@@ -496,9 +497,35 @@ function update_site(PDO $db, int $id, array $input): void
     // a new URL is a new target for every check
     if (isset($fields['url'])) {
         $db->prepare('UPDATE check_state SET next_at = NULL WHERE site_id = ?')->execute([$id]);
-    } elseif (array_intersect_key($fields, array_flip(['keyword', 'interval_minutes', 'paused']))) {
+    } elseif (array_intersect_key($fields, array_flip(['keyword', 'check_path', 'interval_minutes', 'paused']))) {
         $db->prepare("UPDATE check_state SET next_at = NULL WHERE site_id = ? AND check_name = 'uptime'")->execute([$id]);
     }
+}
+
+/**
+ * A path for uptime to ask instead of the site's address, such as /up: a
+ * start page served from cache answers with the database down. Only a path,
+ * so it is always on the site's own host: '' for the address itself.
+ */
+function clean_check_path(string $path): string
+{
+    $path = trim($path);
+    if ($path === '') return '';
+    if (str_contains($path, '://')) throw new InvalidArgumentException("Give the path only, such as /up: it is asked on the site's own address");
+    if (preg_match('/\s/', $path)) throw new InvalidArgumentException('The path cannot contain spaces: write %20 for one');
+    if (preg_match('/[\x00-\x1F\x7F]/', $path)) throw new InvalidArgumentException('The path cannot contain control characters');
+    if (str_contains($path, '#')) throw new InvalidArgumentException('The path cannot contain #: the part after it never reaches the site');
+    $path = '/' . ltrim($path, '/');
+    if (strlen($path) > 200) throw new InvalidArgumentException('The path can be at most 200 characters');
+    return $path;
+}
+
+/** The address uptime asks: the site's own, or its uptime path on the site's host and port. */
+function uptime_url(array $site): string
+{
+    if (($site['check_path'] ?? '') === '') return $site['url'];
+    $parts = parse_url($site['url']);
+    return $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '') . $site['check_path'];
 }
 
 /** Minutes between uptime checks for a site. */

@@ -23,6 +23,18 @@ beforeEach(function () {
     $this->events = fn () => $this->db->query("SELECT e.status, e.previous, e.message FROM events e WHERE e.check_name = 'uptime' ORDER BY e.id")->fetchAll();
 });
 
+test('with an uptime path, uptime asks that path on the site, and the keyword is looked for there', function () {
+    $down = add_site($this->db, ['url' => 'http://127.0.0.1:8791', 'check_path' => '/up-broken']);
+    add_site($this->db, ['url' => 'http://127.0.0.1:8791/second', 'check_path' => '/up', 'keyword' => 'Welcome to the shop']);
+    run($this->db, $this->config, $this->now);
+
+    // The start page answers 200, its database does not
+    expect(($this->state)('http://127.0.0.1:8791')['summary'])->toContain('503')
+        ->and((int) $this->db->query("SELECT status_code FROM samples WHERE site_id = {$down}")->fetchColumn())->toBe(503)
+        // /up answers, but without the shop page's text
+        ->and(($this->state)('http://127.0.0.1:8791/second')['summary'])->toContain('does not contain "Welcome to the shop"');
+});
+
 test('a site that answers is up, with its response time and IP recorded', function () {
     add_site($this->db, ['url' => 'http://127.0.0.1:8791']);
     $summary = run($this->db, $this->config, $this->now);

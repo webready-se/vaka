@@ -8,6 +8,7 @@ Every 5 minutes (`UPTIME_INTERVAL`, or a site's own `--interval`), Vaka asks for
 
 - It follows up to five redirects (http and https only).
 - **Up** means an answer below 400 within `UPTIME_TIMEOUT` seconds, and, if the site has a keyword, that text on the page (any letter case; HTML entities are decoded).
+- **An uptime path** (`--check-path=/up`, or "Path for uptime" in the dashboard's form) makes uptime ask that path on the site's own host instead of its address. A start page served from a cache answers with the database down, so a green check proves less than it looks; a path such as Laravel's `/up` that tests the database too proves more. The keyword is looked for there, and the response times are that path's, which the site detail says ("Response time of /up"). The certificate, the security headers, exposed files and mail stay on the site's address, and grouping by server holds, since the path is on the same host. A broken start page (a template error) no longer shows in uptime: choose the path for what it proves.
 - **Down** means `DOWN_AFTER_FAILURES` (2) failed checks in a row. After the first failure the site is checked again every minute, so an outage is confirmed in about two minutes and one hiccup alerts nobody.
 - When a site starts failing, the other sites on the same server are checked at once too, so a server that goes down shows up, and is alerted, as one. Not when its domain does not resolve or its keyword is missing: no server was asked, or it answered, so that is the site's own trouble.
 
