@@ -730,6 +730,11 @@ async function main() {
       fails.push('a snooze button in the first row');
     }
 
+    // Where the read API is: a hint for an agent in the source, a link for a person next to logging out
+    expect(q('head link[rel="help"][href$="/llms.txt"]'), 'the page source points an agent at llms.txt');
+    const api = q('.topbar [data-api-link]');
+    expect(api?.textContent.trim() === 'Read API' && api.target === '_blank' && /#use-it-from-an-ai-assistant$/.test(api.href) && /AI assistants/.test(api.getAttribute('aria-label') || ''), 'the top bar links to the read API and AI assistants, in a new tab');
+
     // Theme: system, light, dark, and back
     const theme = q('[data-action="theme"]');
     theme.click();
@@ -770,8 +775,12 @@ async function main() {
     for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
     // On a phone the layout viewport grows with content that is too wide, so measure against the screen
     const shown = (s) => getComputedStyle(document.querySelector(s)).display !== 'none';
-    return { overflow: document.documentElement.scrollWidth - 390, csp: window.__csp, corner: shown('.watch .owl-feet') && !shown('.watch .owl-talons') && !shown('.watch-moon') };
+    // The run state is read whole: the read API's link, set up at a computer, gives it the room
+    const pill = document.querySelector('.run-pill');
+    return { overflow: document.documentElement.scrollWidth - 390, csp: window.__csp, corner: shown('.watch .owl-feet') && !shown('.watch .owl-talons') && !shown('.watch-moon'),
+      topbar: !shown('[data-api-link]') && pill.scrollWidth <= pill.clientWidth };
   });
+  if (!phone.topbar) fails.push('on a phone the run state in the top bar is not cut short, and the read API link is left out');
   if (!phone.corner) fails.push('on a phone the owl stands in the corner on its feet, without the moon');
   if (phone.overflow > 0) fails.push(`no sideways scrolling on a phone (${phone.overflow}px too wide)`);
   if (phone.csp.length) fails.push(`no CSP violations on a phone: ${phone.csp.join(', ')}`);

@@ -121,6 +121,10 @@ Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other C
 - [Read API](docs/api.md): JSON, CSV and Markdown with a read token, also for [your AI assistant](docs/api.md#use-it-from-an-ai-assistant)
 - [Changelog](CHANGELOG.md) and [roadmap](ROADMAP.md)
 
+## Building with an AI agent?
+
+Give your assistant a read-only token, and it can see what is wrong with a site and what to do about it before it changes something: whether it went down after a deploy, and the security headers and mail records to add, as lines to copy. [`?api&format=md`](docs/api.md#use-it-from-an-ai-assistant) is a report written for it, where nothing a site sent can pass itself off as an instruction. [`llms.txt`](https://github.com/webready-se/vaka/blob/main/llms.txt) tells an agent how to read an install. Vaka itself never calls an AI service.
+
 ## License
 
 MIT. Made by [Webready](https://webready.se) in Sweden, sibling of [Puls](https://github.com/webready-se/puls). The dashboard uses the Figtree typeface, under the SIL Open Font License (`public/fonts/OFL.txt`).
