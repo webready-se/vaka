@@ -539,7 +539,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'status' => $row['dns_status'],
             'summary' => $row['dns_summary'],
             'domain' => $dnsDetails['domain'] ?? null,
-            'advice' => $row['dns_status'] === 'warn' ? advice_for($dnsDetails['problem'] ?? '', 0) : '',
+            'advice' => $row['dns_status'] === 'warn' ? mail_advice($dnsDetails) : '',
         ] + $when('dns');
     }
     $serverKey = server_key($row);

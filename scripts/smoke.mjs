@@ -579,6 +579,8 @@ async function main() {
       expect(/It also allows maps\.example and fonts\.example, which the start page loads nothing from\.$/.test(unused?.querySelector('.header-why')?.textContent || ''), `it names the hosts the page loads nothing from (got "${unused?.querySelector('.header-why')?.textContent}")`);
       expect(unused?.querySelector('.fix-label')?.textContent === 'Your policy without maps.example and fonts.example, still as Report-Only:', `the line says it is still Report-Only (got "${unused?.querySelector('.fix-label')?.textContent}")`);
       expect(/^Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https:\/\/stats\.example; style-src 'self' 'unsafe-inline';/.test(unused?.querySelector('.header-fix code')?.textContent || ''), `the line is the policy without them (got "${unused?.querySelector('.header-fix code')?.textContent}")`);
+      // Its domain has no email and no records: the mail section leads with why it still needs them
+      expect(all('dialog.drawer .headers-lead').some((p) => /^This domain has no mail server and sends no email, but anyone can still send email that claims to come from it\./.test(p.textContent)), 'a domain without email is told why it still needs SPF and DMARC');
       q('dialog.drawer [data-action="close"]').click();
     }
 

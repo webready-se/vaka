@@ -198,12 +198,14 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             ->execute([$graded['status'], json_encode($confirmed['confirmed']), $id]);
     }
 
-    // Mail DNS: most domains have SPF and DMARC, some only monitor, a couple lack DMARC
+    // Mail DNS: most domains have SPF and DMARC, some only monitor, a couple lack DMARC, and one has no email and no records
     if (!in_array($story, ['paused', 'hostile'], true)) {
         $domain = (string) parse_url($url, PHP_URL_HOST);
         $records = match ($url) {
             'https://cafe.example', 'https://builder.example' => ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example ~all'], 'dmarc' => []],
             'https://example.net', 'https://deals2.example' => ['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ["v=DMARC1; p=none; rua=mailto:dmarc@{$domain}"]],
+            // A domain with no email at all, and nothing that says so: anyone can send in its name
+            'https://deals3.example' => ['mx' => [], 'spf' => [], 'dmarc' => []],
             default => ['mx' => ['10 mx1.mail.example', '20 mx2.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => ["v=DMARC1; p=reject; rua=mailto:dmarc@{$domain}"]],
         };
         $mail = evaluate_mail_dns($domain, $records);
