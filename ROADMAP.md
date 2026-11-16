@@ -139,6 +139,16 @@ What the first weeks of reading Vaka's reports, from sibling tools and an AI ass
 - [x] A domain near its expiry gets a softer line under "Worth improving" a while before the first threshold, since sorting out a registrar's payment problem takes time (done 2026-11-16: within twice the first threshold, 31 to 60 days by default; in the site detail too, and `renewal_near` in the read API)
 - [x] An uptime path per site (done 2026-11-16: in the dashboard's form too, "Uptime checks /up" in the settings and "Response time of /up" over the chart, `check_path` in the read API) (`site:add --check-path=/up`, and `site:edit`): a start page served from cache answers with the database down, so a green check proves less than it looks. Only a path on the site's own host and only for uptime: SSL, headers and exposed files stay on the site's URL, and grouping by server holds. The keyword works on that path. The dashboard says "Checks /up", since the response times are then that path's, and a broken start page (a template error) no longer shows in uptime
 
+## Milestone 8: A live demo
+
+A demo that needs no account, as Puls has at demo.puls.webready.se: in a comparison it is where people click before they read anything. Decided 2026-11-16. A share link and nothing else, so a visitor cannot change what the next one sees: a login with a published password was set aside for that reason, as in Puls (snooze writes).
+
+- [x] A share link opens a read-only dashboard (done 2026-11-16, for customers too: `/?share=TOKEN`)
+- [x] The seed keeps its link and stays fresh (done 2026-11-16): `--token=` stores the demo's read token for every group, the same on every run, and `--refresh` seeds the database again in place, in one transaction, with the same site ids. Everything is dated from now, so a run every minute keeps it as if Vaka had just looked
+- [ ] The install at demo.vaka.webready.se: a site with no users (nothing to log in to), no `php vaka run` (it would check made-up domains and find them all down), the seed with `--refresh` every minute instead, and `/` sent to the share link by the web server. On a server that is already paid for: no new monthly cost
+- [ ] "Try the live demo" right under the tagline in README, and the link as the repository's homepage
+- [ ] Count the demo's visits with Puls, as Puls counts its own demo's (`TRACK_SHARED_URL`): which channel worked after a launch. Needs the shared page's policy to let that one Puls through
+
 ## Ideas
 
 - [ ] Tags on sites, if one group per site proves too narrow
