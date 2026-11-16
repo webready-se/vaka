@@ -136,6 +136,15 @@ test('one site: the CSP item names the inline scripts it would block by their st
     expect($md)->toContain("Add `Content-Security-Policy-Report-Only: default-src 'self'`. Do it last. The inline scripts start: " . md_code('window.dataLayer = window.dataLayer || [];…') . ', ' . md_code('document.write("<b>`x`</b>")') . '.');
 });
 
+test('one site: a Report-Only CSP says what to do with its line, which replaces the one sent', function () {
+    $csp = ['key' => 'csp', 'label' => 'CSP', 'level' => 'missing', 'blocks' => false, 'report_only' => true, 'note' => 'it blocks nothing yet', 'what' => 'Limits which scripts may run',
+        'fix_label' => 'Your policy without maps.example, still as Report-Only:', 'fix' => "Content-Security-Policy-Report-Only: default-src 'self'; object-src 'none'", 'tip' => ''];
+    $md = read_api_markdown_site(report_about(), report_detail(['headers' => ['status' => 'ok', 'grade' => 'B', 'summary' => 'Grade B: 5 of 6 in place, missing CSP', 'items' => [$csp], 'tip' => '']]), REPORT_CONFIG);
+
+    expect($md)->toContain("- **CSP** is missing: " . md_code('it blocks nothing yet') . ". What it does: limits which scripts may run. Your policy without maps.example, still as Report-Only: `Content-Security-Policy-Report-Only: default-src 'self'; object-src 'none'`.")
+        ->and($md)->not->toContain('. Add `Content-Security-Policy-Report-Only');
+});
+
 test('one site: a CSP in place that may stop a script sending back is listed, with its own policy to change', function () {
     $csp = ['key' => 'csp', 'label' => 'CSP', 'level' => 'good', 'blocks' => false, 'unsent' => true, 'note' => 'the script from stats.example may not send anything back, such as visits for statistics: if they have stopped, the line below allows it', 'what' => 'Limits which scripts may run',
         'fix_label' => 'Your policy with stats.example added to connect-src:', 'fix' => "Content-Security-Policy: default-src 'self'; script-src 'self' https://stats.example; connect-src 'self' https://stats.example", 'tip' => CSP_CONNECT_TIP];

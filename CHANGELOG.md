@@ -17,6 +17,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 ### Changed
 
 - **The line to enforce a Report-Only CSP has `object-src 'none'` in it** when the policy has no `object-src`, rather than a tip that asks to add it. Another `object-src` may be on purpose (a PDF in an `<object>`), so the line keeps it and the tip suggests `'none'`.
+- **The report for an AI assistant says what to do with a Report-Only line** ("Your policy under the name that enforces it:"), where it said "Add", although the line replaces the one sent.
 - **The line that tells a day of the 30 days, and now a check of the response times, is above its chart.** Under it, the line was covered by the finger and the hand that point. The summary ("Down on 1 of 30 days, 14 min in all.") is there until something is pointed at, and what is pointed at takes its place in the accent. The line keeps the height of the taller of the two, so the chart never moves under the finger. A finger leaves what it tapped picked, and a press anywhere else lets it go.
 
 ### Fixed
