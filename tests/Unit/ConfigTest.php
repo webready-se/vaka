@@ -62,6 +62,17 @@ test('int_list parses a comma-separated list into unique integers, largest first
         ->and(int_list(''))->toBe([]);
 });
 
+test('an isolated Forge site, under its own user, resolves its releases to its site root too', function () {
+    // Forge isolates a site under /home/<its user>/, not /home/forge/: the database and .env must still outlive a release
+    $root = '/home/shopdemo/demo.example.com/releases/20261117010101';
+    expect(resolve_path('data/vaka.sqlite', $root))->toBe('/home/shopdemo/demo.example.com/data/vaka.sqlite')
+        ->and(env_file($root))->toBe('/home/shopdemo/demo.example.com/.env')
+        ->and(run_dir($root))->toBe('/home/shopdemo/demo.example.com/current')
+        ->and(cron_line($root))->toBe('* * * * * php /home/shopdemo/demo.example.com/current/vaka run')
+        // Only a release under a site in a home: elsewhere a releases/ folder is the project's own
+        ->and(resolve_path('data/vaka.sqlite', '/srv/vaka/releases/20261117010101'))->toBe('/srv/vaka/releases/20261117010101/data/vaka.sqlite');
+});
+
 test('run_dir is where commands run: current/ on a Forge zero-downtime deploy, which follows every release', function () {
     expect(run_dir('/var/www/vaka'))->toBe('/var/www/vaka')
         ->and(run_dir('/home/forge/vaka.example.com/releases/20261026120000'))->toBe('/home/forge/vaka.example.com/current')

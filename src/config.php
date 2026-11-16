@@ -34,6 +34,13 @@ function load_env(string $file): void
 }
 
 /**
+ * A Forge zero-downtime deploy's releases/<n> directory and the site root
+ * that outlives it: /home/forge/<site>, or /home/<its user>/<site> for a site
+ * Forge isolates under a user of its own.
+ */
+const FORGE_RELEASE = '#^(/home/[^/]+/[^/]+)/releases/\d+#';
+
+/**
  * An absolute path as is, a relative one against the project root. On a Forge
  * zero-downtime deploy the root is a releases/<n> directory that is replaced on
  * every deploy, so relative paths resolve to the site root that outlives it.
@@ -41,7 +48,7 @@ function load_env(string $file): void
 function resolve_path(string $path, string $root): string
 {
     if ($path !== '' && $path[0] === '/') return $path;
-    if (preg_match('#^(/home/forge/[^/]+)/releases/\d+#', $root, $m)) {
+    if (preg_match(FORGE_RELEASE, $root, $m)) {
         $root = $m[1];
     }
     return rtrim($root, '/') . '/' . $path;
@@ -74,7 +81,7 @@ function old_release_warning(string $dir): ?string
 /** Where Vaka's commands run from: $root, or on a Forge zero-downtime deploy current/, which follows every release. */
 function run_dir(string $root): string
 {
-    if (preg_match('#^(/home/forge/[^/]+)/releases/\d+#', $root, $m)) return $m[1] . '/current';
+    if (preg_match(FORGE_RELEASE, $root, $m)) return $m[1] . '/current';
     return rtrim($root, '/');
 }
 

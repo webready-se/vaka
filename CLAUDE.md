@@ -80,7 +80,7 @@ Vaka copied kit 0.6.0 (the version line is in the tokens at the top of `public/a
 
 ```text
 vaka                     CLI entrypoint (php vaka <command>), interactive with readline
-config.php               Configuration: loads .env, resolves paths (Forge zero-downtime aware)
+config.php               Configuration: loads .env, resolves paths (Forge zero-downtime aware, an isolated site's /home/<user>/ too)
 .env.example             Environment template (checked in)
 .env                     Optional environment config (gitignored)
 src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines functions only, no side effects
