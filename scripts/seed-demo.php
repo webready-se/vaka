@@ -52,7 +52,8 @@ if (isset($opts['hostile'])) {
 $insertSample = $db->prepare('INSERT INTO samples (site_id, checked_at, status_code, ms, ok, ip) VALUES (?, ?, ?, ?, ?, ?)');
 $db->beginTransaction();
 foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
-    $id = add_site($db, ['url' => $url, 'group' => $group ?? 'none', 'paused' => $story === 'paused', 'keyword' => $story === 'hostile' ? '<script>window.__xss=3</script>' : '']);
+    // The hardened site checks uptime on a path that tests its database too
+    $id = add_site($db, ['url' => $url, 'group' => $group ?? 'none', 'paused' => $story === 'paused', 'keyword' => $story === 'hostile' ? '<script>window.__xss=3</script>' : '', 'check_path' => $url === 'https://www.example.com' ? '/up' : '']);
     $db->prepare('UPDATE sites SET ip = ?, cdn = ?, created_at = ? WHERE id = ?')->execute([$ip, $cdn, utc_now($month), $id]);
     if ($story === 'hostile') $db->prepare('UPDATE sites SET name = ? WHERE id = ?')->execute(['<img src=x onerror="window.__xss=2">', $id]);
     add_event($db, $id, 'uptime', ['status' => 'ok', 'previous' => 'pending', 'message' => 'First check: answered 200 OK in ' . $ms . ' ms'], utc_now($month));

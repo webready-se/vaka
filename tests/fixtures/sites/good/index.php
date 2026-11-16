@@ -30,6 +30,16 @@ switch ($path) {
         file_put_contents((string) $_GET['log'], gmdate('c') . "\n", FILE_APPEND);
         echo 'OK';
         exit;
+    // An uptime path: one that checks the database too, and one whose database is down
+    case '/up':
+        header('Content-Type: text/plain');
+        echo 'OK: the database answers';
+        exit;
+    case '/up-broken':
+        http_response_code(503);
+        header('Content-Type: text/plain');
+        echo 'The database is not answering';
+        exit;
     case '/cdn':
         header('Server: cloudflare');
         header('CF-RAY: 0123456789abcdef-ARN');

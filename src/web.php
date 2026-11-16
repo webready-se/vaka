@@ -674,6 +674,7 @@ function api_site(PDO $db, array $config, array $row, int $now): array
     return [
         'site' => $site + [
             'keyword' => $row['keyword'],
+            'check_path' => $row['check_path'],
             'interval_minutes' => site_interval($row, $config),
             // As the site's settings have it, for the edit form: null is the default interval
             'interval_custom' => $row['interval_minutes'],
@@ -834,6 +835,7 @@ function read_api_site(PDO $db, array $config, array $row, int $hours, int $now)
     $windows = load_windows($db, $now);
     $site = api_site_fields($db, $config, site_summary($db, $config, $row, server_labels($db), $windows, [], $now), $row, $now) + [
         'keyword' => $row['keyword'],
+        'check_path' => $row['check_path'],
         'interval_minutes' => site_interval($row, $config),
         'created_at' => $row['created_at'],
     ];

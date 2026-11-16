@@ -53,8 +53,8 @@ Every command asks for what it needs when you leave out its arguments. `php vaka
 
 | Command | What it does |
 |---------|--------------|
-| `php vaka site:add <url>` | Start watching a site. `--group=`, `--name=`, `--keyword=<text that must be on the page>`, `--interval=<minutes>`, `--disable=ssl,...`, `--pause` |
-| `php vaka site:edit <site>` | Change a site: `--url=`, `--group=<name or none>`, `--name=`, `--keyword=`, `--interval=`, `--pause`, `--resume`, `--disable=`, `--enable=`, `--server=<name>` (for a site behind a CDN) |
+| `php vaka site:add <url>` | Start watching a site. `--group=`, `--name=`, `--keyword=<text that must be on the page>`, `--check-path=<path for uptime, such as /up>`, `--interval=<minutes>`, `--disable=ssl,...`, `--pause` |
+| `php vaka site:edit <site>` | Change a site: `--url=`, `--group=<name or none>`, `--name=`, `--keyword=`, `--check-path=` (empty for the address itself), `--interval=`, `--pause`, `--resume`, `--disable=`, `--enable=`, `--server=<name>` (for a site behind a CDN) |
 | `php vaka site:edit <server> --group=<name or none>` | Move every site on a server to a group, by its IP or name |
 | `php vaka site:edit --group=<name or none>` | Move several sites to a group, picked from a numbered list |
 | `php vaka site:remove <site>` | Stop watching a site and delete its history (`--force` skips the question) |

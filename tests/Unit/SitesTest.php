@@ -178,3 +178,27 @@ test('an international domain name reads as it is written in every summary and a
     $notice = notice(['kind' => 'domain_expiring', 'domain' => 'xn--rksmrgs-5wao1o.example', 'days_left' => 8, 'server_key' => null, 'server' => null, 'summary' => $domain['summary']]);
     expect(alert_text(bundle_notices([$notice], [])[0]['items'][0])['headline'])->toBe('räksmörgås.example (Customers): the domain expires in 8 days');
 })->skip(!function_exists('idn_to_utf8'), 'needs the intl extension');
+
+test('an uptime path is a path on the site itself, and the uptime check asks it there', function () {
+    expect(clean_check_path(''))->toBe('')
+        ->and(clean_check_path(' /up '))->toBe('/up')
+        ->and(clean_check_path('up'))->toBe('/up')
+        ->and(clean_check_path('/health?full=1'))->toBe('/health?full=1')
+        ->and(fn () => clean_check_path('https://other.example/up'))->toThrow(InvalidArgumentException::class, 'Give the path only, such as /up: it is asked on the site\'s own address')
+        ->and(fn () => clean_check_path('/a b'))->toThrow(InvalidArgumentException::class, 'The path cannot contain spaces')
+        ->and(fn () => clean_check_path('/up#top'))->toThrow(InvalidArgumentException::class, 'The path cannot contain #')
+        ->and(fn () => clean_check_path('/' . str_repeat('a', 200)))->toThrow(InvalidArgumentException::class, 'The path can be at most 200 characters');
+    // On the site's own host and port, never under its path
+    expect(uptime_url(['url' => 'https://shop.example/blog', 'check_path' => '/up']))->toBe('https://shop.example/up')
+        ->and(uptime_url(['url' => 'http://127.0.0.1:8791', 'check_path' => '/up']))->toBe('http://127.0.0.1:8791/up')
+        ->and(uptime_url(['url' => 'https://shop.example/blog', 'check_path' => '']))->toBe('https://shop.example/blog')
+        ->and(uptime_url(['url' => 'https://shop.example']))->toBe('https://shop.example');
+
+    // Stored with the site, and a change makes uptime due on the next run
+    $id = add_site($this->db, ['url' => 'https://shop.example', 'check_path' => 'up']);
+    expect(find_site($this->db, (string) $id)['check_path'])->toBe('/up');
+    save_check_state($this->db, $id, 'uptime', ['status' => 'ok', 'summary' => '', 'details' => [], 'fail_count' => 0, 'changed_at' => utc_now()], utc_now(), utc_now(time() + 3600));
+    update_site($this->db, $id, ['check_path' => '']);
+    expect(find_site($this->db, (string) $id)['check_path'])->toBe('')
+        ->and($this->db->query("SELECT next_at FROM check_state WHERE check_name = 'uptime'")->fetchColumn())->toBeNull();
+});

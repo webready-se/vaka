@@ -25,6 +25,7 @@ function site_form_input(PDO $db, array $form, int $id = 0): array
         'group' => $text('group'),
         'name' => $text('name'),
         'keyword' => $text('keyword'),
+        'check_path' => $text('check_path'),
         'interval' => $text('interval'),
         'paused' => !empty($form['paused']),
         'disabled_checks' => implode(',', array_diff(CHECKS, $checks)),
@@ -55,6 +56,7 @@ function describe_site_changes(PDO $db, array $old, array $new, int $defaultInte
     if ($old['group_id'] !== $new['group_id']) $changes[] = $new['group_id'] === null ? 'no group' : 'moved to ' . get_group($db, (int) $new['group_id'])['name'];
     if ($old['name'] !== $new['name']) $changes[] = $new['name'] === '' ? 'name removed' : "named \"{$new['name']}\"";
     if ($old['keyword'] !== $new['keyword']) $changes[] = $new['keyword'] === '' ? 'no longer looks for a text' : "looks for \"{$new['keyword']}\"";
+    if ($old['check_path'] !== $new['check_path']) $changes[] = $new['check_path'] === '' ? 'uptime checks the address again' : "uptime checks {$new['check_path']}";
     if ($old['interval_minutes'] !== $new['interval_minutes']) {
         $changes[] = 'checked every ' . ($new['interval_minutes'] ?? $defaultInterval) . ' min' . ($new['interval_minutes'] === null ? ' (the default)' : '');
     }
@@ -94,7 +96,7 @@ function save_site_form(PDO $db, array $config, array $form, ?int $id, string $u
     }
     $old = find_site($db, (string) $id);
     // The form sends every field: pass on only what changed, so the checks that did not change keep their schedule
-    $columns = ['url' => 'url', 'group' => 'group_id', 'name' => 'name', 'keyword' => 'keyword', 'interval' => 'interval_minutes', 'paused' => 'paused', 'disabled_checks' => 'disabled_checks'];
+    $columns = ['url' => 'url', 'group' => 'group_id', 'name' => 'name', 'keyword' => 'keyword', 'check_path' => 'check_path', 'interval' => 'interval_minutes', 'paused' => 'paused', 'disabled_checks' => 'disabled_checks'];
     $clean = clean_site_fields($db, $checked['input']);
     $changed = array_filter($checked['input'], fn ($value, $key) => $clean[$columns[$key]] != $old[$columns[$key]], ARRAY_FILTER_USE_BOTH);
     update_site($db, $id, $changed);

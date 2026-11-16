@@ -7,6 +7,7 @@ function site_options(array $opts): array
     foreach (['url', 'group', 'name', 'keyword', 'interval', 'server'] as $opt) {
         if (isset($opts[$opt])) $fields[$opt] = $opts[$opt] === true ? '' : $opts[$opt];
     }
+    if (isset($opts['check-path'])) $fields['check_path'] = $opts['check-path'] === true ? '' : $opts['check-path'];
     if (isset($opts['pause'])) $fields['paused'] = true;
     if (isset($opts['resume'])) $fields['paused'] = false;
     return $fields;
@@ -34,6 +35,7 @@ function ask_site_fields(PDO $db, array $config, ?array $current = null): array
     }
     $fields['name'] = ask_optional('Name', $current['name'] ?? '', skip: 'Enter to use the domain');
     $fields['keyword'] = ask_optional('Text that must be on the page', $current['keyword'] ?? '');
+    $fields['check_path'] = ask_optional('Path for uptime to check instead, such as /up', $current['check_path'] ?? '', skip: 'Enter for the address itself');
 
     $default = (string) ($current['interval_minutes'] ?? $config['uptime_interval']);
     $interval = ask('Check every how many minutes', $default);
@@ -88,7 +90,7 @@ function check_names(string|bool $value): array
 
 function cmd_site_add(array $config, array $args, array $opts): void
 {
-    allow_options($opts, ['group', 'name', 'keyword', 'interval', 'server', 'disable', 'pause']);
+    allow_options($opts, ['group', 'name', 'keyword', 'check-path', 'interval', 'server', 'disable', 'pause']);
     $db = get_db($config['db_path']);
     if (isset($args[1])) {
         $fields = ['url' => $args[1]] + site_options($opts);
@@ -116,7 +118,7 @@ function cmd_site_add(array $config, array $args, array $opts): void
 
 function cmd_site_edit(array $config, array $args, array $opts): void
 {
-    allow_options($opts, ['url', 'group', 'name', 'keyword', 'interval', 'server', 'pause', 'resume', 'disable', 'enable']);
+    allow_options($opts, ['url', 'group', 'name', 'keyword', 'check-path', 'interval', 'server', 'pause', 'resume', 'disable', 'enable']);
     $db = get_db($config['db_path']);
     // A server instead of a site: move all its sites at once
     $target = $args[1] ?? null;
@@ -258,6 +260,7 @@ function cmd_site_list(array $config, array $args, array $opts): void
         if ($site['paused']) $notes[] = 'paused';
         if ($site['name'] !== '') $notes[] = "name \"{$site['name']}\"";
         if ($site['keyword'] !== '') $notes[] = "looks for \"{$site['keyword']}\"";
+        if ($site['check_path'] !== '') $notes[] = "uptime checks {$site['check_path']}";
         if ($site['server'] !== '') $notes[] = "server {$site['server']}";
         if ($site['disabled_checks'] !== '') $notes[] = 'skips ' . str_replace(',', ', ', $site['disabled_checks']);
         return [readable_url($site['url']), $site['group_name'] ?? '-', site_interval($site, $config) . ' min', implode('; ', $notes)];

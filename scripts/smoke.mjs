@@ -571,6 +571,15 @@ async function main() {
       q('dialog.drawer [data-action="close"]').click();
     }
 
+    // An uptime path: the settings say it, and the response times are named as that path's
+    await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
+    all('.site-row').find((r) => /www\.example\.com/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'www.example.com', 'the site with an uptime path to open')) {
+      expect(all('dialog.drawer h3').some((h3) => h3.textContent === 'Response time of /up, last 24 hours'), 'the response times are named as the path\'s');
+      expect(all('dialog.drawer .settings dt, dialog.drawer dt').some((dt) => dt.textContent === 'Uptime checks' && dt.nextElementSibling?.textContent === '/up'), 'the settings say which path uptime checks');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // A domain due for renewal: said in the detail with what to do, before the first threshold makes it an incident
     expect(!all('.attention .incident').some((n) => /example\.org/.test(n.textContent) && /domain/.test(n.textContent)), 'a domain due for renewal is not an incident');
     await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
@@ -598,6 +607,7 @@ async function main() {
     if (await waitFor(() => q('dialog.drawer[open] [data-form="site"]'), 'the add-site form to open')) {
       expect(document.activeElement === q('#f-url'), 'the form starts in the address field');
       expect(all('[data-form="site"] [name="checks"]').every((box) => box.checked), 'every check is on to start with');
+      expect(q('[data-form="site"] input[name="check_path"]')?.placeholder === '/up' && /cached start page/.test(q('#f-check_path-hint')?.textContent || ''), 'the form has the uptime path, with why it helps');
       q('[data-form="site"]').requestSubmit();
       if (await waitFor(() => q('#f-url-error'), 'the form to say what is missing')) {
         expect(/Enter the address/.test(q('#f-url-error').textContent) && q('#f-url').getAttribute('aria-invalid') === 'true', 'an empty address is explained under its field');
