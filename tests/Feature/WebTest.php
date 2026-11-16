@@ -614,8 +614,11 @@ test('an unknown or revoked share token is a 404, an expired one says when it ex
             ->and($r['json'])->toBe(['error' => 'No such read token: it may have been revoked']);
     }
     $r = http_request('GET', WEB . '/?api&share=' . $expired);
+    // The command has a day to copy: 90 days from today, as share:create offers
+    $day = share_default_day('Europe/Stockholm', time());
+    $words = DateTimeImmutable::createFromFormat('!Y-m-d', $day)->format('j M Y');
     expect($r['status'])->toBe(401)
-        ->and($r['json']['error'])->toMatch('/^This read token expired on 2[67] Jan 2026\. Extend it with `php vaka share:edit vaka_[a-f0-9]{8} --expires=YYYY-MM-DD`, or create a new one with `php vaka share:create`\.$/');
+        ->and($r['json']['error'])->toMatch('/^This read token expired on 2[67] Jan 2026\. Extend it to ' . preg_quote($words, '/') . ' with `php vaka share:edit vaka_[a-f0-9]{8} --expires=' . $day . '`, or create a new one with `php vaka share:create`\.$/');
 
     expect(http_request('GET', WEB . '/?api&site=blog.example&share=' . $token)['status'])->toBe(404)
         ->and(http_request('GET', WEB . '/?api=overview&share=' . $token)['status'])->toBe(401)
@@ -751,6 +754,23 @@ test('while "Check again" waits, the page asks only when each check of the site 
     expect(http_request('GET', WEB . "/?api=site-times&id={$new}", ['jar' => $jar])['body'])->toBe('{"times":{}}');
 });
 
+test('a token says when it stops working, in JSON and in the report near its last day', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $now = time();
+    $far = create_share_token($this->db, null, [$customers], '', $farAt = utc_now($now + 60 * 86400), $now)['token'];
+    $soon = create_share_token($this->db, null, [$customers], '', utc_now($now + 3 * 86400), $now);
+    $never = create_share_token($this->db, null, [$customers], '', null, $now)['token'];
+
+    expect(http_request('GET', WEB . '/?api&share=' . $far)['json'])->toMatchArray(['token_expires_at' => $farAt])
+        ->and(array_keys(http_request('GET', WEB . '/?api&share=' . $far)['json']))->toContain('scope', 'token_expires_at')
+        ->and(http_request('GET', WEB . '/?api&share=' . $never)['json'])->toHaveKey('token_expires_at')
+        ->and(http_request('GET', WEB . '/?api&share=' . $never)['json']['token_expires_at'])->toBeNull()
+        ->and(http_request('GET', WEB . '/?api&format=md&share=' . $far)['body'])->toContain('> This token works until ')
+        ->and(http_request('GET', WEB . '/?api&format=md&share=' . $soon['token'])['body'])->toContain("**This token's last day is ")
+        ->and(http_request('GET', WEB . '/?api&format=md&share=' . $soon['token'])['body'])->toContain('`php vaka share:edit ' . share_token_start($soon['token']) . ' --expires=' . share_default_day('Europe/Stockholm', time()) . '`');
+});
+
 test('a logged-in user reads the same API for the sites they may see', function () {
     add_group($this->db, ['name' => 'Customers']);
     add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
@@ -758,6 +778,7 @@ test('a logged-in user reads the same API for the sites they may see', function 
 
     $anna = http_request('GET', WEB . '/?api', ['jar' => ($this->login)('anna', 'anna password')['jar']]);
     expect($anna['status'])->toBe(200)
+        ->and($anna['json'])->not->toHaveKey('token_expires_at')
         ->and($anna['json']['scope'])->toBe(['type' => 'user', 'name' => 'anna'])
         ->and(array_column($anna['json']['sites'], 'label'))->toBe(['shop.example']);
     $admin = http_request('GET', WEB . '/?api', ['jar' => ($this->login)('admin', 'admin password')['jar']]);
