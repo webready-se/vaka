@@ -11,6 +11,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 - **A share link: a read-only dashboard for a customer.** The read token `share:create` makes now also opens the dashboard at `/?share=TOKEN`, for the site or groups it reads, without a login or a cookie, and `share:create` prints the link. The top bar says what the link shows and until when ("Shared view of Customers, until 14 Feb 2027") where signing out would be, and nothing on the page changes anything: no snooze, no "Check again", no adding or changing. A link that no longer works says so in words for whoever opened it, and asks them to turn to whoever sent it.
 
+### Fixed
+
+- **A Forge site isolated under a user of its own keeps its database through a deploy.** With zero-downtime deployments, Vaka found the site root that outlives each release only under `/home/forge/`, so a site under `/home/<its user>/` kept `data/`, `users.json` and `.env` inside the release, and a deploy started it on an empty database. Now any user's home counts, and so does the cron line the dashboard offers.
+
 ## [0.6.0] - 2026-11-16
 
 ### Added
