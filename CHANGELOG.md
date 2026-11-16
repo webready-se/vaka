@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-11-16
+
 ### Added
 
 - **An uptime path per site.** `site:add --check-path=/up` (and `site:edit`, or "Path for uptime" in the dashboard's form) makes uptime ask that path on the site's own host instead of its address: a start page served from a cache answers with the database down, and a path that tests the database too proves more. The keyword is looked for there, the site detail says "Uptime checks /up" and names the response times as that path's, and the certificate, headers, exposed files and mail stay on the address. The read API's site has `check_path`.
@@ -17,7 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - **A read token says when it stops working.** The read API's answer has `token_expires_at` (`null` for a token with no last day), and the Markdown report ends its guide with "This token works until 14 Feb 2027." In the last 14 days it says so in bold instead, with the command for the site owner, a day 90 days on included: "This token's last day is 20 Nov 2026, in 4 days. Tell the site owner: `php vaka share:edit vaka_1a2b3c4d --expires=2027-02-14` makes it work until 14 Feb 2027". A script that reads every morning can pass it on before its 90 days end, instead of stopping without a word.
 - **The response time chart tells each check it is pointed at.** A mouse over it, a finger sliding along it or the arrow keys pick the nearest check: a line and a dot mark it, and the line above the chart says "14:35: 412 ms" in its summary's place. A red mark says what failed, "14:40: failed, the site answered 503" or "no answer", where before it was only called red. The summary now says when the slowest check was: "Typically 180 ms, slowest 950 ms at 14:35". A screen reader meets the chart as a slider that reads out each check.
 - **On a phone, a finger drags the site detail closed.** Dragged to the right, where it came from, the panel follows the finger and the page behind clears with it. Let go past a third of its width, or with a flick, it closes; let go earlier, or dragged back, it slides home, so a drag can be taken back. Up and down scroll as before, the 30 days of bars and the response time chart keep the finger that slides along them, and a form is never dragged away, since a slip would lose what was typed. For people who prefer reduced motion the panel closes or returns at once when the finger lifts.
-
 - **A Report-Only CSP that allows hosts the page no longer loads says so, with the line without them.** "It also allows maps.example and fonts.example, which the start page loads nothing from", and the line to copy is the policy without them, still as Report-Only, so putting it in place cannot break anything and the console on the other pages shows if one of them needs a host after all. The next "Check again" gives the line that enforces it. Before, the line was the policy as sent under the enforcing name, hosts and all. A host counts as used when the page loads anything from it, its domain or its family (Google's hosts load for one another, as do Meta's), the site's own hosts are never named, and a page with a tag manager gets no such list.
 
 ### Changed
@@ -206,7 +207,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 - `scripts/seed-demo.php` builds a demo database with fake sites; `scripts/smoke.mjs` drives the dashboard in headless Chrome and fails on JavaScript errors, CSP violations and markup from the data.
 - Every release comes as a zip with only the files Vaka needs to run, and its docs: download, unpack, run.
 
-[Unreleased]: https://github.com/webready-se/vaka/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/webready-se/vaka/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/webready-se/vaka/releases/tag/v0.6.0
 [0.5.0]: https://github.com/webready-se/vaka/releases/tag/v0.5.0
 [0.4.0]: https://github.com/webready-se/vaka/releases/tag/v0.4.0
 [0.3.0]: https://github.com/webready-se/vaka/releases/tag/v0.3.0
