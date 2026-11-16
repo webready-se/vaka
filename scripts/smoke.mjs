@@ -550,7 +550,7 @@ async function main() {
       expect(/Sent as Report-Only, not in force/.test(tried?.querySelector('.header-level')?.textContent || ''), `a Report-Only CSP is not called missing (got "${tried?.querySelector('.header-level')?.textContent}")`);
       expect(/a tag manager makes this hard$/.test(tried?.querySelector('.header-level')?.textContent || ''), `a tag manager is said on the status line (got "${tried?.querySelector('.header-level')?.textContent}")`);
       expect(/^It blocks nothing yet\. Enforced, it would block 1 inline script, scripts from www\.googletagmanager\.com and widgets\.example, 1 inline style and a stylesheet from fonts\.googleapis\.com on builder\.example\/app\/\. It loads Google Tag Manager, so a strict policy takes more than a line\.$/.test(tried?.querySelector('.header-why')?.textContent || ''), `it says what the policy would block (got "${tried?.querySelector('.header-why')?.textContent}")`);
-      expect(tried?.querySelector('.header-fix code')?.textContent === `Content-Security-Policy: default-src 'self'`, `the line to add is the site's own policy under the enforcing name (got "${tried?.querySelector('.header-fix code')?.textContent}")`);
+      expect(tried?.querySelector('.header-fix code')?.textContent === `Content-Security-Policy: default-src 'self'; object-src 'none'`, `the line to add is the site's own policy under the enforcing name, with object-src 'none' added (got "${tried?.querySelector('.header-fix code')?.textContent}")`);
       expect([...(tried?.querySelectorAll('.header-scripts code') || [])].some((c) => c.textContent === 'https://widgets.example/chat.js'), 'the script it would block is named by its address');
       expect(tried?.querySelector('.fix-label')?.textContent === 'Your policy under the name that enforces it, once the list above is empty:', `the line says what it is (got "${tried?.querySelector('.fix-label')?.textContent}")`);
       // The phrase opens the list of scripts; the tip marks its takeaway in bold
@@ -559,6 +559,17 @@ async function main() {
       scriptsLink?.click();
       expect(tried?.querySelector('.header-more')?.open === true && document.activeElement === tried?.querySelector('.header-scripts'), 'pressing it opens the list and moves there');
       expect([...(tried?.querySelectorAll('.header-tip strong') || [])].some((b) => b.textContent === "A strict CSP with it needs nonces from the site's own code"), 'the tip marks its takeaway in bold, built as a node, not markup');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
+    // A Report-Only CSP that allows hosts the page loads nothing from: the line is the policy without them, still Report-Only
+    await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
+    all('.site-row').find((r) => /deals3\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'deals3.example', 'the Report-Only site\'s detail to open')) {
+      const unused = all('dialog.drawer .header-list > li').find((li) => /^CSP/.test(li.querySelector('b')?.textContent || ''));
+      expect(/It also allows maps\.example and fonts\.example, which the start page loads nothing from\.$/.test(unused?.querySelector('.header-why')?.textContent || ''), `it names the hosts the page loads nothing from (got "${unused?.querySelector('.header-why')?.textContent}")`);
+      expect(unused?.querySelector('.fix-label')?.textContent === 'Your policy without maps.example and fonts.example, still as Report-Only:', `the line says it is still Report-Only (got "${unused?.querySelector('.fix-label')?.textContent}")`);
+      expect(/^Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https:\/\/stats\.example; style-src 'self' 'unsafe-inline';/.test(unused?.querySelector('.header-fix code')?.textContent || ''), `the line is the policy without them (got "${unused?.querySelector('.header-fix code')?.textContent}")`);
       q('dialog.drawer [data-action="close"]').click();
     }
 

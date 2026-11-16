@@ -544,6 +544,81 @@ function csp_with_connect(string $policy, array $origins): string
     return implode('; ', $parts);
 }
 
+/** The directives a host is taken out of when the page loads nothing from it: what the page shows it loads. Never connect-src or font-src, which it does not show. */
+const CSP_PRUNED = ['script-src', 'script-src-elem', 'style-src', 'style-src-elem', 'img-src', 'frame-src'];
+
+/** Hosts that load for one another, of which the page shows one: Google's (Maps' tiles from maps.gstatic.com, reCAPTCHA's scripts from www.gstatic.com) and Meta's (the pixel's script from facebook.net sends to facebook.com). */
+const CSP_HOST_FAMILIES = [
+    ['google.com', 'googleapis.com', 'gstatic.com', 'googletagmanager.com', 'google-analytics.com', 'googleusercontent.com', 'ggpht.com', 'doubleclick.net', 'googlesyndication.com', 'googleadservices.com', 'youtube.com', 'youtube-nocookie.com', 'ytimg.com'],
+    ['facebook.com', 'facebook.net', 'fbcdn.net', 'instagram.com', 'cdninstagram.com'],
+];
+
+/**
+ * What a host loads together with: its family in CSP_HOST_FAMILIES, a
+ * country's Google domain (Ads sends from google.se), or else its domain as
+ * the last two labels, so use.typekit.net and p.typekit.net are one (two
+ * sites under co.uk are one too, which keeps more, never less).
+ */
+function host_family(string $host): string
+{
+    $host = strtolower($host);
+    if (preg_match('/(?:^|\.)google\.[a-z]{2,3}(?:\.[a-z]{2})?$/', $host)) return 'family:0';
+    foreach (CSP_HOST_FAMILIES as $i => $domains) {
+        foreach ($domains as $domain) if ($host === $domain || str_ends_with($host, ".{$domain}")) return "family:{$i}";
+    }
+    return implode('.', array_slice(explode('.', $host), -2));
+}
+
+/**
+ * The hosts a policy allows in CSP_PRUNED that nothing on the page loads
+ * from: not the host, nor its domain or family (see host_family()), in any
+ * kind, so a statistics script's host stays in img-src for its pixel. Only
+ * what the page's HTML shows: a script may load from them later, which
+ * Report-Only shows in the console. The site's own hosts, keywords, schemes
+ * and * are left alone, and a page with a tag manager, which loads anything
+ * later, has none. Data stored before the page's files were has none.
+ *
+ * @param array $directives  parsed with csp_directives()
+ * @return array<string, list<string>>  directive => sources, as parsed
+ */
+function csp_unused(array $directives, array $page, string $pageUrl): array
+{
+    if (!isset($page['external']) || tag_manager($page) !== '') return [];
+    $urls = [...array_column($page['external'], 'url'), ...array_column($page['stylesheets'] ?? [], 'url'), ...($page['images'] ?? []), ...($page['icons'] ?? []), ...($page['frames'] ?? [])];
+    $loaded = [];
+    foreach ($urls as $url) if (preg_match('#^https?://#i', $url)) $loaded[host_family((string) parse_url($url, PHP_URL_HOST))] = true;
+    $unused = [];
+    foreach (CSP_PRUNED as $name) {
+        foreach ($directives[$name] ?? [] as $source) {
+            // A host source: scheme, *. and port optional, a path allowed
+            if (!preg_match('#^(?:[a-z][a-z0-9+.-]*://)?(?:\*\.)?([a-z0-9.-]+\.[a-z0-9-]+)(?::(?:\*|\d+))?(?:/\S*)?$#', $source, $m)) continue;
+            if (own_host("https://{$m[1]}/", $pageUrl) || isset($loaded[host_family($m[1])])) continue;
+            $unused[$name][] = $source;
+        }
+    }
+    return $unused;
+}
+
+/** A policy as written with these sources taken out of these directives; a directive left with none says 'none', which an empty one means. */
+function csp_without(string $policy, array $unused): string
+{
+    $parts = array_values(array_filter(array_map('trim', explode(';', $policy)), fn ($part) => $part !== ''));
+    foreach ($parts as $i => $part) {
+        $words = preg_split('/\s+/', $part);
+        $gone = $unused[strtolower($words[0])] ?? [];
+        if (!$gone) continue;
+        $kept = array_filter(array_slice($words, 1), fn ($source) => !in_array(strtolower($source), $gone, true));
+        $parts[$i] = implode(' ', [$words[0], ...($kept ?: ["'none'"])]);
+    }
+    return implode('; ', $parts);
+}
+
+/** A policy with object-src 'none' at the end when it has no object-src: no site needs plugins. Another object-src may be on purpose (a PDF in an <object>), so it stays. */
+function csp_with_object_none(string $policy): string
+{
+    return isset(csp_directives($policy)['object-src']) ? $policy : rtrim(trim($policy), ';') . "; object-src 'none'";
+}
+
 /**
  * What a policy blocks, in words: "2 inline scripts, a script from
  * cdn.example, 15 inline styles and images from cdn.example", or '' for
@@ -966,6 +1041,8 @@ function evaluate_headers(array $response, int $timeout, ?array $files = null): 
         if (isset($response['headers']['content-security-policy-report-only'])) {
             $details['csp_would_block'] = csp_blocked($policies('content-security-policy-report-only'), $scripts, $response['url']);
             if ($unsent = csp_unsent($policies('content-security-policy-report-only'), $scripts, $response['url'])) $details['csp_unsent'] = $unsent;
+            // Hosts it allows that the page loads nothing from, for a line without them (of the policy kept above, the first)
+            if ($unused = csp_unused($policies('content-security-policy-report-only')[0], $scripts, $response['url'])) $details['csp_unused'] = $unused;
         } else {
             // What the simplest first policy would block, and a draft that allows it, to try as Report-Only
             $details['csp_first'] = csp_blocked([csp_directives("default-src 'self'")], $scripts, $response['url']);
@@ -1136,6 +1213,7 @@ function fix_label(array $item): string
     if ($item['key'] === 'csp') {
         return match (true) {
             ($item['report_only'] ?? false) && !($item['ready'] ?? true) => 'Your policy under the name that enforces it, once the list above is empty:',
+            isset($item['unused_hosts']) => 'Your policy without ' . list_words($item['unused_hosts']) . (isset($item['unsent_hosts']) ? ', with ' . list_words($item['unsent_hosts']) . ' added to connect-src' : '') . ', still as Report-Only:',
             $item['report_only'] ?? false => 'Your policy under the name that enforces it' . (isset($item['unsent_hosts']) ? ', with ' . list_words($item['unsent_hosts']) . ' added to connect-src' : '') . ':',
             isset($item['unsent_hosts']) => 'Your policy with ' . list_words($item['unsent_hosts']) . ' added to connect-src:',
             $item['level'] === 'weak' => 'A stricter policy to try first as Report-Only, which blocks nothing:',
@@ -1219,18 +1297,36 @@ function csp_item(array $item, array $details): array
         return ['blocks' => true, 'note' => $join($item['note'], $inPage, 'it blocks ' . csp_blocked_words($blocked) . $on, $also), 'fix' => '', 'tip' => CSP_BLOCKS_TIP] + $named + $meta + $item;
     }
     if ($item['note'] === CSP_REPORT_ONLY_NOTE) {
+        $policy = $details['csp_report_only'] ?? null;
         $send = "stop {$from} sending anything back, such as visits for statistics: the line below allows that";
+        // Hosts it allows that the page loads nothing from: told once it would block nothing there, with a line
+        // without them that is still Report-Only, since a page Vaka does not read may need them
+        $unused = $policy !== null && $blocked !== null && !$blocks ? ($details['csp_unused'] ?? []) : [];
+        $bySource = [];
+        foreach ($unused as $name => $sources) foreach ($sources as $source) $bySource[$source][] = $name;
+        $unusedHosts = array_values(array_unique(array_map(fn ($source) => (string) preg_replace('#^[a-z][a-z0-9+.-]*://|[:/].*$#', '', $source), array_keys($bySource))));
+        $allows = $unused ? '. It also allows ' . list_words($unusedHosts) . ', which ' . csp_page_words($details['page'] ?? '') . ' loads nothing from' : '';
         $would = match (true) {
             $blocked === null => '',
             $blocks => '. Enforced, it would block ' . csp_blocked_words($blocked) . $on . ($unsent ? ". It would also {$send}" : ''),
-            (bool) $unsent => ". Enforced, it would {$send}",
+            (bool) $unsent => ". Enforced, it would {$send}{$allows}",
+            (bool) $unused => ". Enforced, it would block nothing{$on}{$allows}",
             default => ". Enforced, it would block nothing{$on}. Vaka reads only that page, so look at the site's other kinds of page in the browser's console before renaming",
         };
         // A hash is of the code as it is today: a build that writes a date or a version into the script breaks it
-        $hashes = preg_match("/'sha(?:256|384|512)-/i", $details['csp_report_only'] ?? '') ? " Its hashes are of inline scripts and styles as they are today: a build that writes something new into one (a date, a version) changes its hash, and once the policy is enforced, browsers block it. Let the build add the hashes, or move the code to files." : '';
-        // Said only to a policy without it (old data, with no policy kept, still gets it)
-        $objects = (csp_directives($details['csp_report_only'] ?? '')['object-src'] ?? null) === ["'none'"] ? '' : " Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it.";
-        return ['blocks' => false, 'report_only' => true, 'ready' => $blocked !== null && !$blocks, 'caution' => tag_manager_caution($details['scripts'] ?? []), 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => 'Content-Security-Policy: ' . ($unsent && isset($details['csp_report_only']) ? csp_with_connect($details['csp_report_only'], $unsent) : ($details['csp_report_only'] ?? '<the same policy>')), 'tip' => 'The line above is the policy the site sends as Report-Only, under the name that enforces it' . ($unsent ? ', with ' . list_words($hosts) . ' added to connect-src' : '') . ". **Add it once the browser's console, and the list above, show nothing it would block that the site needs**, and remove the Report-Only line." . ($unsent ? ' ' . CSP_CONNECT_TIP : '') . $hashes . $objects . tag_manager_tip($details['scripts'] ?? [])] + $sends + $named + $item;
+        $hashes = preg_match("/'sha(?:256|384|512)-/i", $policy ?? '') ? " Its hashes are of inline scripts and styles as they are today: a build that writes something new into one (a date, a version) changes its hash, and once the policy is enforced, browsers block it. Let the build add the hashes, or move the code to files." : '';
+        // In the line when the policy has no object-src; another one may be on purpose, so it is only told (old data, with no policy kept, too)
+        $objects = match (true) {
+            $policy !== null && !isset(csp_directives($policy)['object-src']) => " The line adds object-src 'none' too: no site needs plugins, and other scanners remark on it.",
+            (csp_directives($policy ?? '')['object-src'] ?? null) === ["'none'"] => '',
+            default => " Add object-src 'none' to it too: no site needs plugins, and other scanners remark on it.",
+        };
+        $line = $policy === null ? '<the same policy>' : csp_with_object_none(csp_without($unsent ? csp_with_connect($policy, $unsent) : $policy, $unused));
+        $connect = $unsent ? ', with ' . list_words($hosts) . ' added to connect-src' : '';
+        $tip = $unused
+            ? 'The line above is your Report-Only policy without ' . list_words(array_map(fn ($source, $names) => "{$source} in " . list_words($names), array_keys($bySource), $bySource)) . $connect . ". **Put it in place of the Report-Only line you send now**: it blocks nothing either, so nothing can break. If a page loads from those hosts after all (a map on the contact page, or a script that adds one later), the browser's console says so on that page. The next \"Check again\" gives the line that enforces it. If you know a page needs them, keep your policy and only rename the header to Content-Security-Policy to enforce it."
+            : "The line above is the policy the site sends as Report-Only, under the name that enforces it{$connect}. **Add it once the browser's console, and the list above, show nothing it would block that the site needs**, and remove the Report-Only line.";
+        return ['blocks' => false, 'report_only' => true, 'ready' => $blocked !== null && !$blocks, 'caution' => tag_manager_caution($details['scripts'] ?? []), 'note' => 'it blocks nothing yet' . $would . tag_manager_note($details['scripts'] ?? []), 'fix' => ($unused ? 'Content-Security-Policy-Report-Only: ' : 'Content-Security-Policy: ') . $line, 'tip' => $tip . ($unsent ? ' ' . CSP_CONNECT_TIP : '') . $hashes . $objects . tag_manager_tip($details['scripts'] ?? [])] + ($unused ? ['unused_hosts' => $unusedHosts] : []) + $sends + $named + $item;
     }
     // No CSP at all: what default-src 'self' would stop on the page, and a draft that allows it (old data: the scripts only)
     $scripts = $details['scripts'] ?? [];
