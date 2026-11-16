@@ -251,7 +251,7 @@ body.login {
 .run-pill.is-stale .run-dot { background: var(--down); }
 @keyframes pulse { 0% { box-shadow: 0 0 0 0 rgb(5 150 105 / 0.45); } 70% { box-shadow: 0 0 0 7px rgb(5 150 105 / 0); } 100% { box-shadow: 0 0 0 0 rgb(5 150 105 / 0); } }
 .topbar-spacer { flex: 1; }
-.icon-button { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 11px; border-radius: 10px; border: 1px solid transparent; background: none; color: var(--text-2); font-size: 14px; font-weight: 600; cursor: pointer; }
+.icon-button { display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 11px; border-radius: 10px; border: 1px solid transparent; background: none; color: var(--text-2); font-size: 14px; font-weight: 600; cursor: pointer; text-decoration: none; }
 .icon-button:hover { background: var(--surface-2); color: var(--text); }
 .topbar form { margin: 0; }
 
@@ -758,6 +758,8 @@ details[open]::details-content { block-size: auto; opacity: 1; transition: block
   .topbar { gap: 8px; }
   .run-pill { font-size: 12.5px; }
   .icon-button .label { display: none; }
+  /* An assistant is set up at a computer: on a phone the run state keeps the room it needs to be read whole */
+  .topbar [data-api-link] { display: none; }
   main { padding-top: 18px; }
   .watch { grid-template-columns: 1fr; padding: 24px 22px; }
   .watch-owl, .watch-perch .watch-owl { position: absolute; right: 16px; top: 16px; bottom: auto; width: 72px; height: 72px; }

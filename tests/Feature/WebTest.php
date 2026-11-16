@@ -188,6 +188,17 @@ test('too many failed logins lock the IP out, even with a fresh cookie', functio
         ->and((int) $this->db->query("SELECT COUNT(*) FROM audit_log WHERE action = 'login_failed'")->fetchColumn())->toBe(3);
 });
 
+test('the dashboard tells an agent and a person where the read API is, the login page does not', function () {
+    $page = http_request('GET', WEB . '/', ['jar' => ($this->login)('admin', 'admin password')['jar']])['body'];
+    expect($page)->toContain('<link rel="help" type="text/plain" title="For AI agents: how to read this" href="https://raw.githubusercontent.com/webready-se/vaka/main/llms.txt">')
+        ->and($page)->toContain('href="https://github.com/webready-se/vaka/blob/main/docs/api.md#use-it-from-an-ai-assistant"');
+    $login = http_request('GET', WEB . '/?login')['body'];
+    expect($login)->not->toContain('rel="help"')->and($login)->not->toContain('llms.txt');
+    // In the repository, never served by an install
+    expect(file_exists(__DIR__ . '/../../llms.txt'))->toBeTrue()
+        ->and(http_request('GET', WEB . '/llms.txt')['status'])->toBe(404);
+});
+
 test('the login page credits Webready with a link', function () {
     expect(http_request('GET', WEB . '/?login')['body'])->toContain('Made by <a href="https://webready.se">Webready</a> in Sweden');
 });

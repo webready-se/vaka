@@ -11,6 +11,7 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml" data-favicon>
 <link rel="manifest" href="/?manifest">
 <link rel="apple-touch-icon" href="/icon-180.png">
+<link rel="help" type="text/plain" title="For AI agents: how to read this" href="https://raw.githubusercontent.com/webready-se/vaka/main/llms.txt">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Vaka">
 <link rel="preload" href="fonts/figtree-latin.woff2" as="font" type="font/woff2" crossorigin>
@@ -31,6 +32,10 @@
     <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false" data-theme-icon><path d="M4 5h16v11H4zM9 20h6M12 16v4"/></svg>
     <span class="label" data-theme-label>System</span>
   </button>
+  <a class="icon-button" href="https://github.com/webready-se/vaka/blob/main/docs/api.md#use-it-from-an-ai-assistant" target="_blank" rel="noopener" aria-label="Read API and AI assistants (opens the docs on GitHub)" title="Read API and AI assistants (opens the docs on GitHub)" data-api-link>
+    <svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 13.2 7.6 4.1M15.8 6.7l-7.6 4.1"/></svg>
+    <span class="label">Read API</span>
+  </a>
   <form method="post" action="/?logout">
     <input type="hidden" name="_token" value="{{csrf}}">
     <button type="submit" class="icon-button" aria-label="Log out {{user}}">

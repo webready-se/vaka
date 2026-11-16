@@ -122,6 +122,7 @@ public/favicon.svg       The kit's owl mark on deep teal (favicon-alert.svg: on 
 public/icon-*.png        The home screen icon (180 for iOS, 192 and 512 for the manifest), made from scripts/app-icon.svg (docs/brand.md)
 public/marks/            Vaka's mark (top bar, login) and the released Webready tools' marks (footer credit) from the kit, inline
 public/fonts/            Figtree (SIL OFL, variable, Latin) and its licence: self-hosted, no CDN
+llms.txt                 How an AI agent reads an install (no data, no token); in the repository only, never served or in the release zip, and the dashboard's <link rel="help"> points at it
 docs/brand.md            What is Vaka's own on top of the design kit: the owl's files and states, the night panel, motion
 users.json               User credentials (bcrypt, created by the CLI, gitignored)
 data/vaka.sqlite         SQLite database (auto-created, gitignored)
