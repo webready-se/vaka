@@ -19,6 +19,8 @@ $config = require __DIR__ . '/config.php';
 date_default_timezone_set($config['timezone']);
 // A wrong setting is told on every command, and never stops one
 foreach ($config['config_problems'] as $problem) fwrite(STDERR, "Warning: {$problem}\n");
+// So is an old release: a read-only command there can be what someone wants, so it still runs
+if (($old = old_release_warning(__DIR__)) !== null) fwrite(STDERR, "{$old}\n");
 
 [$args, $opts] = parse_args(array_slice($argv, 1));
 $command = $args[0] ?? 'help';

@@ -68,6 +68,48 @@ test('run_dir is where commands run: current/ on a Forge zero-downtime deploy, w
         ->and(run_dir('/home/forge/vaka.example.com'))->toBe('/home/forge/vaka.example.com');
 });
 
+/** A site with two releases and current/ linked to the second, as a zero-downtime deploy leaves it. */
+function release_tree(): string
+{
+    $site = realpath(temp_dir());
+    mkdir($site . '/releases/1', 0777, true);
+    mkdir($site . '/releases/2', 0777, true);
+    symlink($site . '/releases/2', $site . '/current');
+    return $site;
+}
+
+test('an old release is told where the live one is; the live one, a folder that is no release and releases without current/ are not', function () {
+    $site = release_tree();
+    expect(old_release_warning($site . '/releases/1'))->toBe("Warning: this is an old release, not the live code, but it uses the live database. Run it from {$site}/current.")
+        ->and(old_release_warning($site . '/releases/2'))->toBeNull()
+        ->and(old_release_warning($site))->toBeNull()
+        ->and(old_release_warning('/var/www/vaka'))->toBeNull();
+    unlink($site . '/current');
+    expect(old_release_warning($site . '/releases/1'))->toBeNull();
+});
+
+test('php vaka warns from an old release on STDERR and still runs, so its output stays clean', function () {
+    $site = release_tree();
+    foreach ([1, 2] as $release) exec('cp -R ' . escapeshellarg(__DIR__ . '/../../vaka') . ' ' . escapeshellarg(__DIR__ . '/../../config.php') . ' ' . escapeshellarg(__DIR__ . '/../../src') . ' ' . escapeshellarg("{$site}/releases/{$release}/"));
+    $run = function (string $release) use ($site) {
+        $proc = proc_open([PHP_BINARY, "{$site}/releases/{$release}/vaka", 'version'], [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['VAKA_ENV_FILE' => '/dev/null', 'PATH' => getenv('PATH')] + cli_env());
+        fclose($pipes[0]);
+        $out = stream_get_contents($pipes[1]);
+        $err = stream_get_contents($pipes[2]);
+        return ['exit' => proc_close($proc), 'out' => $out, 'err' => $err];
+    };
+
+    $old = $run('1');
+    expect($old['exit'])->toBe(0)
+        ->and($old['out'])->toContain('Vaka ' . VAKA_VERSION)
+        ->and($old['err'])->toBe("Warning: this is an old release, not the live code, but it uses the live database. Run it from {$site}/current.\n");
+    // From current/ the path resolves to the live release, so cron and a shell there hear nothing
+    expect($run('2')['err'])->toBe('');
+    $live = proc_open([PHP_BINARY, "{$site}/current/vaka", 'version'], [1 => ['pipe', 'w'], 2 => ['pipe', 'w']], $pipes, null, ['VAKA_ENV_FILE' => '/dev/null', 'PATH' => getenv('PATH')] + cli_env());
+    expect(stream_get_contents($pipes[2]))->toBe('');
+    proc_close($live);
+});
+
 test('cron_line runs Vaka from run_dir() with the given PHP', function () {
     expect(cron_line('/var/www/vaka'))->toBe('* * * * * php /var/www/vaka/vaka run')
         ->and(cron_line('/home/forge/vaka.example.com/releases/20261026120000', 'php8.5'))->toBe('* * * * * php8.5 /home/forge/vaka.example.com/current/vaka run');

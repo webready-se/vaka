@@ -57,6 +57,20 @@ function env_file(string $root): string
     return resolve_path('.env', $root);
 }
 
+/**
+ * What to say when the CLI runs from a release that is not the live one, or
+ * null: a zero-downtime deploy keeps the last few, and a shell left in one runs
+ * old code against the live database. Any <site>/releases/<name> with a
+ * current link next to it, as Forge, Envoyer and Deployer leave them. Run
+ * through current/, $dir is already the live release, since __DIR__ follows links.
+ */
+function old_release_warning(string $dir): ?string
+{
+    if (!preg_match('#^(.*)/releases/[^/]+$#', rtrim($dir, '/'), $m) || !is_link($m[1] . '/current')) return null;
+    if (realpath($m[1] . '/current') === realpath($dir)) return null;
+    return "Warning: this is an old release, not the live code, but it uses the live database. Run it from {$m[1]}/current.";
+}
+
 /** Where Vaka's commands run from: $root, or on a Forge zero-downtime deploy current/, which follows every release. */
 function run_dir(string $root): string
 {
