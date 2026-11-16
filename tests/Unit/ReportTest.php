@@ -226,7 +226,26 @@ test('a certificate that missed its renewal is worth improving, first, in the re
         ->and($md)->toContain("## Needs attention (0)");
 
     $list = read_api_markdown_list(report_about(['scope' => ['type' => 'group', 'name' => 'Customers', 'groups' => ['Customers']]]), ['sites' => 1, 'up' => 1, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0], [report_site($late + ['headers' => ['status' => 'warn', 'grade' => 'C', 'summary' => 'Grade C: 4 of 6 in place, missing HSTS and CSP']])], REPORT_CONFIG);
-    expect($list)->toContain("## Worth improving (2)\n\n1. **shop.example: certificate missed its renewal**: `Valid until 17 Nov 2026 (20 days), issued by Let's Encrypt`\n2. **shop.example: security headers grade C**");
+    expect($list)->toContain("## Worth improving (2)\n\n1. **Certificate: missed its renewal** on shop.example (20 days left).\n2. **Security headers: grade C");
+});
+
+test('every site: what several sites share is one line, the odd one out first and what all share last', function () {
+    $mail = fn (string $domain) => ['status' => 'warn', 'summary' => "Mail for {$domain}: SPF and DMARC are missing", 'domain' => $domain, 'advice' => ''];
+    $c = ['status' => 'warn', 'grade' => 'C', 'summary' => 'Grade C: 4 of 6 in place, missing HSTS and CSP'];
+    $sites = [
+        report_site(['dns' => $mail('shop.example'), 'headers' => $c]),
+        report_site(['url' => 'https://cafe.example', 'label' => 'cafe.example', 'dns' => $mail('cafe.example'), 'headers' => $c]),
+        report_site(['url' => 'https://blog.example', 'label' => 'blog.example', 'dns' => $mail('blog.example'), 'headers' => ['status' => 'warn', 'grade' => 'D', 'summary' => 'Grade D: 3 of 6 in place, missing HSTS, CSP and frame protection'],
+            'ssl' => ['status' => 'ok', 'summary' => "Valid until 17 Nov 2026 (20 days), issued by Let's Encrypt", 'days_left' => 20, 'valid_to' => '2026-11-17T00:00:00Z', 'renewed_by' => null, 'renewal_late' => true, 'advice' => 'Late.']]),
+    ];
+    $md = read_api_markdown_list(report_about(['scope' => ['type' => 'group', 'name' => 'Customers', 'groups' => ['Customers']]]), ['sites' => 3, 'up' => 3, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0], $sites, REPORT_CONFIG);
+
+    expect($md)->toContain("## Worth improving (4)\n\n"
+        . "1. **Certificate: missed its renewal** on blog.example (20 days left).\n"
+        . "2. **Security headers: grade D, 3 of 6 in place, missing HSTS, CSP and frame protection** on blog.example.\n"
+        . "3. **Security headers: grade C, 4 of 6 in place, missing HSTS and CSP** on shop.example and cafe.example.\n"
+        . "4. **Mail records: SPF and DMARC are missing** on all 3 sites.\n\n"
+        . 'Each protection and record, with the line to add, is in the report for one site: `&site=blog.example&format=md`.');
 });
 
 test('every site: what needs attention across them, what is worth improving, and a table of every site', function () {
@@ -241,7 +260,7 @@ test('every site: what needs attention across them, what is worth improving, and
     expect($md)->toStartWith("# Vaka report for group Customers\n\n> For the AI assistant reading this:")
         ->and($md)->toContain('2 sites: 1 up, 1 down.')
         ->and($md)->toContain("## Needs attention (1)\n\n1. **shop.example: down since 28 Oct 2026 13:50**: `The site answered 503 Service Unavailable`\n   What to do: Look at its error log.")
-        ->and($md)->toContain("## Worth improving (1)\n\n1. **cafe.example: security headers grade C**: Grade C: 4 of 6 in place, missing HSTS and CSP")
+        ->and($md)->toContain("## Worth improving (1)\n\n1. **Security headers: grade C, 4 of 6 in place, missing HSTS and CSP** on cafe.example.")
         ->and($md)->toContain('&site=cafe.example&format=md')
         ->and($md)->toContain('| Site | Now | Uptime 30 days | Certificate | Domain | Headers | Mail |')
         ->and($md)->toContain('| shop.example | down since 28 Oct 2026 13:50 | 99.95 % | 52 days | 675 days | A | ok |')
