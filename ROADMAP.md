@@ -145,8 +145,8 @@ A demo that needs no account, as Puls has at demo.puls.webready.se: in a compari
 
 - [x] A share link opens a read-only dashboard (done 2026-11-16, for customers too: `/?share=TOKEN`)
 - [x] The seed keeps its link and stays fresh (done 2026-11-16): `--token=` stores the demo's read token for every group, the same on every run, and `--refresh` seeds the database again in place, in one transaction, with the same site ids. Everything is dated from now, so a run every minute keeps it as if Vaka had just looked
-- [ ] The install at demo.vaka.webready.se: a site with no users (nothing to log in to), no `php vaka run` (it would check made-up domains and find them all down), the seed with `--refresh` every minute instead, and `/` sent to the share link by the web server. On a server that is already paid for: no new monthly cost
-- [ ] "Try the live demo" right under the tagline in README, and the link as the repository's homepage
+- [x] The install at demo.vaka.webready.se (done 2026-11-17, a site isolated under a user of its own, as Puls's demo; it found that Vaka kept an isolated site's database inside each release, fixed in #109): a site with no users (nothing to log in to), no `php vaka run` (it would check made-up domains and find them all down), the seed with `--refresh` every minute instead, and `/` sent to the share link by the web server. On a server that is already paid for: no new monthly cost
+- [x] "Try the live demo" right under the tagline in README, and the link as the repository's homepage (done 2026-11-17)
 - [ ] Count the demo's visits with Puls, as Puls counts its own demo's (`TRACK_SHARED_URL`): which channel worked after a launch. Needs the shared page's policy to let that one Puls through
 
 ## Ideas

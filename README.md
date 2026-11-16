@@ -9,6 +9,8 @@
 Uptime, response times and certificates for every site, plus domains, exposed files, security headers and mail DNS.<br>
 One cron line, no dependencies, and one alert when a whole server goes down.
 
+**[Try the live demo](https://demo.vaka.webready.se)** - no account, made-up data
+
 [![Tests](https://github.com/webready-se/vaka/actions/workflows/tests.yml/badge.svg)](https://github.com/webready-se/vaka/actions/workflows/tests.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 
