@@ -515,6 +515,9 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
     $domain = null;
     if (in_array($row['domain_status'], ['ok', 'warn', 'fail', 'unknown'], true)) {
         $domainDetails = json_decode((string) $row['domain_details'], true) ?: [];
+        // Due for renewal: a heads-up while it is ok, before the first threshold warns
+        $first = max([0, ...$config['domain_alert_days']]);
+        $near = $row['domain_status'] === 'ok' && domain_renewal_near($domainDetails, $now, $first);
         $domain = [
             'status' => $row['domain_status'],
             'summary' => $row['domain_summary'],
@@ -523,7 +526,8 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'days_left' => $domainDetails['days_left'] ?? null,
             'expires' => $domainDetails['expires'] ?? null,
             'registrar' => $domainDetails['registrar'] ?? '',
-            'advice' => in_array($row['domain_status'], ['warn', 'fail'], true) ? advice_for($domainDetails['problem'] ?? '', 0) : '',
+            'renewal_near' => $near,
+            'advice' => in_array($row['domain_status'], ['warn', 'fail'], true) ? advice_for($domainDetails['problem'] ?? '', 0) : ($near ? domain_renewal_advice($first) : ''),
         ] + $when('domain');
     }
     // The grade only: what each header does comes with the site detail (see api_site())
@@ -808,7 +812,7 @@ function api_site_fields(PDO $db, array $config, array $summary, array $row, int
         'blocked' => $summary['blocked'],
         'uptime' => ['24h' => $summary['uptime_24h'], '7d' => site_uptime($db, $row, 7 * 86400, $now, $config['timezone']), '30d' => $summary['uptime_30d']],
         'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'renewal_late', 'advice', 'checked_at', 'next_at']),
-        'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'advice', 'checked_at', 'next_at']),
+        'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'renewal_near', 'advice', 'checked_at', 'next_at']),
         'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice', 'checked_at', 'next_at']),
         'headers' => api_pick($summary['headers'], ['status', 'grade', 'summary', 'checked_at', 'next_at']),
         'dns' => api_pick($summary['dns'], ['status', 'summary', 'domain', 'advice', 'checked_at', 'next_at']),

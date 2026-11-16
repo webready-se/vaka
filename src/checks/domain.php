@@ -210,6 +210,25 @@ function evaluate_domain(array $lookup, int $now, int $warnDays): array
     return ['status' => 'ok', 'summary' => "{$shown} is registered until {$date} ({$daysLeft} days){$with}", 'details' => $details];
 }
 
+/**
+ * Whether a registration is due for renewal: past twice the first alert
+ * threshold but not yet at it, as of $now (the stored days_left is a day old
+ * at most). A heads-up while it is ok, since a registrar's payment problem
+ * takes time to sort out; from the threshold it warns, which says it.
+ */
+function domain_renewal_near(array $details, int $now, int $firstThreshold): bool
+{
+    if (!isset($details['expires'])) return false;
+    $daysLeft = (int) floor((strtotime($details['expires']) - $now) / 86400);
+    return $daysLeft > $firstThreshold && $daysLeft <= 2 * $firstThreshold;
+}
+
+/** What to do while a registration is due for renewal, with when Vaka starts to warn. */
+function domain_renewal_advice(int $firstThreshold): string
+{
+    return "If it renews by itself, check now that the payment card or the invoice is in order: a payment problem at the registrar can take a while to sort out. Vaka warns from {$firstThreshold} days.";
+}
+
 /** Look up one URL's domain registration, for `php vaka check`. */
 function check_domain(string $url, array $config, int $now): array
 {

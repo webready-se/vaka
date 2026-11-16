@@ -120,10 +120,14 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         $db->prepare("UPDATE check_state SET alerted_status = ?, thresholds_sent = ? WHERE site_id = ? AND check_name = 'ssl'")
             ->execute([$ssl['status'], json_encode(['valid_to' => utc_now($validTo), 'sent' => $days <= 7 ? [14, 7] : []]), $id]);
     }
-    // Domains: registered for a year or more, except one that runs out in 12 days
+    // Domains: registered for a year or more, except one that runs out in 12 days and one due for renewal in 45
     if (!in_array($story, ['paused', 'hostile'], true)) {
         $name = registrable_candidates((string) parse_url($url, PHP_URL_HOST))[0];
-        $until = $now + ($url === 'https://docs.example' ? 12 * 86400 + 7200 : (120 + mt_rand(0, 600)) * 86400);
+        $until = $now + match ($url) {
+            'https://docs.example' => 12 * 86400 + 7200,
+            'https://example.org' => 45 * 86400 + 7200,
+            default => (120 + mt_rand(0, 600)) * 86400,
+        };
         $domain = evaluate_domain(['status' => 'found', 'domain' => $name, 'expires' => $until, 'registrar' => 'Example Registrar AB', 'source' => 'rdap', 'error' => ''], $now, 30);
         save_check_state($db, $id, 'domain', ['fail_count' => 0, 'changed_at' => utc_now($month)] + $domain, utc_now($now - 5 * 3600), utc_now($now + 19 * 3600));
         $db->prepare("UPDATE check_state SET alerted_status = ?, thresholds_sent = ? WHERE site_id = ? AND check_name = 'domain'")

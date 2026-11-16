@@ -70,6 +70,8 @@ Once a day, Vaka looks up when each site's domain registration runs out. `shop.e
 
 See [Alerts](alerts.md#domains) for when it alerts. Sites that are down are looked up too: an expired domain may be why.
 
+Before the first threshold, a registration that runs out within twice it (31 to 60 days with the default 30) is **due for renewal**: still ok, with no alert, but the site detail says so with what to do ("If it renews by itself, check now that the payment card or the invoice is in order: a payment problem at the registrar can take a while to sort out. Vaka warns from 30 days."), and the report lists it under "Worth improving", after a certificate that missed its renewal.
+
 ## Exposed files
 
 Once a day, Vaka asks each site for files that should never be on the web. It looks next to the site's address, so `https://shop.example/blog` is checked in `/blog/`. See [Alerts](alerts.md#exposed-files) for when it alerts.

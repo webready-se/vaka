@@ -609,6 +609,17 @@ test('the read API answers a share token with the sites in its scope, in stable 
         ->and(array_column($r['json']['sites'], 'label'))->toBe(['shop.example']);
 });
 
+test('a domain due for renewal is said with what to do, while its status stays ok', function () {
+    $shop = add_site($this->db, ['url' => 'https://shop.example']);
+    $now = time();
+    save_check_state($this->db, $shop, 'domain', ['status' => 'ok', 'summary' => 'shop.example is registered until soon (45 days)', 'details' => ['domain' => 'shop.example', 'expires' => utc_now($now + 45 * 86400 + 3600), 'days_left' => 45, 'registrar' => '', 'problem' => ''], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
+    $token = create_share_token($this->db, $shop, [], '', utc_now($now + 86400), $now)['token'];
+
+    $domain = http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['domain'];
+    expect($domain)->toMatchArray(['status' => 'ok', 'renewal_near' => true, 'advice' => domain_renewal_advice(30)])
+        ->and(array_keys($domain))->toBe(['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'renewal_near', 'advice', 'checked_at', 'next_at']);
+});
+
 test('a certificate that missed its renewal is said with what to do, while its status stays ok', function () {
     $shop = add_site($this->db, ['url' => 'https://shop.example']);
     $now = time();

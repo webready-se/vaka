@@ -162,6 +162,10 @@ function md_improvements(array $site, array $config, int $now): array
     if ($ssl['renewal_late'] ?? false) {
         $items[] = ['title' => 'The certificate missed its renewal', 'text' => md_code($ssl['summary']) . ". {$ssl['advice']} " . md_checked($ssl, $config, $now, false), 'lines' => []];
     }
+    $domain = $site['domain'];
+    if ($domain['renewal_near'] ?? false) {
+        $items[] = ['title' => 'The domain is due for renewal', 'text' => md_code($domain['summary']) . ". {$domain['advice']} " . md_checked($domain, $config, $now, false), 'lines' => []];
+    }
     $headers = $site['headers'];
     $weak = array_values(array_filter($headers['items'] ?? [], fn (array $item) => $item['level'] !== 'good' || ($item['blocks'] ?? false) || ($item['twice'] ?? false) || ($item['unsent'] ?? false)));
     if ($weak) {
@@ -306,6 +310,7 @@ function read_api_markdown_list(array $about, array $totals, array $sites, array
         foreach (md_attention($site, $config) as $item) $attention[] = ['site' => $site['label']] + $item;
         // By what is wrong, without the site's own name, so what several sites share folds into one line
         if ($site['ssl']['renewal_late'] ?? false) $better['Certificate: missed its renewal'][] = ['label' => $site['label'], 'note' => ' (' . plural((int) $site['ssl']['days_left'], 'day', 'days') . ' left)'];
+        if ($site['domain']['renewal_near'] ?? false) $better['Domain: due for renewal'][] = ['label' => $site['label'], 'note' => ' (' . plural((int) $site['domain']['days_left'], 'day', 'days') . ' left)'];
         if (($site['headers']['grade'] ?? 'A') !== 'A') $better['Security headers: ' . preg_replace('/^Grade (\w+): /', 'grade $1, ', $site['headers']['summary'])][] = ['label' => $site['label'], 'note' => ''];
         if (($site['dns']['status'] ?? '') === 'warn') $better['Mail records: ' . preg_replace('/^Mail for [^:]+: /', '', $site['dns']['summary'])][] = ['label' => $site['label'], 'note' => ''];
     }
@@ -316,9 +321,10 @@ function read_api_markdown_list(array $about, array $totals, array $sites, array
         ...($item['advice'] !== '' ? ['What to do: ' . md_own($item['advice'])] : []),
         ...$item['lines'],
     ], 'Nothing: every site is up, and their certificates, domains and files are fine.');
-    // The certificate first, as the one with a clock, then the fewest sites first: the odd one out is what is new, and what all share comes last
+    // What has a clock first (the certificate, then the domain), then the fewest sites first: the odd one out is what is new, and what all share comes last
     $lines = array_map(fn (string $what, array $on) => ['what' => $what, 'on' => $on], array_keys($better), array_values($better));
-    usort($lines, fn (array $a, array $b) => [!str_starts_with($a['what'], 'Certificate'), count($a['on'])] <=> [!str_starts_with($b['what'], 'Certificate'), count($b['on'])]);
+    $clock = fn (string $what) => str_starts_with($what, 'Certificate') ? 0 : (str_starts_with($what, 'Domain') ? 1 : 2);
+    usort($lines, fn (array $a, array $b) => [$clock($a['what']), count($a['on'])] <=> [$clock($b['what']), count($b['on'])]);
     $all = count($sites);
     $md .= '## Worth improving (' . count($lines) . ")\n\n" . md_items($lines, fn (array $line) => ["**{$line['what']}** on " . (count($line['on']) > 1 && count($line['on']) === $all && $line['on'][0]['note'] === '' ? "all {$all} sites" : list_words(array_map(fn (array $on) => md_text($on['label']) . $on['note'], $line['on']))) . '.'], 'Nothing: every security header and mail record Vaka looks at is in place.');
     if ($lines) $md .= 'Each protection and record, with the line to add, is in the report for one site: `&site=' . $lines[0]['on'][0]['label'] . "&format=md`.\n\n";
