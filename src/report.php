@@ -303,9 +303,10 @@ function read_api_markdown_list(array $about, array $totals, array $sites, array
     $better = [];
     foreach ($sites as $site) {
         foreach (md_attention($site, $config) as $item) $attention[] = ['site' => $site['label']] + $item;
-        if ($site['ssl']['renewal_late'] ?? false) $better[] = ['site' => $site['label'], 'title' => 'certificate missed its renewal', 'text' => md_code($site['ssl']['summary'])];
-        if (($site['headers']['grade'] ?? 'A') !== 'A') $better[] = ['site' => $site['label'], 'title' => "security headers grade {$site['headers']['grade']}", 'text' => $site['headers']['summary']];
-        if (($site['dns']['status'] ?? '') === 'warn') $better[] = ['site' => $site['label'], 'title' => 'mail records', 'text' => $site['dns']['summary']];
+        // By what is wrong, without the site's own name, so what several sites share folds into one line
+        if ($site['ssl']['renewal_late'] ?? false) $better['Certificate: missed its renewal'][] = ['label' => $site['label'], 'note' => ' (' . plural((int) $site['ssl']['days_left'], 'day', 'days') . ' left)'];
+        if (($site['headers']['grade'] ?? 'A') !== 'A') $better['Security headers: ' . preg_replace('/^Grade (\w+): /', 'grade $1, ', $site['headers']['summary'])][] = ['label' => $site['label'], 'note' => ''];
+        if (($site['dns']['status'] ?? '') === 'warn') $better['Mail records: ' . preg_replace('/^Mail for [^:]+: /', '', $site['dns']['summary'])][] = ['label' => $site['label'], 'note' => ''];
     }
     usort($attention, fn (array $a, array $b) => $a['rank'] <=> $b['rank']);
 
@@ -314,8 +315,12 @@ function read_api_markdown_list(array $about, array $totals, array $sites, array
         ...($item['advice'] !== '' ? ['What to do: ' . md_own($item['advice'])] : []),
         ...$item['lines'],
     ], 'Nothing: every site is up, and their certificates, domains and files are fine.');
-    $md .= '## Worth improving (' . count($better) . ")\n\n" . md_items($better, fn (array $item) => ['**' . md_text($item['site']) . ": {$item['title']}**: {$item['text']}"], 'Nothing: every security header and mail record Vaka looks at is in place.');
-    if ($better) $md .= 'Each protection and record, with the line to add, is in the report for one site: `&site=' . $better[0]['site'] . "&format=md`.\n\n";
+    // The certificate first, as the one with a clock, then the fewest sites first: the odd one out is what is new, and what all share comes last
+    $lines = array_map(fn (string $what, array $on) => ['what' => $what, 'on' => $on], array_keys($better), array_values($better));
+    usort($lines, fn (array $a, array $b) => [!str_starts_with($a['what'], 'Certificate'), count($a['on'])] <=> [!str_starts_with($b['what'], 'Certificate'), count($b['on'])]);
+    $all = count($sites);
+    $md .= '## Worth improving (' . count($lines) . ")\n\n" . md_items($lines, fn (array $line) => ["**{$line['what']}** on " . (count($line['on']) > 1 && count($line['on']) === $all && $line['on'][0]['note'] === '' ? "all {$all} sites" : list_words(array_map(fn (array $on) => md_text($on['label']) . $on['note'], $line['on']))) . '.'], 'Nothing: every security header and mail record Vaka looks at is in place.');
+    if ($lines) $md .= 'Each protection and record, with the line to add, is in the report for one site: `&site=' . $lines[0]['on'][0]['label'] . "&format=md`.\n\n";
 
     $md .= "## Every site\n\n| Site | Now | Uptime 30 days | Certificate | Domain | Headers | Mail |\n|---|---|---|---|---|---|---|\n";
     foreach ($sites as $site) {
