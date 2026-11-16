@@ -81,12 +81,21 @@ function handle_request(array $config): never
     if (isset($_GET['health'])) health($config, $now);
     // For adding Vaka to a phone's home screen; browsers fetch it without cookies, so it needs no login
     if (isset($_GET['manifest'])) respond(200, web_manifest(), 'application/manifest+json', ['Cache-Control' => 'public, max-age=86400']);
-    // The read API with a token needs no session (and sets no cookie)
+    // A read token needs no session and sets no cookie: the read API, a shared page (a read-only
+    // dashboard for a person, such as a customer), and the overview and sites that page reads
     $readApi = ($_GET['api'] ?? null) === '';
-    if ($readApi && ($token = share_token_from_request($_GET, $_SERVER)) !== '') {
+    $sharedApi = in_array($_GET['api'] ?? null, ['overview', 'site'], true);
+    $sharedPage = isset($_GET['share']) && !isset($_GET['api']) && !isset($_GET['login']) && !isset($_GET['logout']);
+    if (($readApi || $sharedApi || $sharedPage) && ($token = share_token_from_request($_GET, $_SERVER)) !== '') {
         $db = get_db($config['db_path']);
         $found = find_share_token($db, $token, $now);
         if (!$found) {
+            // A person opened the link: words for them, not the commands the read API gives a script
+            if ($sharedPage) {
+                $ended = share_token_expired_on($db, $token, $now);
+                if ($ended !== null) show_message($config, 401, 'This link has expired', 'Its last day was ' . share_expires_words($ended, $config['timezone']) . '. Ask whoever sent it to extend it: the link stays the same.');
+                show_message($config, 404, 'This link does not work', 'It may have been revoked. Ask whoever sent it for a new one.');
+            }
             // Whoever sends an expired token had it already, so saying so leaks nothing, and saves hunting for why a script stopped working
             $expired = share_token_expired_on($db, $token, $now);
             // With a day to copy: 90 days from today, as share:create offers
@@ -95,6 +104,8 @@ function handle_request(array $config): never
                 . '. Extend it to ' . share_day_words($day) . ' with `php vaka share:edit ' . share_token_start($token) . " --expires={$day}`, or create a new one with `php vaka share:create`."]);
             respond_json(404, ['error' => 'No such read token: it may have been revoked']);
         }
+        if ($sharedPage) show_shared_dashboard($config, $found);
+        if ($sharedApi) shared_api($config, share_scope($found), (string) $_GET['api'], $method, $now);
         read_api($config, share_scope($found), $method, $now, $found);
     }
 
@@ -184,12 +195,8 @@ function handle_logout(string $token): never
 function show_login(array $config, ?string $error = null): never
 {
     $token = e(csrf_token());
-    $version = e(VAKA_VERSION);
-    $asset = asset_version();
     $message = $error === null ? '' : '<p class="login-error" id="login-error" role="alert">' . e($error) . '</p>';
     $described = $error === null ? '' : ' aria-describedby="login-error"';
-    $mark = mark_svg('vaka', 'mark');
-    $credit = footer_credit($config);
     $panel = load_users($config['users_file']) ? <<<HTML
       <form method="post" action="/?login">
         {$message}
@@ -210,14 +217,32 @@ function show_login(array $config, ?string $error = null): never
       </div>
     HTML;
 
-    respond(200, <<<HTML
+    respond(200, page_shell($config, 'Log in to Vaka', $panel), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
+}
+
+/** A page for a person who opened a shared link that no longer works: what happened and what to do, on the login page's card. */
+function show_message(array $config, int $status, string $title, string $text): never
+{
+    $panel = '<div class="login-steps"><h2>' . e($title) . '</h2><p>' . e($text) . '</p></div>';
+    respond($status, page_shell($config, $title, $panel), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow']);
+}
+
+/** The login page's card around $panel, with the mark, the tagline and the credit. */
+function page_shell(array $config, string $title, string $panel): string
+{
+    $version = e(VAKA_VERSION);
+    $asset = asset_version();
+    $mark = mark_svg('vaka', 'mark');
+    $credit = footer_credit($config);
+    $title = e($title);
+    return <<<HTML
     <!doctype html>
     <html lang="en">
     <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <meta name="theme-color" content="#0f172a">
-    <title>Log in to Vaka</title>
+    <title>{$title}</title>
     <link rel="icon" href="favicon.svg" type="image/svg+xml">
     <link rel="manifest" href="/?manifest">
     <link rel="apple-touch-icon" href="/icon-180.png">
@@ -236,7 +261,7 @@ function show_login(array $config, ?string $error = null): never
     </main>
     </body>
     </html>
-    HTML, 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
+    HTML;
 }
 
 /**
@@ -282,16 +307,48 @@ function asset_version(): string
 
 function show_dashboard(array $config, array $user): never
 {
+    respond(200, dashboard_html($config, csrf_token(), $user['name']), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
+}
+
+/**
+ * A read-only dashboard for a person who has the link, such as a customer:
+ * the sites its token reads, without a login, a cookie or a CSRF token. What
+ * the link shows and until when takes the place of signing out, and the page
+ * reads with the token (shared_api()), so it can change nothing.
+ */
+function show_shared_dashboard(array $config, array $token): never
+{
+    $scope = share_scope($token);
+    $note = 'Shared view of ' . $scope['name'] . ($token['expires_at'] === null ? '' : ', until ' . share_expires_words($token['expires_at'], $config['timezone']));
+    $shared = '<p class="shared-note" title="' . e($note) . ', read-only"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 13.2 7.6 4.1M15.8 6.7l-7.6 4.1"/></svg><span class="label">' . e($note) . '</span></p>';
+    // A link can be pasted anywhere: kept out of search engines
+    respond(200, dashboard_html($config, '', '', $shared), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow']);
+}
+
+/** The dashboard's page; on a shared page, $shared takes the place of what needs a login (the owner's API link and signing out). */
+function dashboard_html(array $config, string $csrf, string $user, ?string $shared = null): string
+{
     $html = (string) file_get_contents(__DIR__ . '/../public/dashboard.html');
-    $html = strtr($html, [
-        '{{csrf}}' => e(csrf_token()),
+    if ($shared !== null) $html = (string) preg_replace('#<!-- signed-in -->.*?<!-- /signed-in -->#s', $shared, $html);
+    return strtr($html, [
+        '{{csrf}}' => e($csrf),
         '{{version}}' => e(VAKA_VERSION),
         '{{asset}}' => asset_version(),
-        '{{user}}' => e($user['name']),
+        '{{user}}' => e($user),
         '{{mark}}' => mark_svg('vaka', 'mark'),
         '{{credit}}' => footer_credit($config),
     ]);
-    respond(200, $html, 'text/html; charset=utf-8', ['Cache-Control' => 'no-store']);
+}
+
+/** The dashboard's overview and one site for a shared page: what the token reads, with nothing to set up or change. */
+function shared_api(array $config, array $scope, string $endpoint, string $method, int $now): never
+{
+    if ($method !== 'GET') respond_json(405, ['error' => 'A shared view only reads']);
+    $db = get_db($config['db_path']);
+    if ($endpoint === 'overview') respond_json(200, api_overview($db, $config, [], $now, $scope['where']));
+    $row = overview_rows($db, 's.id = ' . (int) ($_GET['id'] ?? 0) . ' AND ' . $scope['where'])[0] ?? null;
+    if (!$row) respond_json(404, ['error' => 'No such site']);
+    respond_json(200, api_site($db, $config, $row, $now));
 }
 
 // =====================================================================
@@ -588,9 +645,10 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
     ];
 }
 
-function api_overview(PDO $db, array $config, ?array $allowed, int $now): array
+function api_overview(PDO $db, array $config, ?array $allowed, int $now, ?string $where = null): array
 {
-    $rows = overview_rows($db, group_filter($allowed));
+    // $where for a shared page: its token's sites, with nothing to set up ($allowed is then [])
+    $rows = overview_rows($db, $where ?? group_filter($allowed));
     $hours = hourly_buckets_by_site($db, array_column($rows, 'id'), $now, 24);
     $labels = server_labels($db);
     $windows = load_windows($db, $now);

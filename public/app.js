@@ -271,11 +271,17 @@
   // Loading
   // =================================================================
 
+  // A shared page (a read-only link for a person, such as a customer) reads with the token in its
+  // address, sent as a header and without cookies; it can change nothing, so it offers nothing that would
+  var SHARE = new URLSearchParams(window.location.search).get('share');
+
   function api(path, options) {
-    return fetch(path, Object.assign({ credentials: 'same-origin', headers: { Accept: 'application/json' } }, options || {}))
+    var headers = SHARE ? { Accept: 'application/json', Authorization: 'Bearer ' + SHARE } : { Accept: 'application/json' };
+    return fetch(path, Object.assign({ credentials: SHARE ? 'omit' : 'same-origin', headers: headers }, options || {}))
       .then(function (response) {
         if (response.status === 401) {
-          window.location.assign('/?login');
+          // A link that expired while open: the page then says so; a login that ended: the login page
+          if (SHARE) window.location.reload(); else window.location.assign('/?login');
           throw new Error('Logged out');
         }
         return response.json().then(function (body) {
@@ -784,6 +790,7 @@
   }
 
   function snoozeGroup(sites, label) {
+    if (SHARE) return null;
     var ids = sites.map(function (site) { return site.id; }).join(',');
     var who = sites.length > 1 ? plural(sites.length, 'site', 'sites') : sites[0].label;
     var words = { '1h': '1 hour', '4h': '4 hours', '24h': '24 hours' };
@@ -796,6 +803,7 @@
   }
 
   function siteActions(site, withSnooze) {
+    withSnooze = withSnooze && !SHARE;
     var actions = [];
     if (withSnooze && site.snoozed_until) {
       actions.push(h('button', { type: 'button', class: 'button', 'data-action': 'unsnooze', 'data-sites': site.id }, [icon('bell'), 'Unsnooze']));
@@ -1129,7 +1137,8 @@
    * have, when (see settleRecheck()).
    */
   function recheckButton(site) {
-    if (site.status === 'paused') return [];
+    // A token never starts a check (design kit docs/api.md): that is for a logged-in user
+    if (site.status === 'paused' || SHARE) return [];
     var current = state.recheck && state.recheck.id === site.id ? state.recheck : null;
     if (current && current.done) {
       return [h('button', { type: 'button', class: 'button is-done', 'data-action': 'recheck', 'data-site': site.id, 'aria-label': 'Checked ' + site.label + ' again at ' + clock(current.done) + '. Check it again now' }, [icon('up'), 'Checked again ' + clock(current.done)])];
