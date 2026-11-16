@@ -89,11 +89,13 @@ function handle_request(array $config): never
         if (!$found) {
             // Whoever sends an expired token had it already, so saying so leaks nothing, and saves hunting for why a script stopped working
             $expired = share_token_expired_on($db, $token, $now);
+            // With a day to copy: 90 days from today, as share:create offers
+            $day = share_default_day($config['timezone'], $now);
             if ($expired !== null) respond_json(401, ['error' => 'This read token expired on ' . share_expires_words($expired, $config['timezone'])
-                . '. Extend it with `php vaka share:edit ' . share_token_start($token) . ' --expires=YYYY-MM-DD`, or create a new one with `php vaka share:create`.']);
+                . '. Extend it to ' . share_day_words($day) . ' with `php vaka share:edit ' . share_token_start($token) . " --expires={$day}`, or create a new one with `php vaka share:create`."]);
             respond_json(404, ['error' => 'No such read token: it may have been revoked']);
         }
-        read_api($config, share_scope($found), $method, $now);
+        read_api($config, share_scope($found), $method, $now, $found);
     }
 
     start_session($config);
@@ -716,8 +718,10 @@ function share_token_from_request(array $get, array $server): string
  * Answer the read API for the sites in $scope (see share_scope()): every
  * site, or one in detail with ?site= (a site token's own without it), as
  * JSON, CSV with &format=csv, or Markdown for an AI assistant with &format=md.
+ * Read with a token ($token, as find_share_token() gives it), the answer says
+ * when the token stops working, and the report warns near its last day.
  */
-function read_api(array $config, array $scope, string $method, int $now): never
+function read_api(array $config, array $scope, string $method, int $now, ?array $token = null): never
 {
     if ($method !== 'GET') respond_json(405, ['error' => 'The read API only answers GET']);
     $db = get_db($config['db_path']);
@@ -729,9 +733,13 @@ function read_api(array $config, array $scope, string $method, int $now): never
         'generated_at' => utc_now($now),
         'timezone' => $config['timezone'],
         'scope' => ['type' => $scope['type'], 'name' => $scope['name']] + (isset($scope['groups']) ? ['groups' => $scope['groups']] : []),
+        // A script that reads every morning otherwise stops without a word first
+        ...($token !== null ? ['token_expires_at' => $token['expires_at']] : []),
         'last_run_at' => $lastRun,
         'run_ok' => $lastRun !== null && $now - strtotime($lastRun) <= STALE_RUN_SECONDS,
     ];
+    // The report names the token by its start, for the command that extends it; the JSON does not need it
+    $report = $about + ($token !== null ? ['token_start' => $token['prefix']] : []);
 
     // A token for one site has nothing else to list, so it answers with its site in detail
     $wanted = is_string($_GET['site'] ?? null) ? $_GET['site'] : null;
@@ -741,7 +749,7 @@ function read_api(array $config, array $scope, string $method, int $now): never
         if (!$row) respond_json(404, ['error' => 'No such site']);
         $detail = read_api_site($db, $config, $row, max(1, min(720, (int) ($_GET['hours'] ?? 24))), $now);
         if ($csv) respond_csv(['checked_at', 'status_code', 'ms', 'ok'], array_map(fn ($s) => [$s['checked_at'], $s['status_code'], $s['ms'], (int) $s['ok']], $detail['samples']));
-        if ($format === 'md') respond_markdown(read_api_markdown_site($about, $detail, $config));
+        if ($format === 'md') respond_markdown(read_api_markdown_site($report, $detail, $config));
         respond_json(200, $about + $detail);
     }
 
@@ -764,7 +772,7 @@ function read_api(array $config, array $scope, string $method, int $now): never
             ], $sites),
         );
     }
-    if ($format === 'md') respond_markdown(read_api_markdown_list($about, $totals, $sites, $config));
+    if ($format === 'md') respond_markdown(read_api_markdown_list($report, $totals, $sites, $config));
     respond_json(200, $about + ['totals' => $totals, 'sites' => $sites]);
 }
 

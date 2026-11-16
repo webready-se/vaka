@@ -192,6 +192,32 @@ test('a report from a Vaka that has stopped running says so before anything else
         ->and(strpos($md, 'has not run'))->toBeLessThan(strpos($md, '## Needs attention'));
 });
 
+test('a report read with a token says when it stops working, and warns in its last 14 days with the command that extends it', function () {
+    // Generated 28 Oct 2026; a token works through its last day, local time (23:00 UTC is midnight in Stockholm)
+    $md = fn (?string $expires, string $start = 'vaka_1a2b3c4d') => read_api_markdown_site(report_about(['token_expires_at' => $expires, 'token_start' => $start]), report_detail(), REPORT_CONFIG);
+
+    $far = $md('2027-02-14T23:00:00Z');
+    expect($far)->toContain("> This token works until 14 Feb 2027.\n\n")
+        ->and($far)->not->toContain('**This token')
+        ->and($md('2026-11-12T23:00:00Z'))->toContain('> This token works until 12 Nov 2026.');
+
+    $soon = $md('2026-11-01T23:00:00Z');
+    expect($soon)->toContain("**This token's last day is 1 Nov 2026, in 4 days.** Tell the site owner: `php vaka share:edit vaka_1a2b3c4d --expires=2027-01-26` makes it work until 26 Jan 2027, and the token stays the same, so nothing changes where it is read.\n\n")
+        ->and($soon)->not->toContain('This token works until')
+        ->and(strpos($soon, "This token's last day"))->toBeLessThan(strpos($soon, '## Needs attention'))
+        ->and($md('2026-11-11T23:00:00Z'))->toContain("**This token's last day is 11 Nov 2026, in 14 days.**")
+        ->and($md('2026-10-29T23:00:00Z'))->toContain("**This token's last day is tomorrow, 29 Oct 2026.** Tell the site owner:")
+        ->and($md('2026-10-28T23:00:00Z'))->toContain("**Today is this token's last day.** Tell the site owner: `php vaka share:edit vaka_1a2b3c4d --expires=2027-01-26`");
+
+    // A token with no last day, and a login, say nothing of it
+    expect($md(null))->not->toContain('This token')
+        ->and(read_api_markdown_site(report_about(), report_detail(), REPORT_CONFIG))->not->toContain('This token');
+
+    // The report on every site says the same
+    $list = read_api_markdown_list(report_about(['scope' => ['type' => 'group', 'name' => 'Customers', 'groups' => ['Customers']], 'token_expires_at' => '2026-11-01T23:00:00Z', 'token_start' => 'vaka_1a2b3c4d']), ['sites' => 0, 'up' => 0, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0], [], REPORT_CONFIG);
+    expect($list)->toContain("**This token's last day is 1 Nov 2026, in 4 days.**");
+});
+
 test('every site: what needs attention across them, what is worth improving, and a table of every site', function () {
     $sites = [
         report_site(['status' => 'down', 'summary' => 'The site answered 503 Service Unavailable', 'advice' => 'Look at its error log.', 'since' => '2026-10-28T12:50:00Z', 'response_ms' => null]),

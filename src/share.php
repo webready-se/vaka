@@ -216,6 +216,12 @@ function share_default_day(string $timezone, int $now): string
     return (new DateTimeImmutable('@' . $now))->setTimezone(new DateTimeZone($timezone))->modify('+' . SHARE_DEFAULT_DAYS . ' days')->format('Y-m-d');
 }
 
+/** "14 Feb 2027" for a day given as YYYY-MM-DD. */
+function share_day_words(string $day): string
+{
+    return DateTimeImmutable::createFromFormat('!Y-m-d', $day)->format('j M Y');
+}
+
 /**
  * The end of a day (YYYY-MM-DD) in local time, in UTC: a token that expires
  * on a day works through that day. Today is allowed; a day that has passed is not.
