@@ -109,7 +109,7 @@ A user limited to groups never sees other groups' sites, or sites without a grou
 
 | Command | What it does |
 |---------|--------------|
-| `php vaka share:create <group or site> [--groups=a,b] [--label=] [--expires=YYYY-MM-DD]` | A read token for the [read API](api.md): one site, or the sites in one or more groups (`--groups`), read-only, shown once. `--expires` is the last day it works, 90 days from today when left out, or `never` |
+| `php vaka share:create <group or site> [--groups=a,b] [--label=] [--expires=YYYY-MM-DD]` | A read token for the [read API](api.md), which also opens a read-only dashboard of the same sites at `/?share=TOKEN`, to send to a person such as a customer: one site, or the sites in one or more groups (`--groups`), read-only, shown once. `--expires` is the last day it works, 90 days from today when left out, or `never` |
 | `php vaka share:list` | Every read token: what it reads, its label, the start of the token, when it expires and when it was last used |
 | `php vaka share:edit <#> [--groups=a,b] [--expires=YYYY-MM-DD\|never] [--label=]` | Change a read token's groups, last day or label, also one that has expired. The token stays the same, so nothing changes where it is kept. A token for one site stays one |
 | `php vaka share:revoke <#>` | Revoke a read token, by its number in `share:list` or the start of the token |

@@ -663,7 +663,8 @@ test('an unknown or revoked share token is a 404, an expired one says when it ex
         ->and($r['json']['error'])->toMatch('/^This read token expired on 2[67] Jan 2026\. Extend it to ' . preg_quote($words, '/') . ' with `php vaka share:edit vaka_[a-f0-9]{8} --expires=' . $day . '`, or create a new one with `php vaka share:create`\.$/');
 
     expect(http_request('GET', WEB . '/?api&site=blog.example&share=' . $token)['status'])->toBe(404)
-        ->and(http_request('GET', WEB . '/?api=overview&share=' . $token)['status'])->toBe(401)
+        // The dashboard's own overview reads with a token too, only its sites
+        ->and(array_column(array_merge(...array_column(http_request('GET', WEB . '/?api=overview&share=' . $token)['json']['groups'], 'sites')), 'label'))->toBe(['shop.example'])
         ->and(http_request('POST', WEB . '/?api&share=' . $token)['status'])->toBe(405)
         ->and(http_request('GET', WEB . '/?api')['status'])->toBe(401);
 });
@@ -794,6 +795,66 @@ test('while "Check again" waits, the page asks only when each check of the site 
     // A site with no check yet answers an object all the same
     $new = add_site($this->db, ['url' => 'https://new.example', 'group' => 'Customers']);
     expect(http_request('GET', WEB . "/?api=site-times&id={$new}", ['jar' => $jar])['body'])->toBe('{"times":{}}');
+});
+
+test('a share link opens a read-only dashboard of its sites, without a login or a cookie', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $blog = add_site($this->db, ['url' => 'https://blog.example']);
+    $now = time();
+    $token = create_share_token($this->db, null, [$customers], 'A customer', $until = utc_now($now + 30 * 86400), $now)['token'];
+
+    $page = http_request('GET', WEB . '/?share=' . $token);
+    expect($page['status'])->toBe(200)
+        ->and($page['headers'])->not->toHaveKey('set-cookie')
+        ->and($page['headers']['x-robots-tag'])->toBe('noindex, nofollow')
+        ->and($page['body'])->toContain('Shared view of Customers, until ' . share_expires_words($until, 'Europe/Stockholm'))
+        // Nothing of a login: no sign out, no CSRF token, no link to the API docs for the owner
+        ->and($page['body'])->not->toContain('/?logout')
+        ->and($page['body'])->not->toContain('data-api-link')
+        ->and($page['body'])->toContain('<meta name="csrf-token" content="">')
+        // An agent handed the link still finds how to read it
+        ->and($page['body'])->toContain('rel="help"');
+
+    // The page reads with the token in a header, and sees only its sites, with nothing to set up
+    $auth = ['headers' => ['Authorization: Bearer ' . $token]];
+    $overview = http_request('GET', WEB . '/?api=overview', $auth);
+    expect($overview['status'])->toBe(200)
+        ->and($overview['headers'])->not->toHaveKey('set-cookie')
+        ->and($overview['json']['setup'])->toBeNull()
+        ->and(array_column($overview['json']['groups'][0]['sites'], 'label'))->toBe(['shop.example'])
+        ->and(http_request('GET', WEB . "/?api=site&id={$shop}", $auth)['json']['site']['label'])->toBe('shop.example')
+        ->and(http_request('GET', WEB . "/?api=site&id={$blog}", $auth)['status'])->toBe(404);
+
+    // A token never changes anything or starts a check
+    foreach (['snooze', 'site-recheck', 'site-save'] as $endpoint) {
+        expect(http_request('POST', WEB . "/?api={$endpoint}", $auth + ['json' => ['site_id' => $shop, 'for' => '1h']])['status'])->toBe(401);
+    }
+    expect(http_request('GET', WEB . "/?api=site-times&id={$shop}", $auth)['status'])->toBe(401);
+
+    // A token for one site shows that site
+    $site = create_share_token($this->db, $shop, [], '', null, $now)['token'];
+    expect(http_request('GET', WEB . '/?share=' . $site)['body'])->toContain('Shared view of shop.example<');
+});
+
+test('a share link that is unknown, revoked or expired says so to the person who opened it', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    $now = time();
+    $expired = create_share_token($this->db, null, [$customers], '', '2026-01-26T23:00:00Z', strtotime('2025-10-28T12:00:00Z'))['token'];
+    $revoked = create_share_token($this->db, null, [$customers], '', null, $now);
+    revoke_share_token($this->db, $revoked['id']);
+
+    foreach (['vaka_' . str_repeat('0', 64), $revoked['token']] as $bad) {
+        $r = http_request('GET', WEB . '/?share=' . $bad);
+        expect($r['status'])->toBe(404)
+            ->and($r['body'])->toContain('This link does not work')
+            ->and($r['body'])->toContain('It may have been revoked. Ask whoever sent it for a new one.')
+            ->and($r['headers'])->not->toHaveKey('set-cookie');
+    }
+    $r = http_request('GET', WEB . '/?share=' . $expired);
+    expect($r['status'])->toBe(401)
+        ->and($r['body'])->toContain('This link has expired')
+        ->and($r['body'])->toMatch('/Its last day was 2[67] Jan 2026\. Ask whoever sent it to extend it: the link stays the same\./');
 });
 
 test('a token says when it stops working, in JSON and in the report near its last day', function () {

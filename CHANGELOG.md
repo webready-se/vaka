@@ -7,6 +7,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ## [Unreleased]
 
+### Added
+
+- **A share link: a read-only dashboard for a customer.** The read token `share:create` makes now also opens the dashboard at `/?share=TOKEN`, for the site or groups it reads, without a login or a cookie, and `share:create` prints the link. The top bar says what the link shows and until when ("Shared view of Customers, until 14 Feb 2027") where signing out would be, and nothing on the page changes anything: no snooze, no "Check again", no adding or changing. A link that no longer works says so in words for whoever opened it, and asks them to turn to whoever sent it.
+
 ## [0.6.0] - 2026-11-16
 
 ### Added

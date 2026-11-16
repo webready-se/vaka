@@ -204,8 +204,10 @@ test('share:create shows the token once, in the lines for .env; share:list shows
     $token = $m[1];
     $prefix = substr($token, 0, 13);
     expect($r['out'])->toContain('Read token for group Customers (AI assistant), valid through 31 Dec 2099.')
-        ->and(substr_count($r['out'], $token))->toBe(1)
+        // In the lines for .env, and in the link for a person
+        ->and(substr_count($r['out'], $token))->toBe(2)
         ->and($r['out'])->toContain("  VAKA_URL=https://vaka.example.com\n  VAKA_SHARE_TOKEN={$token}\n")
+        ->and($r['out'])->toContain("The same token opens a read-only dashboard of these sites, to send to a person, such as a customer:\n\n  https://vaka.example.com/?share={$token}\n")
         ->and($r['out'])->toContain('never in CLAUDE.md')
         ->and($r['out'])->toContain('git check-ignore .env')
         ->and($r['out'])->toContain('PUBLIC_, VITE_ or NEXT_PUBLIC_')

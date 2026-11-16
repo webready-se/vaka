@@ -898,6 +898,39 @@ async function main() {
   const typo = await evaluate(() => document.querySelector('.banner')?.textContent || '');
   if (!/A setting in \.env needs fixing\. TIMEZONE "Europe\/Stokholm" is not a time zone.*Did you mean Europe\/Stockholm\?/.test(typo)) fails.push(`a typo in TIMEZONE is shown, with what was meant (got "${typo}")`);
 
+  // 7b. A share link: a read-only dashboard for a person, such as a customer, with nothing that changes anything
+  const shareToken = execFileSync('php', ['-r', 'require $argv[1]; $db = get_db($argv[2]); echo create_share_token($db, null, [find_group($db, "Customers")["id"]], "Smoke", null, time())["token"];', join(root, 'src/bootstrap.php'), dbPath]).toString().trim();
+  wait = loaded();
+  await send('Page.navigate', { url: `${base}/?share=${shareToken}` });
+  await wait;
+  const shared = await evaluate(async () => {
+    for (let t = 0; t < 5000 && !document.querySelector('#app[aria-busy="false"]'); t += 50) await new Promise((r) => setTimeout(r, 50));
+    const out = {
+      note: document.querySelector('.topbar .shared-note')?.textContent || '',
+      logout: Boolean(document.querySelector('form[action="/?logout"]')),
+      rows: document.querySelectorAll('.site-row').length,
+      changes: document.querySelectorAll('[data-action="snooze"], [data-action="unsnooze"], [data-action="recheck"]').length,
+      add: !document.querySelector('[data-add-site]').hidden || !document.querySelector('[data-add-group]').hidden,
+    };
+    return out;
+  });
+  await screenshot('shared');
+  Object.assign(shared, await evaluate(async () => {
+    document.querySelector('.site-row')?.click();
+    for (let t = 0; t < 5000 && !document.querySelector('dialog.drawer[open] h2'); t += 50) await new Promise((r) => setTimeout(r, 50));
+    return {
+      detail: Boolean(document.querySelector('dialog.drawer[open] h2')),
+      detailChanges: document.querySelectorAll('dialog.drawer [data-action="snooze"], dialog.drawer [data-action="recheck"], dialog.drawer [data-action^="edit-"], dialog.drawer [data-action="add-window"], dialog.drawer [data-action="window-remove"]').length,
+      csp: window.__csp,
+    };
+  }));
+  if (shared.note !== 'Shared view of Customers') fails.push(`a share link says what it shows, where signing out is (got "${shared.note}")`);
+  if (shared.logout) fails.push('a share link has no sign out');
+  if (shared.rows !== 6) fails.push(`a share link for a group shows that group's sites only (got ${shared.rows})`);
+  if (shared.changes || shared.add) fails.push('a share link offers no snooze, no "Check again" and no adding');
+  if (!shared.detail || shared.detailChanges) fails.push('a site opens from a share link, with nothing in it that changes anything');
+  if (shared.csp.length) fails.push(`no CSP violations on a share link: ${shared.csp.join(', ')}`);
+
   // 8. The very first visit: before the first user, then with no sites and cron not running yet
   await send('Emulation.clearDeviceMetricsOverride');
   const emptyEnv = { ...env, DB_PATH: join(tmp, 'empty.sqlite') };

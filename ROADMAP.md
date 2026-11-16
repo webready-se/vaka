@@ -144,7 +144,7 @@ What the first weeks of reading Vaka's reports, from sibling tools and an AI ass
 - [ ] Tags on sites, if one group per site proves too narrow
 - [ ] Snooze straight from Slack (needs a Slack app instead of an incoming webhook)
 - [ ] Connect sibling tools: each tool keeps its own small JSON API with a token; paste another tool's URL and token in Settings, e.g. to show Puls traffic next to a site's uptime. No shared database, no shared code library
-- [ ] Read-only share link per group (like Puls share tokens), e.g. for a customer
+- [x] Read-only share link per group (like Puls share tokens), e.g. for a customer (done 2026-11-16: the read token opens the dashboard at `/?share=TOKEN`, for a site or groups, read-only; `share:create` prints the link; the live demo is built on it)
 - [ ] Public status pages
 - [ ] DKIM (selectors are site specific)
 - [ ] SMTP delivery for email alerts
