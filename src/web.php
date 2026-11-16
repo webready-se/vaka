@@ -319,7 +319,8 @@ function show_dashboard(array $config, array $user): never
 function show_shared_dashboard(array $config, array $token): never
 {
     $scope = share_scope($token);
-    $note = 'Shared view of ' . $scope['name'] . ($token['expires_at'] === null ? '' : ', until ' . share_expires_words($token['expires_at'], $config['timezone']));
+    // Several groups as words ("Customers and Own sites"); scope's name stays the read API's stable field
+    $note = 'Shared view of ' . (isset($scope['groups']) ? list_words($scope['groups']) : $scope['name']) . ($token['expires_at'] === null ? '' : ', until ' . share_expires_words($token['expires_at'], $config['timezone']));
     $shared = '<p class="shared-note" title="' . e($note) . ', read-only"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 13.2 7.6 4.1M15.8 6.7l-7.6 4.1"/></svg><span class="label">' . e($note) . '</span></p>';
     // A link can be pasted anywhere: kept out of search engines
     respond(200, dashboard_html($config, '', '', $shared), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow']);

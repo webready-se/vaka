@@ -832,9 +832,11 @@ test('a share link opens a read-only dashboard of its sites, without a login or 
     }
     expect(http_request('GET', WEB . "/?api=site-times&id={$shop}", $auth)['status'])->toBe(401);
 
-    // A token for one site shows that site
+    // A token for one site shows that site, and one for several groups names them as a list
     $site = create_share_token($this->db, $shop, [], '', null, $now)['token'];
     expect(http_request('GET', WEB . '/?share=' . $site)['body'])->toContain('Shared view of shop.example<');
+    $both = create_share_token($this->db, null, [$customers, add_group($this->db, ['name' => 'Own'])], '', null, $now)['token'];
+    expect(http_request('GET', WEB . '/?share=' . $both)['body'])->toContain('Shared view of Customers and Own<');
 });
 
 test('a share link that is unknown, revoked or expired says so to the person who opened it', function () {
