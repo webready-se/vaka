@@ -426,7 +426,7 @@ test('without a CSP, the suggestion is Report-Only, and the note says what defau
     // Already there as Report-Only: the step after is to enforce it
     $trying = $csp($page('<script>theme()</script>', ['Content-Security-Policy-Report-Only' => "default-src 'self'"]));
     expect($trying['note'])->toBe('it blocks nothing yet. Enforced, it would block 1 inline script on the start page')
-        ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'")
+        ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'; object-src 'none'")
         ->and($trying['report_only'])->toBeTrue()
         ->and($trying['tip'])->toContain("show nothing it would block that the site needs");
 
@@ -583,7 +583,7 @@ test('the site detail says what the CSP blocks, or what a Report-Only one would,
         ->and($trying['note'])->toBe('it blocks nothing yet. Enforced, it would block 2 inline scripts and a script from cdn.example on the start page')
         ->and($trying['inline'])->toBe(['theme()', 'go()'])
         ->and($trying['blocked'])->toBe(['https://cdn.example/w.js'])
-        ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'")
+        ->and($trying['fix'])->toBe("Content-Security-Policy: default-src 'self'; object-src 'none'")
         ->and($trying['report_only'])->toBeTrue()
         ->and($blocking)->not->toHaveKey('report_only');
 
@@ -628,12 +628,89 @@ test('a Report-Only policy with hashes says they follow the code', function () {
         ->and($csp("default-src 'self'")['tip'])->not->toContain('hashes');
 });
 
-test('a Report-Only policy is told to add object-src none only when it lacks it', function () {
+test('a Report-Only policy without object-src gets it in its line, and one with another is told to add it', function () {
     $csp = fn (string $policy) => array_column(header_items(evaluate_headers(['body' => '<p>Hi</p>'] + answered(['Content-Security-Policy-Report-Only' => $policy] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
-    expect($csp("default-src 'self'")['tip'])->toContain("Add object-src 'none' to it too")
+    expect($csp("default-src 'self'")['fix'])->toBe("Content-Security-Policy: default-src 'self'; object-src 'none'")
+        ->and($csp("default-src 'self'")['tip'])->toContain("The line adds object-src 'none' too: no site needs plugins")
+        ->and($csp("default-src 'self'")['tip'])->not->toContain('Add object-src')
+        // Another object-src may be on purpose (a PDF in an <object>): the line keeps it, the tip tells
+        ->and($csp("default-src 'self'; object-src 'self'")['fix'])->toBe("Content-Security-Policy: default-src 'self'; object-src 'self'")
         ->and($csp("default-src 'self'; object-src 'self'")['tip'])->toContain("Add object-src 'none' to it too")
+        ->and($csp("default-src 'self'; object-src 'none'")['fix'])->toBe("Content-Security-Policy: default-src 'self'; object-src 'none'")
         ->and($csp("default-src 'self'; object-src 'none'")['tip'])->not->toContain('object-src')
         ->and($csp("default-src 'self'; Object-Src 'NONE'")['tip'])->not->toContain('object-src');
+});
+
+test('a host in a policy counts as used when the page loads anything from it, its domain or its family', function () {
+    $unused = fn (string $policy, string $html) => csp_unused(csp_directives($policy), page_scripts($html, 'https://shop.example/'), 'https://shop.example/');
+
+    // Nothing from them: listed by directive, as the policy has them
+    expect($unused("default-src 'self'; script-src 'self' https://maps.googleapis.com; style-src 'self' https://use.typekit.net 'unsafe-inline'; img-src 'self' *.typekit.net", '<p>Hi</p>'))
+        ->toBe(['script-src' => ['https://maps.googleapis.com'], 'style-src' => ['https://use.typekit.net'], 'img-src' => ['*.typekit.net']])
+        // A script's host stays in img-src (a pixel) and frame-src, whatever the page shows of them
+        ->and($unused("script-src 'self' https://stats.example; img-src 'self' https://stats.example; frame-src stats.example", '<script src="https://stats.example/?js"></script>'))->toBe([])
+        // The same domain: a stylesheet from use.typekit.net loads from p.typekit.net
+        ->and($unused("style-src 'self' https://use.typekit.net https://p.typekit.net", '<link rel="stylesheet" href="https://use.typekit.net/abc.css">'))->toBe([])
+        // Google's hosts load for one another: reCAPTCHA's scripts, Maps' tiles, Ads from a country's domain
+        ->and($unused("script-src 'self' https://www.google.com https://www.gstatic.com; frame-src https://www.google.com", '<script src="https://www.google.com/recaptcha/api.js"></script>'))->toBe([])
+        ->and($unused("script-src 'self' https://maps.googleapis.com; img-src 'self' https://maps.gstatic.com https://www.google.se https://www.google.co.uk", '<script src="https://maps.googleapis.com/maps/api/js"></script>'))->toBe([])
+        // And Meta's: the pixel's script from facebook.net sends to facebook.com
+        ->and($unused("script-src 'self' https://connect.facebook.net; img-src 'self' https://www.facebook.com", '<script src="https://connect.facebook.net/en_US/fbevents.js"></script>'))->toBe([])
+        // The site's own hosts, keywords, schemes, * and the directives the page never shows are left alone
+        ->and($unused("img-src 'self' https://static.shop.example data: https: *; script-src 'self' 'unsafe-inline' 'sha256-abc'; connect-src https://maps.googleapis.com; font-src https://use.typekit.net; default-src https://cdn.example", '<p>Hi</p>'))->toBe([])
+        // A tag manager loads anything later, so nothing is said
+        ->and($unused("script-src 'self' https://www.googletagmanager.com https://maps.example", '<script src="https://www.googletagmanager.com/gtm.js?id=GTM-1"></script>'))->toBe([])
+        ->and(csp_unused(csp_directives("script-src https://maps.example"), ['inline' => 0, 'hosts' => []], 'https://shop.example/'))->toBe([]);
+});
+
+test('a policy without hosts keeps the rest as written, and a directive left empty says none', function () {
+    expect(csp_without("default-src 'self'; script-src 'self' https://maps.googleapis.com https://stats.example; frame-src https://www.youtube.com", ['script-src' => ['https://maps.googleapis.com'], 'frame-src' => ['https://www.youtube.com']]))
+        ->toBe("default-src 'self'; script-src 'self' https://stats.example; frame-src 'none'")
+        ->and(csp_without("Script-Src 'self' HTTPS://Maps.Example; img-src https://maps.example", ['script-src' => ['https://maps.example']]))->toBe("Script-Src 'self'; img-src https://maps.example")
+        ->and(csp_with_object_none("default-src 'self'"))->toBe("default-src 'self'; object-src 'none'")
+        ->and(csp_with_object_none("default-src 'self'; Object-Src 'self'"))->toBe("default-src 'self'; Object-Src 'self'");
+});
+
+test('a Report-Only policy that allows hosts the page loads nothing from offers itself without them, still as Report-Only', function () {
+    $csp = fn (string $policy, string $body, string $url = 'https://shop.example/') => array_column(header_items(evaluate_headers(['body' => $body] + answered(['Content-Security-Policy-Report-Only' => $policy] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY'], $url), 10)['details']), null, 'key')['csp'];
+    $stats = '<script src="https://stats.example/?js"></script><img src="/logo.png">';
+    $policy = "default-src 'self'; script-src 'self' https://maps.googleapis.com https://stats.example; style-src 'self' https://use.typekit.net 'unsafe-inline'; img-src 'self' https://stats.example; connect-src 'self' https://stats.example; object-src 'none'";
+    $without = "default-src 'self'; script-src 'self' https://stats.example; style-src 'self' 'unsafe-inline'; img-src 'self' https://stats.example; connect-src 'self' https://stats.example; object-src 'none'";
+
+    $tried = $csp($policy, $stats);
+    expect($tried['note'])->toBe('it blocks nothing yet. Enforced, it would block nothing on the start page. It also allows maps.googleapis.com and use.typekit.net, which the start page loads nothing from')
+        ->and($tried['fix'])->toBe("Content-Security-Policy-Report-Only: {$without}")
+        ->and($tried['fix_label'])->toBe('Your policy without maps.googleapis.com and use.typekit.net, still as Report-Only:')
+        ->and($tried['report_only'])->toBeTrue()
+        ->and($tried['tip'])->toStartWith('The line above is your Report-Only policy without https://maps.googleapis.com in script-src and https://use.typekit.net in style-src. **Put it in place of the Report-Only line you send now**: it blocks nothing either, so nothing can break.')
+        ->and($tried['tip'])->toContain('the browser\'s console says so on that page. The next "Check again" gives the line that enforces it. If you know a page needs them, keep your policy and only rename the header to Content-Security-Policy to enforce it.')
+        ->and(substr_count($tried['tip'], '**'))->toBe(2)
+        // With that line in place, the next step is to enforce it
+        ->and($csp($without, $stats)['fix'])->toBe("Content-Security-Policy: {$without}")
+        ->and($csp($without, $stats)['fix_label'])->toBe('Your policy under the name that enforces it:')
+        ->and($csp($without, $stats))->not->toHaveKey('unused_hosts')
+        // The page is named as it is everywhere
+        ->and($csp($policy, $stats, 'https://shop.example/guide/')['note'])->toEndWith('It also allows maps.googleapis.com and use.typekit.net, which shop.example/guide/ loads nothing from');
+
+    // A script that may not send back: both changes in the one Report-Only line
+    $sending = $csp("default-src 'self'; script-src 'self' https://stats.example https://maps.googleapis.com; object-src 'none'", $stats);
+    expect($sending['note'])->toBe('it blocks nothing yet. Enforced, it would stop the script from stats.example sending anything back, such as visits for statistics: the line below allows that. It also allows maps.googleapis.com, which the start page loads nothing from')
+        ->and($sending['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'; script-src 'self' https://stats.example; object-src 'none'; connect-src 'self' https://stats.example")
+        ->and($sending['fix_label'])->toBe('Your policy without maps.googleapis.com, with stats.example added to connect-src, still as Report-Only:')
+        ->and($sending['tip'])->toStartWith('The line above is your Report-Only policy without https://maps.googleapis.com in script-src, with stats.example added to connect-src. **Put it in place');
+
+    // One host in two directives is named once; object-src 'none' goes in the same line
+    $twice = $csp("script-src 'self' https://maps.example; img-src 'self' https://maps.example", '<p>Hi</p>');
+    expect($twice['fix_label'])->toBe('Your policy without maps.example, still as Report-Only:')
+        ->and($twice['fix'])->toBe("Content-Security-Policy-Report-Only: script-src 'self'; img-src 'self'; object-src 'none'")
+        ->and($twice['tip'])->toStartWith('The line above is your Report-Only policy without https://maps.example in script-src and img-src. **Put it in place')
+        ->and($twice['tip'])->toContain("The line adds object-src 'none' too");
+
+    // While it would block something, that list comes first: the hosts are told on the look after
+    $blocking = $csp("default-src 'self'; script-src 'self' https://maps.example", '<script>theme()</script>');
+    expect($blocking['note'])->not->toContain('also allows')
+        ->and($blocking['fix'])->toBe("Content-Security-Policy: default-src 'self'; script-src 'self' https://maps.example; object-src 'none'")
+        ->and($blocking)->not->toHaveKey('unused_hosts');
 });
 
 test('a Report-Only CSP starting or stopping to block parts of the page is in the history, never an alert', function () {

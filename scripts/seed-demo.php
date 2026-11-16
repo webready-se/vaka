@@ -160,6 +160,8 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
             'https://shop.example', 'https://blog.example' => ['referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=()']] + $forge,
             // A CSP tried as Report-Only: the page loads a script it would block once enforced
             'https://builder.example' => ['content-security-policy-report-only' => ["default-src 'self'"]],
+            // A Report-Only CSP that still allows hosts the page no longer loads anything from
+            'https://deals3.example' => ['content-security-policy-report-only' => ["default-src 'self'; script-src 'self' https://stats.example https://maps.example; style-src 'self' https://fonts.example 'unsafe-inline'; img-src 'self' https://stats.example; connect-src 'self' https://stats.example; object-src 'none'"], 'x-frame-options' => ['SAMEORIGIN']] + array_diff_key($strong, ['content-security-policy' => 0]),
             'https://example.net' => ['referrer-policy' => ['no-referrer']] + $forge,
             // Sent twice: the application's and the web server's, which its file gives away, and one the files cannot tell
             'https://booking.example' => ['x-frame-options' => ['DENY', 'SAMEORIGIN'], 'referrer-policy' => ['strict-origin-when-cross-origin'], 'permissions-policy' => ['camera=()']] + $forge,
@@ -180,7 +182,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
                 . (isset($opts['hostile']) ? '<script>document.write("<img src=x onerror=window.__xss=5>")</script>' : ''),
             // A CSP in force that blocks a script the page loads: the policy has no cdn.example
             'https://docs.example' => '<script src="https://cdn.example/widget.js"></script><p style="margin:0">x</p><img src="https://images.example/a.jpg" alt="">',
-            'https://example.org' => '<script src="https://stats.example/?js"></script>',
+            'https://example.org', 'https://deals3.example' => '<script src="https://stats.example/?js"></script>',
             'https://www.example.com' => '<html><head><meta http-equiv="content-security-policy" content="default-src \'self\'; frame-ancestors \'self\'"></head><body></body></html>',
             // A tag manager and Google Fonts: the case a drafted policy cannot finish
             'https://builder.example' => '<script>(function(w,d,s,l,i){w[l]=w[l]||[];w[l].push({"gtm.start":new Date().getTime(),event:"gtm.js"})})(window,document,"script","dataLayer","GTM-XXXX")</script><script src="https://www.googletagmanager.com/gtm.js?id=GTM-XXXX"></script><link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter"><p style="margin:0">x</p><script src="https://widgets.example/chat.js"></script>',
