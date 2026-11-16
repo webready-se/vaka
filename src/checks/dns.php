@@ -132,6 +132,26 @@ function mail_domain_sends(array $records): bool
 }
 
 /**
+ * What to do about the mail records, for the site detail's lead and the read
+ * API: a domain that sends no email is told why it still needs SPF and DMARC
+ * (anyone can send in its name) and the records that say none of it is real,
+ * since without MX it can look as if there is nothing to do. Others get the
+ * advice for their problem; '' with nothing to add.
+ */
+function mail_advice(array $details): string
+{
+    $problem = $details['problem'] ?? '';
+    $records = $details['records'] ?? null;
+    if ($records === null || !in_array($problem, ['no_spf', 'no_dmarc', 'no_spf_dmarc'], true) || mail_domain_sends($records)) return advice_for($problem, 0);
+    $add = [
+        ...(!$records['spf'] ? ['an SPF record of v=spf1 -all'] : []),
+        ...(!$records['dmarc'] ? ['a DMARC record of v=DMARC1; p=reject'] : []),
+    ];
+    $why = $records['spf'] ? 'This domain sends no email (its SPF record allows no sender)' : 'This domain has no mail server and sends no email';
+    return "{$why}, but anyone can still send email that claims to come from it. " . ucfirst(list_words($add)) . (count($add) > 1 ? ' say' : ' says') . ' that none of it is real. Once ' . (count($add) > 1 ? 'they are' : 'it is') . ' there, this warning goes away by itself.';
+}
+
+/**
  * MX, SPF and DMARC with what each does, what is there, how well it is in
  * place (good, weak, missing, or none for a domain without mail) and the
  * record to add, for the site detail: `fix_label` says where, `fix` is the

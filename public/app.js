@@ -2214,6 +2214,8 @@
     var icons = { good: 'up', weak: 'failing', missing: 'down', none: 'info' };
     return h('div', {}, [
       h('p', { class: 'headers-summary' }, dns.summary),
+      // What to do, before the records: for a domain without email, why it still needs them
+      dns.advice ? h('p', { class: 'headers-lead' }, dns.advice) : null,
       h('ul', { class: 'header-list' }, dns.items.map(function (item) {
         var good = item.level === 'good';
         var fix = item.level === 'missing' || item.level === 'weak';

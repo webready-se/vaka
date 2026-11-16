@@ -178,7 +178,8 @@ function md_improvements(array $site, array $config, int $now): array
     $dns = $site['dns'];
     $missing = array_values(array_filter($dns['items'] ?? [], fn (array $item) => in_array($item['level'], ['weak', 'missing'], true)));
     if ($missing) {
-        $items[] = ['title' => 'Mail records', 'text' => rtrim($dns['summary'] . '. ' . md_checked($dns, $config, $now, false), '. ') . '.', 'lines' => array_map(fn (array $item) => "- **{$item['label']}** is {$item['level']}"
+        // The advice leads: for a domain that sends no email, why it still needs these records
+        $items[] = ['title' => 'Mail records', 'text' => rtrim($dns['summary'] . '. ' . (($dns['advice'] ?? '') !== '' ? md_own($dns['advice']) . ' ' : '') . md_checked($dns, $config, $now, false), '. ') . '.', 'lines' => array_map(fn (array $item) => "- **{$item['label']}** is {$item['level']}"
             . ($item['note'] !== '' ? ': ' . md_code($item['note']) : '') . '. What it says: ' . lcfirst($item['what']) . '.'
             . ($item['fix'] !== '' ? " {$item['fix_label']} " . md_code($item['fix']) . '.' : '')
             . ($item['tip'] !== '' ? ' ' . md_own($item['tip']) : ''), $missing)];

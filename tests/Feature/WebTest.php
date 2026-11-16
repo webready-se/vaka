@@ -312,7 +312,7 @@ test('mail DNS shows in words on the overview, and record by record in the site 
 
     $site = http_request('GET', WEB . '/?api=overview', ['jar' => $jar])['json']['groups'][0]['sites'][0];
     expect($site['dns'])->toMatchArray(['status' => 'warn', 'summary' => 'Mail for shop.example: DMARC is missing', 'domain' => 'shop.example'])
-        ->and($site['dns']['advice'])->toStartWith('Add a DMARC record');
+        ->and($site['dns']['advice'])->toStartWith('This domain sends no email (its SPF record allows no sender), but anyone can still send email that claims to come from it. A DMARC record of v=DMARC1; p=reject says');
 
     $detail = http_request('GET', WEB . "/?api=site&id={$shop}", ['jar' => $jar])['json'];
     expect(array_column($detail['site']['dns']['items'], 'level', 'key'))->toBe(['mx' => 'good', 'spf' => 'good', 'dmarc' => 'missing'])

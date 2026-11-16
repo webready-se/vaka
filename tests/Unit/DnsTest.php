@@ -145,6 +145,20 @@ test('dns_items: a domain that sends no email is told to reject at once; one tha
 // Changes, confirmed by a second look
 // =====================================================================
 
+test('a domain that sends no email leads with why it still needs SPF and DMARC, and the records that say so', function () {
+    $advice = fn (array $records) => mail_advice(evaluate_mail_dns('shop.example', $records + ['mx' => [], 'spf' => [], 'dmarc' => []])['details']);
+
+    expect($advice([]))->toBe('This domain has no mail server and sends no email, but anyone can still send email that claims to come from it. An SPF record of v=spf1 -all and a DMARC record of v=DMARC1; p=reject say that none of it is real. Once they are there, this warning goes away by itself.')
+        // A null MX says the same as none
+        ->and($advice(['mx' => ['0 .']]))->toStartWith('This domain has no mail server and sends no email')
+        ->and($advice(['spf' => ['v=spf1 -all']]))->toBe('This domain sends no email (its SPF record allows no sender), but anyone can still send email that claims to come from it. A DMARC record of v=DMARC1; p=reject says that none of it is real. Once it is there, this warning goes away by itself.')
+        ->and($advice(['dmarc' => ['v=DMARC1; p=reject']]))->toBe('This domain has no mail server and sends no email, but anyone can still send email that claims to come from it. An SPF record of v=spf1 -all says that none of it is real. Once it is there, this warning goes away by itself.')
+        // A domain that sends, or may, gets the advice it has today, and one with nothing to add none
+        ->and($advice(['mx' => ['10 mx1.mail.example']]))->toBe(advice_for('no_spf_dmarc', 0))
+        ->and($advice(['spf' => ['v=spf1 -all', 'v=spf1 include:_spf.mail.example -all']]))->toBe(advice_for('spf_twice', 0))
+        ->and($advice(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=reject']]))->toBe('');
+});
+
 test('a DMARC record that only monitors keeps everything else when the hint says to quarantine', function () {
     $record = 'v=DMARC1; p=none; rua=mailto:dmarc@shop.example; ruf=mailto:dmarc@shop.example; fo=1';
     $items = dns_items(evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example -all'], 'dmarc' => [$record]])['details']);

@@ -20,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/).
 
 ### Changed
 
+- **A domain that sends no email is told why it still needs SPF and DMARC.** Without a mail server it can look as if there is nothing to do, so the mail advice leads with it: "This domain has no mail server and sends no email, but anyone can still send email that claims to come from it. An SPF record of v=spf1 -all and a DMARC record of v=DMARC1; p=reject say that none of it is real. Once they are there, this warning goes away by itself." The mail section of the site detail now starts with the advice, and so does the report's mail item.
 - **The report on every site folds what several sites share into one line.** "**Mail records: SPF and DMARC are missing** on all 13 sites." instead of the same line thirteen times, so what is new stands out: a certificate that missed its renewal comes first, then what the fewest sites have.
 - **An expired read token's answer gives a day to copy**, 90 days from today, where it said `--expires=YYYY-MM-DD`: "Extend it to 2 May 2027 with `php vaka share:edit vaka_1a2b3c4d --expires=2027-05-02`".
 - **The line to enforce a Report-Only CSP has `object-src 'none'` in it** when the policy has no `object-src`, rather than a tip that asks to add it. Another `object-src` may be on purpose (a PDF in an `<object>`), so the line keeps it and the tip suggests `'none'`.
