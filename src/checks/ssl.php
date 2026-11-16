@@ -103,6 +103,8 @@ function evaluate_ssl(string $host, array $fetched, ?array $info, int $now, int 
     $date = date('j M Y', $info['valid_to']);
     $daysLeft = (int) floor(($info['valid_to'] - $now) / 86400);
     $details = [
+        // The start too, for its lifetime: a short certificate is renewed a third before its end (ssl_renewal_late())
+        'valid_from' => utc_now($info['valid_from']),
         'valid_to' => utc_now($info['valid_to']),
         'days_left' => $daysLeft,
         'issuer' => $info['issuer'],
@@ -132,6 +134,35 @@ function evaluate_ssl(string $host, array $fetched, ?array $info, int $now, int 
     }
     $whose = $details['renewed_by'] !== null ? "{$details['renewed_by']}'s certificate, which {$details['renewed_by']} renews by itself: valid" : 'Valid';
     return ['status' => 'ok', 'summary' => "{$whose} until {$date} ({$daysLeft} days), issued by {$info['issuer']}", 'details' => $details];
+}
+
+/** The longest certificate an ACME client (certbot, Forge, Cloudflare) renews on its own clock, in days. */
+const SSL_SHORT_DAYS = 100;
+
+/** Days of margin past the third: the renewal runs once or twice a day, and Vaka looks every 6 hours. */
+const SSL_RENEWAL_MARGIN_DAYS = 2;
+
+/**
+ * Whether a short certificate missed its renewal: one of SSL_SHORT_DAYS or
+ * less with under a third of its life left, as certbot and Forge renew at 30
+ * of 90 days. Read from the certificate itself, so no history is needed and it
+ * holds as lifetimes get shorter. False for data stored before the start was.
+ */
+function ssl_renewal_late(array $details, int $now): bool
+{
+    if (!isset($details['valid_from'], $details['valid_to'])) return false;
+    $to = strtotime($details['valid_to']);
+    $life = $to - strtotime($details['valid_from']);
+    if ($life <= 0 || $life > SSL_SHORT_DAYS * 86400) return false;
+    return $to - $now < $life / 3 - SSL_RENEWAL_MARGIN_DAYS * 86400;
+}
+
+/** What to do about a certificate that missed its renewal: its lifetime and the day it should have been renewed; Cloudflare's points at Cloudflare. */
+function ssl_late_advice(array $details): string
+{
+    if (($details['renewed_by'] ?? null) === 'Cloudflare') return advice_for('cloudflare_late', 0);
+    $days = (int) round((strtotime($details['valid_to']) - strtotime($details['valid_from'])) / 86400);
+    return "A {$days}-day certificate is usually renewed with " . round($days / 3) . ' days left, so this one is late. Check that the automatic renewal runs (certbot, or the setting at your host) while there is time.';
 }
 
 /** What to do about a certificate's problem; one Cloudflare is late to renew points at Cloudflare, not at the site's server. */

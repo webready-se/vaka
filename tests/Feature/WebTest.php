@@ -600,13 +600,24 @@ test('the read API answers a share token with the sites in its scope, in stable 
         ->and($site)->toMatchArray(['url' => 'https://shop.example', 'label' => 'shop.example', 'group' => 'Customers', 'status' => 'down', 'summary' => 'No answer within 10 s', 'since' => utc_now($now - 600), 'checked_at' => utc_now($now - 30), 'next_at' => utc_now($now + 30)])
         ->and(array_keys($site['uptime']))->toBe(['24h', '7d', '30d'])
         // Each check says when it ran and runs next, so a reader can tell whether it is current
-        ->and(array_keys($site['ssl']))->toBe(['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'advice', 'checked_at', 'next_at'])
+        ->and(array_keys($site['ssl']))->toBe(['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'renewal_late', 'advice', 'checked_at', 'next_at'])
         ->and($site['ssl'])->toMatchArray(['status' => 'warn', 'days_left' => 6, 'valid_to' => '2026-10-31T12:00:00Z', 'checked_at' => utc_now($now), 'next_at' => utc_now($now + 3600)]);
 
     // The same with the token in a header, which keeps it out of URLs and logs
     $r = http_request('GET', WEB . '/?api', ['headers' => ['Authorization: Bearer ' . $token]]);
     expect($r['status'])->toBe(200)
         ->and(array_column($r['json']['sites'], 'label'))->toBe(['shop.example']);
+});
+
+test('a certificate that missed its renewal is said with what to do, while its status stays ok', function () {
+    $shop = add_site($this->db, ['url' => 'https://shop.example']);
+    $now = time();
+    // A 90-day certificate with 20 days left: certbot would have renewed it at 30
+    save_check_state($this->db, $shop, 'ssl', ['status' => 'ok', 'summary' => 'Valid until soon (20 days), issued by Let\'s Encrypt', 'details' => ['days_left' => 20, 'valid_from' => utc_now($now - 70 * 86400), 'valid_to' => utc_now($now + 20 * 86400), 'problem' => '', 'renewed_by' => null], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
+    $token = create_share_token($this->db, $shop, [], '', utc_now($now + 86400), $now)['token'];
+
+    $ssl = http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['ssl'];
+    expect($ssl)->toMatchArray(['status' => 'ok', 'renewal_late' => true, 'advice' => 'A 90-day certificate is usually renewed with 30 days left, so this one is late. Check that the automatic renewal runs (certbot, or the setting at your host) while there is time.']);
 });
 
 test('an unknown or revoked share token is a 404, an expired one says when it expired, and a token reads nothing outside its scope', function () {

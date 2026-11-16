@@ -69,6 +69,33 @@ test('ssl_advice: a Cloudflare certificate that is late to renew points at Cloud
         ->and(ssl_advice(['problem' => 'name', 'renewed_by' => 'Cloudflare']))->toBe(advice_for('name', 0));
 });
 
+test('a short certificate with under a third of its life left missed its renewal, with a margin for the renewal and the next look', function () {
+    // valid_from and valid_to as evaluate_ssl() stores them, and $now that many days before the end
+    $late = function (int $lifeDays, float $leftDays, array $over = []) {
+        $from = strtotime('2026-09-01T00:00:00Z');
+        $to = $from + $lifeDays * 86400;
+        return ssl_renewal_late($over + ['valid_from' => utc_now($from), 'valid_to' => utc_now($to)], (int) ($to - $leftDays * 86400));
+    };
+    // 90 days: certbot and Forge renew at 30 days left, and Vaka looks every 6 hours, so two days of margin
+    expect($late(90, 40))->toBeFalse()
+        ->and($late(90, 29))->toBeFalse()
+        ->and($late(90, 27.9))->toBeTrue()
+        // Shorter lifetimes hold by the same third
+        ->and($late(47, 14))->toBeFalse()
+        ->and($late(47, 13))->toBeTrue()
+        // A certificate for a year is renewed by hand, on no such clock
+        ->and($late(365, 20))->toBeFalse()
+        // Stored before the start was kept: nothing to tell from
+        ->and(ssl_renewal_late(['valid_to' => '2026-10-01T00:00:00Z'], strtotime('2026-09-25T00:00:00Z')))->toBeFalse();
+
+    $info = certificate_info(fixture_cert('valid'));
+    expect(evaluate_ssl('127.0.0.1', verified('valid'), $info, $info['valid_from'] + 60, 14)['details']['valid_from'])->toBe(utc_now($info['valid_from']));
+
+    $life = ['valid_from' => '2026-09-01T00:00:00Z', 'valid_to' => '2026-11-30T00:00:00Z'];
+    expect(ssl_late_advice($life))->toBe('A 90-day certificate is usually renewed with 30 days left, so this one is late. Check that the automatic renewal runs (certbot, or the setting at your host) while there is time.')
+        ->and(ssl_late_advice($life + ['renewed_by' => 'Cloudflare']))->toBe(advice_for('cloudflare_late', 0));
+});
+
 test('a certificate close to expiry is a warning that says when', function () {
     $info = certificate_info(fixture_cert('valid'));
     expect(evaluate_ssl('127.0.0.1', verified('valid'), $info, $info['valid_to'] - 10 * 86400 - 60, 14))
