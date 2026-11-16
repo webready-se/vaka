@@ -571,6 +571,15 @@ async function main() {
       q('dialog.drawer [data-action="close"]').click();
     }
 
+    // A domain due for renewal: said in the detail with what to do, before the first threshold makes it an incident
+    expect(!all('.attention .incident').some((n) => /example\.org/.test(n.textContent) && /domain/.test(n.textContent)), 'a domain due for renewal is not an incident');
+    await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
+    all('.site-row').find((r) => /example\.org/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'example.org', 'the site due for domain renewal to open')) {
+      expect(all('dialog.drawer .advice').some((n) => /\(45 days\)[^.]*\. If it renews by itself, check now that the payment card or the invoice is in order/.test(n.textContent)), 'the detail says the domain is due for renewal and what to do');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // A Report-Only CSP that allows hosts the page loads nothing from: the line is the policy without them, still Report-Only
     await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
     all('.site-row').find((r) => /deals3\.example/.test(r.textContent)).click();

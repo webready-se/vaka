@@ -229,6 +229,18 @@ test('a certificate that missed its renewal is worth improving, first, in the re
     expect($list)->toContain("## Worth improving (2)\n\n1. **Certificate: missed its renewal** on shop.example (20 days left).\n2. **Security headers: grade C");
 });
 
+test('a domain due for renewal is worth improving after a late certificate, on one site and on every site', function () {
+    $due = ['domain' => ['status' => 'ok', 'summary' => 'shop.example is registered until 1 Jan 2027 (46 days), with Example Registrar AB', 'domain' => 'shop.example', 'label' => 'shop.example', 'days_left' => 46, 'expires' => '2027-01-01T00:00:00Z', 'registrar' => 'Example Registrar AB', 'renewal_near' => true,
+        'advice' => 'If it renews by itself, check now that the payment card or the invoice is in order.', 'checked_at' => '2026-10-28T11:05:00Z', 'next_at' => '2026-10-29T11:05:00Z']];
+    $md = read_api_markdown_site(report_about(), report_detail($due), REPORT_CONFIG);
+    expect($md)->toContain("## Worth improving (1)\n\n1. **The domain is due for renewal**: `shop.example is registered until 1 Jan 2027 (46 days), with Example Registrar AB`. If it renews by itself, check now that the payment card or the invoice is in order. Checked 28 Oct 2026 12:05 (2 h ago).");
+
+    $late = ['ssl' => ['status' => 'ok', 'summary' => 'Valid', 'days_left' => 20, 'valid_to' => '2026-11-17T00:00:00Z', 'renewed_by' => null, 'renewal_late' => true, 'advice' => 'Late.']];
+    $list = read_api_markdown_list(report_about(['scope' => ['type' => 'group', 'name' => 'Customers', 'groups' => ['Customers']]]), ['sites' => 2, 'up' => 2, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0],
+        [report_site($due + ['headers' => ['status' => 'warn', 'grade' => 'C', 'summary' => 'Grade C: 4 of 6 in place, missing HSTS and CSP']]), report_site(['url' => 'https://cafe.example', 'label' => 'cafe.example'] + $late)], REPORT_CONFIG);
+    expect($list)->toContain("## Worth improving (3)\n\n1. **Certificate: missed its renewal** on cafe.example (20 days left).\n2. **Domain: due for renewal** on shop.example (46 days left).\n3. **Security headers: grade C");
+});
+
 test('every site: what several sites share is one line, the odd one out first and what all share last', function () {
     $mail = fn (string $domain) => ['status' => 'warn', 'summary' => "Mail for {$domain}: SPF and DMARC are missing", 'domain' => $domain, 'advice' => ''];
     $c = ['status' => 'warn', 'grade' => 'C', 'summary' => 'Grade C: 4 of 6 in place, missing HSTS and CSP'];

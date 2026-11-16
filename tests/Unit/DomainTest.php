@@ -71,6 +71,18 @@ function domain_state(array $overrides = []): array
     return $overrides + ['status' => 'ok', 'alerted_status' => 'ok', 'details' => ['domain' => 'example.se', 'days_left' => 400, 'expires' => '2027-11-08T00:00:00Z'], 'thresholds_sent' => '[]'];
 }
 
+test('a domain within twice the first threshold is due for renewal: a heads-up while it is ok, with time to sort out a payment', function () {
+    $now = strtotime('2026-11-16T12:00:00Z');
+    $near = fn (int $days) => domain_renewal_near(['expires' => utc_now($now + $days * 86400 + 3600)], $now, 30);
+    expect($near(61))->toBeFalse()
+        ->and($near(60))->toBeTrue()
+        ->and($near(31))->toBeTrue()
+        // From the first threshold it warns, which says it
+        ->and($near(30))->toBeFalse()
+        ->and(domain_renewal_near([], $now, 30))->toBeFalse()
+        ->and(domain_renewal_advice(30))->toBe('If it renews by itself, check now that the payment card or the invoice is in order: a payment problem at the registrar can take a while to sort out. Vaka warns from 30 days.');
+});
+
 test('domain_notice sends each threshold once per registration period', function () {
     $warn = domain_state(['status' => 'warn', 'details' => ['domain' => 'example.se', 'days_left' => 29, 'expires' => '2026-11-23T00:00:00Z']]);
     $first = domain_notice($warn, null, [30, 14, 7, 1]);
