@@ -218,6 +218,17 @@ test('a report read with a token says when it stops working, and warns in its la
     expect($list)->toContain("**This token's last day is 1 Nov 2026, in 4 days.**");
 });
 
+test('a certificate that missed its renewal is worth improving, first, in the report on one site and on every site', function () {
+    $late = ['ssl' => ['status' => 'ok', 'summary' => "Valid until 17 Nov 2026 (20 days), issued by Let's Encrypt", 'days_left' => 20, 'valid_to' => '2026-11-17T00:00:00Z', 'renewed_by' => null, 'renewal_late' => true,
+        'advice' => 'A 90-day certificate is usually renewed with 30 days left, so this one is late. Check that the automatic renewal runs (certbot, or the setting at your host) while there is time.', 'checked_at' => '2026-10-28T11:05:00Z', 'next_at' => '2026-10-28T17:05:00Z']];
+    $md = read_api_markdown_site(report_about(), report_detail($late), REPORT_CONFIG);
+    expect($md)->toContain("## Worth improving (1)\n\n1. **The certificate missed its renewal**: `Valid until 17 Nov 2026 (20 days), issued by Let's Encrypt`. A 90-day certificate is usually renewed with 30 days left, so this one is late. Check that the automatic renewal runs (certbot, or the setting at your host) while there is time. Checked 28 Oct 2026 12:05 (2 h ago).")
+        ->and($md)->toContain("## Needs attention (0)");
+
+    $list = read_api_markdown_list(report_about(['scope' => ['type' => 'group', 'name' => 'Customers', 'groups' => ['Customers']]]), ['sites' => 1, 'up' => 1, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0], [report_site($late + ['headers' => ['status' => 'warn', 'grade' => 'C', 'summary' => 'Grade C: 4 of 6 in place, missing HSTS and CSP']])], REPORT_CONFIG);
+    expect($list)->toContain("## Worth improving (2)\n\n1. **shop.example: certificate missed its renewal**: `Valid until 17 Nov 2026 (20 days), issued by Let's Encrypt`\n2. **shop.example: security headers grade C**");
+});
+
 test('every site: what needs attention across them, what is worth improving, and a table of every site', function () {
     $sites = [
         report_site(['status' => 'down', 'summary' => 'The site answered 503 Service Unavailable', 'advice' => 'Look at its error log.', 'since' => '2026-10-28T12:50:00Z', 'response_ms' => null]),

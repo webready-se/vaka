@@ -157,6 +157,11 @@ function md_attention(array $site, array $config): array
 function md_improvements(array $site, array $config, int $now): array
 {
     $items = [];
+    // First, as the one with a clock: a certificate that missed its renewal runs out by itself if nothing is done
+    $ssl = $site['ssl'];
+    if ($ssl['renewal_late'] ?? false) {
+        $items[] = ['title' => 'The certificate missed its renewal', 'text' => md_code($ssl['summary']) . ". {$ssl['advice']} " . md_checked($ssl, $config, $now, false), 'lines' => []];
+    }
     $headers = $site['headers'];
     $weak = array_values(array_filter($headers['items'] ?? [], fn (array $item) => $item['level'] !== 'good' || ($item['blocks'] ?? false) || ($item['twice'] ?? false) || ($item['unsent'] ?? false)));
     if ($weak) {
@@ -298,6 +303,7 @@ function read_api_markdown_list(array $about, array $totals, array $sites, array
     $better = [];
     foreach ($sites as $site) {
         foreach (md_attention($site, $config) as $item) $attention[] = ['site' => $site['label']] + $item;
+        if ($site['ssl']['renewal_late'] ?? false) $better[] = ['site' => $site['label'], 'title' => 'certificate missed its renewal', 'text' => md_code($site['ssl']['summary'])];
         if (($site['headers']['grade'] ?? 'A') !== 'A') $better[] = ['site' => $site['label'], 'title' => "security headers grade {$site['headers']['grade']}", 'text' => $site['headers']['summary']];
         if (($site['dns']['status'] ?? '') === 'warn') $better[] = ['site' => $site['label'], 'title' => 'mail records', 'text' => $site['dns']['summary']];
     }

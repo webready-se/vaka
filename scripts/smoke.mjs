@@ -562,6 +562,15 @@ async function main() {
       q('dialog.drawer [data-action="close"]').click();
     }
 
+    // A certificate that missed its renewal: said in the detail with what to do, never in "Needs your attention"
+    expect(!all('.attention [data-key^="cert:"]').some((n) => /deals1\.example/.test(n.textContent)), 'a certificate that missed its renewal is not an incident');
+    await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
+    all('.site-row').find((r) => /deals1\.example/.test(r.textContent)).click();
+    if (await waitFor(() => q('dialog.drawer[open] h2')?.textContent === 'deals1.example', 'the late certificate site\'s detail to open')) {
+      expect(all('dialog.drawer .advice').some((n) => /\(22 days\), issued by Let's Encrypt\. A 90-day certificate is usually renewed with 30 days left, so this one is late\./.test(n.textContent)), 'the detail says the certificate missed its renewal and what to do');
+      q('dialog.drawer [data-action="close"]').click();
+    }
+
     // A Report-Only CSP that allows hosts the page loads nothing from: the line is the policy without them, still Report-Only
     await waitFor(() => !q('dialog.drawer[open]'), 'the detail to close');
     all('.site-row').find((r) => /deals3\.example/.test(r.textContent)).click();

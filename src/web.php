@@ -489,13 +489,16 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
     $ssl = null;
     if (in_array($row['ssl_status'], ['ok', 'warn', 'fail'], true)) {
         $sslDetails = json_decode((string) $row['ssl_details'], true) ?: [];
+        // Missed its renewal: a heads-up while the status stays ok, never an alert before the thresholds
+        $late = $row['ssl_status'] === 'ok' && ssl_renewal_late($sslDetails, $now);
         $ssl = [
             'status' => $row['ssl_status'],
             'summary' => $row['ssl_summary'],
             'days_left' => $sslDetails['days_left'] ?? null,
             'valid_to' => $sslDetails['valid_to'] ?? null,
             'renewed_by' => $sslDetails['renewed_by'] ?? null,
-            'advice' => $row['ssl_status'] === 'ok' ? '' : ssl_advice($sslDetails),
+            'renewal_late' => $late,
+            'advice' => $row['ssl_status'] === 'ok' ? ($late ? ssl_late_advice($sslDetails) : '') : ssl_advice($sslDetails),
         ] + $when('ssl');
     }
     $exposed = null;
@@ -804,7 +807,7 @@ function api_site_fields(PDO $db, array $config, array $summary, array $row, int
         'unstable' => $summary['unstable'],
         'blocked' => $summary['blocked'],
         'uptime' => ['24h' => $summary['uptime_24h'], '7d' => site_uptime($db, $row, 7 * 86400, $now, $config['timezone']), '30d' => $summary['uptime_30d']],
-        'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'advice', 'checked_at', 'next_at']),
+        'ssl' => api_pick($summary['ssl'], ['status', 'summary', 'days_left', 'valid_to', 'renewed_by', 'renewal_late', 'advice', 'checked_at', 'next_at']),
         'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'advice', 'checked_at', 'next_at']),
         'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice', 'checked_at', 'next_at']),
         'headers' => api_pick($summary['headers'], ['status', 'grade', 'summary', 'checked_at', 'next_at']),
