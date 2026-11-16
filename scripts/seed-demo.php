@@ -4,22 +4,39 @@
  * A demo database with fake sites, for trying the dashboard, screenshots and
  * the smoke test:
  *
- *   php scripts/seed-demo.php <new.sqlite> [--hostile]
+ *   php scripts/seed-demo.php <new.sqlite> [--hostile] [--token=vaka_...] [--refresh]
  *
  * Reserved example names and documentation IPs only. --hostile adds names
  * and messages full of markup, which the dashboard must show as plain text.
+ *
+ * For the live demo, whose share link opens it: --token stores that read
+ * token for every group (labelled "Live demo", no last day), so the link
+ * keeps working; --refresh seeds an existing database again, in place and in
+ * one transaction, so a reader sees the old demo or the new one, never half
+ * of either (a file replaced under an open WAL database can be broken by the
+ * old one's WAL). Everything is dated from now, so a run every minute keeps it
+ * as if Vaka had just looked; the site ids stay the same, so an open site does too.
  */
 
 require __DIR__ . '/../src/bootstrap.php';
 
 [$args, $opts] = parse_args(array_slice($argv, 1));
-$path = $args[0] ?? fail('Usage: php scripts/seed-demo.php <new.sqlite> [--hostile]');
-if (file_exists($path)) fail("{$path} already exists. Give the path of a new file.");
+$path = $args[0] ?? fail('Usage: php scripts/seed-demo.php <new.sqlite> [--hostile] [--token=vaka_...] [--refresh]');
+$refresh = isset($opts['refresh']);
+if (file_exists($path) && !$refresh) fail("{$path} already exists. Give the path of a new file, or --refresh to seed it again in place.");
+$token = is_string($opts['token'] ?? null) ? $opts['token'] : null;
+if ($token !== null && !is_share_token($token)) fail('--token is a read token: vaka_ and 64 hex characters.');
 
 $db = get_db($path);
 $now = time();
 mt_srand(42);
 $month = $now - 30 * 86400;
+
+// One transaction for all of it: in place, the old demo goes and the new one comes at once
+$db->beginTransaction();
+if ($refresh) {
+    foreach (['share_groups', 'share_tokens', 'samples', 'events', 'check_state', 'maintenance', 'sites', 'servers', 'groups'] as $table) $db->exec("DELETE FROM {$table}");
+}
 
 add_group($db, ['name' => 'Customers', 'slack_webhook' => 'https://hooks.example/services/demo/demo/demo1234']);
 add_group($db, ['name' => 'Own sites', 'policy' => 'delayed', 'delay_minutes' => '5']);
@@ -50,7 +67,6 @@ if (isset($opts['hostile'])) {
 }
 
 $insertSample = $db->prepare('INSERT INTO samples (site_id, checked_at, status_code, ms, ok, ip) VALUES (?, ?, ?, ?, ?, ?)');
-$db->beginTransaction();
 foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
     // The hardened site checks uptime on a path that tests its database too
     $id = add_site($db, ['url' => $url, 'group' => $group ?? 'none', 'paused' => $story === 'paused', 'keyword' => $story === 'hostile' ? '<script>window.__xss=3</script>' : '', 'check_path' => $url === 'https://www.example.com' ? '/up' : '']);
@@ -228,7 +244,14 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         $id,
     ]);
 }
-$db->commit();
+// The live demo's link: a read token for every group, as share:create makes one, but the same on every run
+if ($token !== null) {
+    $db->prepare('INSERT INTO share_tokens (token_hash, prefix, site_id, label, expires_at, created_at) VALUES (?, ?, NULL, ?, NULL, ?)')
+        ->execute([share_token_hash($token), share_token_start($token), 'Live demo', utc_now($month)]);
+    $tokenId = (int) $db->lastInsertId();
+    foreach (list_groups($db) as $group) $db->prepare('INSERT INTO share_groups (token_id, group_id) VALUES (?, ?)')->execute([$tokenId, $group['id']]);
+}
 set_meta($db, 'last_run_at', utc_now($now - 20));
+$db->commit();
 
 echo 'Seeded ' . count($sites) . " demo sites into {$path}\n";
