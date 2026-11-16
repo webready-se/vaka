@@ -628,6 +628,14 @@ test('a Report-Only policy with hashes says they follow the code', function () {
         ->and($csp("default-src 'self'")['tip'])->not->toContain('hashes');
 });
 
+test('a Report-Only policy is told to add object-src none only when it lacks it', function () {
+    $csp = fn (string $policy) => array_column(header_items(evaluate_headers(['body' => '<p>Hi</p>'] + answered(['Content-Security-Policy-Report-Only' => $policy] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']), 10)['details']), null, 'key')['csp'];
+    expect($csp("default-src 'self'")['tip'])->toContain("Add object-src 'none' to it too")
+        ->and($csp("default-src 'self'; object-src 'self'")['tip'])->toContain("Add object-src 'none' to it too")
+        ->and($csp("default-src 'self'; object-src 'none'")['tip'])->not->toContain('object-src')
+        ->and($csp("default-src 'self'; Object-Src 'NONE'")['tip'])->not->toContain('object-src');
+});
+
 test('a Report-Only CSP starting or stopping to block parts of the page is in the history, never an alert', function () {
     $page = fn (string $policy) => ['body' => '<script>theme()</script>'] + answered(['Content-Security-Policy-Report-Only' => $policy] + array_diff_key(STRONG_HEADERS, ['Content-Security-Policy' => 0]) + ['X-Frame-Options' => 'DENY']);
     $would = evaluate_headers($page("default-src 'self'"), 10);
