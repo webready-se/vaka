@@ -225,10 +225,50 @@ test('share:create shows the token once, in the lines for .env; share:list shows
         ->and($list)->toContain('never')
         ->and($list)->not->toContain($token);
 
-    $r = vaka(['share:revoke', $prefix], $env);
+    $r = vaka(['share:revoke', $prefix], $env, "y\n");
     expect($r['exit'])->toBe(0, $r['err'])
-        ->and($r['out'])->toContain('Revoked the read token for group Customers (AI assistant)');
+        ->and($r['out'])->toContain('Revoked token #1 for group Customers (AI assistant), ' . $prefix . '…: its share link now says "This link does not work", and the API answers 404.');
     expect(vaka(['share:list'], $env)['out'])->toContain('No read tokens');
+});
+
+test('share:revoke asks before it revokes, and lists tokens by the numbers share:list shows', function () {
+    $env = cli_env();
+    vaka(['site:add', 'https://shop.example'], $env);
+    vaka(['site:add', 'https://blog.example'], $env);
+    vaka(['share:create', 'shop.example', '--label=A customer', '--expires='], $env);
+    vaka(['share:create', 'blog.example', '--label=', '--expires='], $env);
+
+    // #1 is the first token made, as in share:list, not the top line of the menu (the newest)
+    $r = vaka(['share:revoke'], $env, "1\nn\n");
+    expect($r['out'])->toMatch('/Which token\?\n  #2 blog\.example, vaka_[a-f0-9]{8}…, never used\n  #1 shop\.example, "A customer", vaka_[a-f0-9]{8}…, never used\n/')
+        // The number, what it reads and when it was last used tell apart tokens that read the same
+        ->and($r['out'])->toMatch('/Revoke token #1, shop\.example, "A customer", vaka_[a-f0-9]{8}…, never used\? Its share link and whatever reads the API with it stop working, and it cannot be undone\. \(y\/N\)/')
+        ->and($r['out'])->toContain('Nothing revoked.')
+        ->and($r['exit'])->toBe(1)
+        ->and(vaka(['share:list'], $env)['out'])->toContain('A customer');
+
+    $r = vaka(['share:revoke'], $env, "#1\ny\n");
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->toContain('Revoked token #1 for shop.example (A customer)')
+        ->and(vaka(['share:list'], $env)['out'])->not->toContain('A customer');
+
+    // A number that is not in the list is no token's start: #1 is gone, and token #2 must not be taken for it
+    $db = get_db($env['DB_PATH']);
+    $db->exec("UPDATE share_tokens SET prefix = 'vaka_1fce095d' WHERE id = 2");
+    foreach ([['share:revoke', '1', '--force'], ['share:revoke', '#1', '--force'], ['share:edit', '1', '--label=x']] as $args) {
+        expect(vaka($args, $env)['err'])->toContain('There is no token #1 (revoked, or never made). See `php vaka share:list`.');
+    }
+    expect(vaka(['share:revoke'], vaka_with_token($env), "1\ny\n")['err'])->toContain('There is no token #1');
+    expect(vaka(['share:list'], $env)['out'])->toContain('vaka_1fce095d');
+    // A start is at least four characters, so a short number is never read as one
+    expect(vaka(['share:revoke', 'vaka_1f', '--force'], $env)['err'])->toContain('Give at least four characters of its start');
+
+    // Enter picks nothing, and a script says --force instead of answering
+    expect(vaka(['share:revoke'], vaka_with_token($env), "\n")['err'])->toContain('No token picked, so nothing was revoked.');
+    $r = vaka(['share:revoke', '2', '--force'], $env);
+    expect($r['exit'])->toBe(0, $r['err'])
+        ->and($r['out'])->not->toContain('(y/N)')
+        ->and($r['out'])->toContain('Revoked token #2 for blog.example');
 });
 
 test('share:create --groups makes one token for several groups, which reads sites added to them later', function () {
@@ -362,8 +402,8 @@ test('share:revoke takes the start of a token with or without vaka_, or the whol
     $token = fn () => preg_match('/(vaka_[a-f0-9]{64})/', vaka(['share:create', 'shop.example', '--label=', '--expires='], $env)['out'], $m) ? $m[1] : '';
 
     foreach ([fn ($t) => substr($t, 5, 8), fn ($t) => substr($t, 0, 13), fn ($t) => $t] as $ref) {
-        $r = vaka(['share:revoke', $ref($token())], $env);
-        expect($r['exit'])->toBe(0, $r['err'])->and($r['out'])->toContain('Revoked the read token for shop.example');
+        $r = vaka(['share:revoke', $ref($token()), '--force'], $env);
+        expect($r['exit'])->toBe(0, $r['err'])->and($r['out'])->toContain('for shop.example');
     }
     expect(vaka(['share:list'], $env)['out'])->toContain('No read tokens');
 });

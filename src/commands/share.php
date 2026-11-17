@@ -129,19 +129,53 @@ function share_reach(PDO $db, array $token): string
 }
 
 /**
- * A token by its number in share:list, its start (vaka_ may be left out) or
- * the whole token, or picked from a list when none is given.
+ * A token in words, after its number: what it reads now, its label, its
+ * start and when it was last used, which tell apart tokens for the same group.
  */
-function pick_share_token(PDO $db, ?string $ref, string $none): array
+function share_token_words(PDO $db, array $token, int $now): string
+{
+    return share_reach($db, $token)
+        . ($token['label'] !== '' ? ", \"{$token['label']}\"" : '')
+        . ", {$token['prefix']}…, "
+        . ($token['last_used_at'] === null ? 'never used' : 'last used ' . ago($token['last_used_at'], $now))
+        . ($token['expires_at'] !== null && $token['expires_at'] <= utc_now($now) ? ', expired' : '');
+}
+
+/**
+ * A token by its number in share:list, its start (vaka_ may be left out) or
+ * the whole token, or picked from a list when none is given. The list numbers
+ * each token as share:list does, so the #1 picked is the #1 listed; Enter
+ * picks none and says $cancel.
+ */
+function pick_share_token(PDO $db, ?string $ref, string $none, string $cancel): array
 {
     $tokens = array_column(list_share_tokens($db), null, 'id');
     if (!$tokens) fail($none);
 
-    $ref ??= (string) choose('Which token?', array_map(fn (array $token) => share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ', ' . $token['prefix'] . '…', $tokens));
+    $now = time();
+    if ($ref === null) {
+        if (count($tokens) === 1) {
+            $token = reset($tokens);
+            echo "Which token? #{$token['id']} " . share_token_words($db, $token, $now) . " (the only one)\n";
+            return $token;
+        }
+        echo "Which token?\n";
+        foreach ($tokens as $id => $token) echo "  #{$id} " . share_token_words($db, $token, $now) . "\n";
+        $ref = ask('Choose');
+    }
+    $ref = trim($ref);
+    if ($ref === '' || $ref === '#') fail($cancel);
+    // A number is only ever a number: with #5 revoked, 5 must not be taken for the start vaka_5fce…
+    if (str_starts_with($ref, '#') || (ctype_digit($ref) && strlen($ref) < 4)) {
+        $id = ltrim($ref, '#');
+        if (ctype_digit($id) && isset($tokens[(int) $id])) return $tokens[(int) $id];
+        fail("There is no token #{$id} (revoked, or never made). See `php vaka share:list`.");
+    }
     if (ctype_digit($ref) && isset($tokens[(int) $ref])) return $tokens[(int) $ref];
 
     $ref = strtolower(rtrim($ref, '.…'));
     $bare = fn (string $start) => str_starts_with($start, SHARE_TOKEN_PREFIX) ? substr($start, strlen(SHARE_TOKEN_PREFIX)) : $start;
+    if (!is_share_token($ref) && strlen($bare($ref)) < 4) fail("No read token starts with \"{$ref}\". Give at least four characters of its start, or its number from `php vaka share:list`.");
     $matches = array_values(array_filter($tokens, fn (array $token) => is_share_token($ref)
         ? hash_equals($token['token_hash'], share_token_hash($ref))
         : $bare($ref) !== '' && str_starts_with($bare($token['prefix']), $bare($ref))));
@@ -153,7 +187,7 @@ function cmd_share_edit(array $config, array $args, array $opts): void
 {
     allow_options($opts, ['label', 'expires', 'groups']);
     $db = get_db($config['db_path']);
-    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to change. Create one with `php vaka share:create <group or site>`.');
+    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to change. Create one with `php vaka share:create <group or site>`.', 'No token picked, so nothing was changed.');
     $tz = $config['timezone'];
 
     // At a terminal without options each value is asked for, and Enter keeps it
@@ -205,10 +239,15 @@ function cmd_share_edit(array $config, array $args, array $opts): void
 
 function cmd_share_revoke(array $config, array $args, array $opts): void
 {
-    allow_options($opts, []);
+    allow_options($opts, ['force']);
     $db = get_db($config['db_path']);
-    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to revoke.');
+    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to revoke.', 'No token picked, so nothing was revoked.');
 
+    // A customer's link may hang on it, and a revoked token cannot come back
+    if (empty($opts['force']) && !confirm("Revoke token #{$token['id']}, " . share_token_words($db, $token, time()) . '? Its share link and whatever reads the API with it stop working, and it cannot be undone.')) {
+        echo "Nothing revoked.\n";
+        exit(1);
+    }
     revoke_share_token($db, (int) $token['id']);
-    echo 'Revoked the read token for ' . share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ". Whatever used it now gets 404.\n";
+    echo "Revoked token #{$token['id']} for " . share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ", {$token['prefix']}…: its share link now says \"This link does not work\", and the API answers 404.\n";
 }
