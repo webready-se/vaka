@@ -155,7 +155,7 @@ What three review agents found on 2026-11-17, reading Vaka with no knowledge of 
 
 What can do harm:
 
-- [ ] `share:revoke` asks before it revokes ((y/N), with what the token reads and that it cannot be undone), and its menu numbers tokens as `share:list` does (#6, not 1). The review picked "1" meaning #1 and revoked #6, a customer's working link
+- [x] `share:revoke` asks before it revokes ((y/N), with what the token reads and that it cannot be undone), and its menu numbers tokens as `share:list` does (#6, not 1). The review picked "1" meaning #1 and revoked #6, a customer's working link (done 2026-11-17: `--force` skips the question, as for `site:remove`; Enter at the list picks nothing and says so, where it answered `No read token starts with ""`)
 - [ ] Mail advice never stops mail that works today. No MX means the domain may send no email, not that it sends none: ask whether anything sends in its name (a contact form, order mail) before `v=spf1 -all` and `p=reject`. A domain that sends gets `~all` until DMARC reports show everything passes, and the site's own server (`a`, `ip4:`) next to `include:<your mail provider>`. Found by two of the three agents
 - [ ] A keyword follows the site to its uptime path, and says so: in the form's hint, and in what `site:add` and `site:edit` print ("Uptime now checks /up and looks for "Book a table" there"). `site:edit` says what it changed. Today a keyword from the start page moves to /up in silence, and the site alerts as down on the next run
 - [ ] `fix` in the read API is empty for what is already in place, as docs/api.md says. Today a DMARC at `p=reject` gets a `p=none` line, a CSP in force gets a Report-Only one, and an assistant that follows `fix` would weaken what works

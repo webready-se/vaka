@@ -128,16 +128,34 @@ function share_reach(PDO $db, array $token): string
     return share_target($token) . ' (' . ($count ? plural($count, 'site', 'sites') : 'no sites, reads nothing') . ')';
 }
 
+/** A token in words: what it reads, its label, and its start. */
+function share_token_words(array $token): string
+{
+    return share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ', ' . $token['prefix'] . '…';
+}
+
 /**
  * A token by its number in share:list, its start (vaka_ may be left out) or
- * the whole token, or picked from a list when none is given.
+ * the whole token, or picked from a list when none is given. The list numbers
+ * each token as share:list does, so the #1 picked is the #1 listed; Enter
+ * picks none and says $cancel.
  */
-function pick_share_token(PDO $db, ?string $ref, string $none): array
+function pick_share_token(PDO $db, ?string $ref, string $none, string $cancel): array
 {
     $tokens = array_column(list_share_tokens($db), null, 'id');
     if (!$tokens) fail($none);
 
-    $ref ??= (string) choose('Which token?', array_map(fn (array $token) => share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ', ' . $token['prefix'] . '…', $tokens));
+    if ($ref === null) {
+        if (count($tokens) === 1) {
+            echo 'Which token? ' . share_token_words(reset($tokens)) . " (the only one)\n";
+            return reset($tokens);
+        }
+        echo "Which token?\n";
+        foreach ($tokens as $id => $token) echo "  #{$id} " . share_token_words($token) . "\n";
+        $ref = ask('Choose');
+        if ($ref === '') fail($cancel);
+    }
+    $ref = ltrim($ref, '#');
     if (ctype_digit($ref) && isset($tokens[(int) $ref])) return $tokens[(int) $ref];
 
     $ref = strtolower(rtrim($ref, '.…'));
@@ -153,7 +171,7 @@ function cmd_share_edit(array $config, array $args, array $opts): void
 {
     allow_options($opts, ['label', 'expires', 'groups']);
     $db = get_db($config['db_path']);
-    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to change. Create one with `php vaka share:create <group or site>`.');
+    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to change. Create one with `php vaka share:create <group or site>`.', 'No token picked, so nothing was changed.');
     $tz = $config['timezone'];
 
     // At a terminal without options each value is asked for, and Enter keeps it
@@ -205,10 +223,15 @@ function cmd_share_edit(array $config, array $args, array $opts): void
 
 function cmd_share_revoke(array $config, array $args, array $opts): void
 {
-    allow_options($opts, []);
+    allow_options($opts, ['force']);
     $db = get_db($config['db_path']);
-    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to revoke.');
+    $token = pick_share_token($db, $args[1] ?? null, 'There are no read tokens to revoke.', 'No token picked, so nothing was revoked.');
 
+    // A customer's link may hang on it, and a revoked token cannot come back
+    if (empty($opts['force']) && !confirm('Revoke the token for ' . share_token_words($token) . '? Its share link, and whatever reads the API with it, stop working for good.')) {
+        echo "Nothing revoked.\n";
+        exit(1);
+    }
     revoke_share_token($db, (int) $token['id']);
     echo 'Revoked the read token for ' . share_target($token) . ($token['label'] !== '' ? " ({$token['label']})" : '') . ". Whatever used it now gets 404.\n";
 }
