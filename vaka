@@ -76,10 +76,12 @@ function print_help(): void
     Sites (<site> is a URL or a domain)
       site:add <url>       Start watching a site
                            --group=<name> --name= --keyword=<text on the page>
-                           --check-path=/up --interval=<minutes> --disable=ssl,dns --pause
+                           --check-path=/up (uptime only) --interval=<minutes>
+                           --disable=ssl,dns --pause
       site:edit <site>     Change a site
-                           --url= --group=<name|none> --name= --keyword= --check-path=/up
-                           --interval= --pause --resume --disable=<checks> --enable=<checks>
+                           --url= --group=<name|none> --name= --keyword= --interval=
+                           --check-path=/up (uptime only; empty for the address)
+                           --pause --resume --disable=<checks> --enable=<checks>
                            --server=<label> (for sites behind a CDN)
       site:edit <server> --group=<name|none>
                            Move every site on a server (its IP or name) at once

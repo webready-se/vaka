@@ -56,11 +56,19 @@ test('a keyword follows the site to its uptime path, and site:add and site:edit 
     vaka(['site:add', 'shop.example', '--keyword=Book a table'], $this->env);
     $r = vaka(['site:edit', 'shop.example', '--check-path=/up'], $this->env);
     // What changed, then what it means: a keyword the start page has may not be on /up
-    expect($r['out'])->toContain('Updated https://shop.example: uptime checks /up and looks for "Book a table" there (no group, every 5 min).')
-        ->and($r['out'])->toContain('Make sure /up shows "Book a table", or the site counts as down on the next check (clear it with --keyword=).');
+    expect($r['out'])->toContain("Updated https://shop.example: uptime checks /up and looks for \"Book a table\" there.\n")
+        ->and($r['out'])->toContain('Make sure /up shows "Book a table", or the site counts as down on its next check (clear it with --keyword=).');
+    expect(vaka(['site:list'], $this->env)['out'])->toContain('uptime checks /up, looks for "Book a table" there');
+
+    // Back to the address: a keyword meant for /up now has to be on the page itself
+    $r = vaka(['site:edit', 'shop.example', '--check-path='], $this->env);
+    expect($r['out'])->toContain('Make sure https://shop.example shows "Book a table", or the site counts as down on its next check');
 
     // Nothing to change says so
-    expect(vaka(['site:edit', 'shop.example', '--check-path=/up'], $this->env)['out'])->toContain('Nothing changed for https://shop.example (no group, every 5 min).');
+    expect(vaka(['site:edit', 'shop.example', '--check-path='], $this->env)['out'])->toContain('Nothing changed for https://shop.example (no group, every 5 min).');
+
+    // Added paused, it still says where the keyword is looked for
+    expect(vaka(['site:add', 'bakery.example', '--keyword=Fresh bread', '--check-path=/up', '--pause'], $this->env)['out'])->toContain('Uptime checks /up and looks for "Fresh bread" there.');
     // help names the option
     expect(vaka(['help'], $this->env)['out'])->toContain('--check-path=/up');
 });
