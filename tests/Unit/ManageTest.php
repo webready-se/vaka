@@ -43,6 +43,12 @@ test('the dashboard sets an uptime path, says a wrong one under its field, and w
     $cleared = save_site_form($this->db, test_config(), ['url' => 'https://shop.example', 'check_path' => '', 'checks' => CHECKS], $saved['id'], 'admin', $this->now + 60);
     expect($cleared['changes'])->toBe(['uptime checks the address again'])
         ->and(describe_site_changes($this->db, find_site($this->db, 'shop.example'), ['check_path' => '/health'] + find_site($this->db, 'shop.example'), 5))->toBe(['uptime checks /health']);
+
+    // The keyword is looked for on the uptime path, and the history says so, whichever of them changed
+    $site = ['keyword' => 'Book a table'] + find_site($this->db, 'shop.example');
+    expect(describe_site_changes($this->db, $site, ['check_path' => '/up'] + $site, 5))->toBe(['uptime checks /up and looks for "Book a table" there'])
+        ->and(describe_site_changes($this->db, ['check_path' => '/up'] + $site, ['check_path' => '/up', 'keyword' => 'Open today'] + $site, 5))->toBe(['looks for "Open today" on /up'])
+        ->and(describe_site_changes($this->db, ['check_path' => '/up'] + $site, ['check_path' => ''] + $site, 5))->toBe(['uptime checks the address again and looks for "Book a table" there']);
 });
 
 test('saving a site without changing what is checked keeps every check on its schedule', function () {

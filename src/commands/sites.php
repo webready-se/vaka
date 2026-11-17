@@ -114,6 +114,7 @@ function cmd_site_add(array $config, array $args, array $opts): void
         return;
     }
     echo 'Added ' . readable_url($site['url']) . "{$where}. Vaka checks it every " . site_interval($site, $config) . " min.\n";
+    if ($site['check_path'] !== '') echo "Uptime checks {$site['check_path']}" . ($site['keyword'] !== '' ? " and looks for \"{$site['keyword']}\" there" : '') . ".\n";
 }
 
 function cmd_site_edit(array $config, array $args, array $opts): void
@@ -158,7 +159,12 @@ function cmd_site_edit(array $config, array $args, array $opts): void
     }
     if ($note !== null && !stream_isatty(STDIN)) fwrite(STDERR, "Warning: {$note} Changed anyway: check the spelling.\n");
     $updated = site_with_group($db, $site['id']);
-    echo 'Updated ' . readable_url($updated['url']) . ': ' . describe_site($updated, $config) . ".\n";
+    $changes = describe_site_changes($db, $site, $updated, $config['uptime_interval']);
+    echo ($changes ? 'Updated ' . readable_url($updated['url']) . ': ' . implode(', ', $changes) : 'Nothing changed for ' . readable_url($updated['url'])) . ' (' . describe_site($updated, $config) . ").\n";
+    // A keyword from the start page may not be on the uptime path: the site would count as down
+    if ($updated['keyword'] !== '' && $updated['check_path'] !== '' && ($site['keyword'] !== $updated['keyword'] || $site['check_path'] !== $updated['check_path'])) {
+        echo "Make sure {$updated['check_path']} shows \"{$updated['keyword']}\", or the site counts as down on the next check (clear it with --keyword=).\n";
+    }
     echo readers_lines(readers_change($readers, [$site['group_id']], $updated['group_id']));
 }
 

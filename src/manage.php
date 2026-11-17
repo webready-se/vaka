@@ -55,8 +55,13 @@ function describe_site_changes(PDO $db, array $old, array $new, int $defaultInte
     if ($old['url'] !== $new['url']) $changes[] = 'address now ' . display_url($new['url']);
     if ($old['group_id'] !== $new['group_id']) $changes[] = $new['group_id'] === null ? 'no group' : 'moved to ' . get_group($db, (int) $new['group_id'])['name'];
     if ($old['name'] !== $new['name']) $changes[] = $new['name'] === '' ? 'name removed' : "named \"{$new['name']}\"";
-    if ($old['keyword'] !== $new['keyword']) $changes[] = $new['keyword'] === '' ? 'no longer looks for a text' : "looks for \"{$new['keyword']}\"";
-    if ($old['check_path'] !== $new['check_path']) $changes[] = $new['check_path'] === '' ? 'uptime checks the address again' : "uptime checks {$new['check_path']}";
+    // The keyword is looked for where uptime checks, so a new path says it takes the keyword along
+    $pathChanged = $old['check_path'] !== $new['check_path'];
+    if ($old['keyword'] !== $new['keyword'] && !($pathChanged && $new['keyword'] !== '')) {
+        $changes[] = $new['keyword'] === '' ? 'no longer looks for a text' : "looks for \"{$new['keyword']}\"" . ($new['check_path'] !== '' ? " on {$new['check_path']}" : '');
+    }
+    if ($pathChanged) $changes[] = ($new['check_path'] === '' ? 'uptime checks the address again' : "uptime checks {$new['check_path']}") . ($new['keyword'] !== '' ? " and looks for \"{$new['keyword']}\" there" : '');
+    if (($old['server'] ?? null) !== ($new['server'] ?? null)) $changes[] = ($new['server'] ?? '') === '' ? 'server no longer named by hand' : "on server {$new['server']}";
     if ($old['interval_minutes'] !== $new['interval_minutes']) {
         $changes[] = 'checked every ' . ($new['interval_minutes'] ?? $defaultInterval) . ' min' . ($new['interval_minutes'] === null ? ' (the default)' : '');
     }

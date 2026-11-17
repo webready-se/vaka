@@ -1357,7 +1357,7 @@
     if (site.name) rows.push(['Name', site.name]);
     rows.push(['Group', site.group || 'No group']);
     rows.push(['Checked every', site.interval_minutes + ' min']);
-    if (site.keyword) rows.push(['Looks for the text', '"' + site.keyword + '"']);
+    if (site.keyword) rows.push(['Looks for the text', '"' + site.keyword + '"' + (site.check_path ? ' on ' + site.check_path : '')]);
     if (site.check_path) rows.push(['Uptime checks', site.check_path]);
     if (setup) {
       rows.push(['Checks', h('ul', { class: 'check-chips' }, setup.checks.map(function (check) {
@@ -1530,7 +1530,7 @@
         field('url', 'Address', textInput('url', v.url, { inputmode: 'url', placeholder: 'https://shop.example' }), 'The page Vaka checks. A domain alone means https.'),
         field('group', 'Group', group, groupHint(v.group)),
         field('name', 'Name', textInput('name', v.name, { spellcheck: 'true' }), 'Optional, shown with the address.'),
-        field('keyword', 'Text that must be on the page', textInput('keyword', v.keyword), 'Optional. Catches an error page that still answers 200 OK.'),
+        field('keyword', 'Text that must be on the page', textInput('keyword', v.keyword), 'Optional. Catches an error page that still answers 200 OK. With a path for uptime, it is looked for on that path.'),
         field('check_path', 'Path for uptime', textInput('check_path', v.check_path, { placeholder: '/up', autocapitalize: 'off' }), 'Optional. Uptime checks this path instead, such as /up: a page that tests the database too, where a cached start page would answer without it. The other checks stay on the address.'),
         field('interval', 'Check uptime', interval, 'A site that fails is checked again every minute regardless.'),
         checks,
