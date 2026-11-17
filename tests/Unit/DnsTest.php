@@ -92,9 +92,18 @@ test('dns_items: MX, SPF and DMARC with what each does and the record to add', f
     $missing = dns_items(evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => [], 'dmarc' => []])['details']);
     expect(array_column($missing, 'level', 'key'))->toBe(['mx' => 'good', 'spf' => 'missing', 'dmarc' => 'missing'])
         ->and($missing[1]['fix_label'])->toBe('Add a TXT record at shop.example:')
-        ->and($missing[1]['fix'])->toBe('v=spf1 include:<your mail provider> -all')
+        // ~all while every sender is found: -all could bounce one that is not named yet, whatever DMARC says
+        ->and($missing[1]['fix'])->toBe('v=spf1 include:<your mail provider> ~all')
         ->and($missing[2]['fix'])->toBe('v=DMARC1; p=none; rua=mailto:<your report address>')
-        ->and($missing[1]['tip'])->toBe('Sends no email at all? Publish v=spf1 -all, so nobody can send in its name.');
+        ->and($missing[1]['tip'])->toBe('~all marks other senders as suspect without bouncing their email while you find them all. Does the site\'s own server send email too, such as a contact form? Add a (or ip4: with its address) next to include:. Once the DMARC reports show that all your email passes, change ~all to -all.');
+
+    // What is in place gets no line to add: an assistant that follows fix must not weaken it
+    foreach ([['v=spf1 include:_spf.mail.example -all'], ['v=spf1 include:_spf.mail.example ~all']] as $spf) {
+        foreach (['v=DMARC1; p=reject', 'v=DMARC1; p=quarantine; rua=mailto:d@shop.example'] as $dmarc) {
+            $good = array_column(dns_items(evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => $spf, 'dmarc' => [$dmarc]])['details']), null, 'key');
+            expect([$good['spf']['fix'], $good['spf']['fix_label'], $good['dmarc']['fix'], $good['dmarc']['fix_label']])->toBe(['', '', '', '']);
+        }
+    }
 });
 
 test('dns_items: a domain that sends no email is told to reject at once; one that sends, or may, to start with reports', function () {
@@ -103,7 +112,7 @@ test('dns_items: a domain that sends no email is told to reject at once; one tha
     // No mail server and no SPF: it looks like it sends nothing
     $none = $items([]);
     expect($none['spf']['fix'])->toBe('v=spf1 -all')
-        ->and($none['spf']['tip'])->toBe('Sends email after all, through a mail provider or the site itself? Use v=spf1 include:<your mail provider> -all instead.')
+        ->and($none['spf']['tip'])->toBe('Does something send as @shop.example after all, such as a contact form or order email? Name it instead: v=spf1 a include:<your mail provider> ~all, with a for the site\'s own server and include: for a mail provider.')
         ->and($none['dmarc']['fix'])->toBe('v=DMARC1; p=reject')
         ->and($none['dmarc']['tip'])->toContain('looks like it sends no email')
         ->and($none['dmarc']['tip'])->toContain('Reports are optional');
@@ -148,11 +157,12 @@ test('dns_items: a domain that sends no email is told to reject at once; one tha
 test('a domain that sends no email leads with why it still needs SPF and DMARC, and the records that say so', function () {
     $advice = fn (array $records) => mail_advice(evaluate_mail_dns('shop.example', $records + ['mx' => [], 'spf' => [], 'dmarc' => []])['details']);
 
-    expect($advice([]))->toBe('This domain has no mail server and sends no email, but anyone can still send email that claims to come from it. An SPF record of v=spf1 -all and a DMARC record of v=DMARC1; p=reject say that none of it is real. Once they are there, this warning goes away by itself.')
+    // No mail server only suggests it sends nothing: the site may still send (a contact form), so it asks first
+    expect($advice([]))->toBe('Does anything send email as @shop.example, such as a contact form or order email from the site? It has no mail server, so perhaps not. If nothing does, an SPF record of v=spf1 -all and a DMARC record of v=DMARC1; p=reject say that any email in its name is false, and this warning goes away by itself. If something does, these records would stop its email: name it in SPF first.')
         // A null MX says the same as none
-        ->and($advice(['mx' => ['0 .']]))->toStartWith('This domain has no mail server and sends no email')
+        ->and($advice(['mx' => ['0 .']]))->toStartWith('Does anything send email as @shop.example')
         ->and($advice(['spf' => ['v=spf1 -all']]))->toBe('This domain sends no email (its SPF record allows no sender), but anyone can still send email that claims to come from it. A DMARC record of v=DMARC1; p=reject says that none of it is real. Once it is there, this warning goes away by itself.')
-        ->and($advice(['dmarc' => ['v=DMARC1; p=reject']]))->toBe('This domain has no mail server and sends no email, but anyone can still send email that claims to come from it. An SPF record of v=spf1 -all says that none of it is real. Once it is there, this warning goes away by itself.')
+        ->and($advice(['dmarc' => ['v=DMARC1; p=reject']]))->toBe('Does anything send email as @shop.example, such as a contact form or order email from the site? It has no mail server, so perhaps not. If nothing does, an SPF record of v=spf1 -all says that any email in its name is false, and this warning goes away by itself. If something does, this record would stop its email: name it in SPF first.')
         // A domain that sends, or may, gets the advice it has today, and one with nothing to add none
         ->and($advice(['mx' => ['10 mx1.mail.example']]))->toBe(advice_for('no_spf_dmarc', 0))
         ->and($advice(['spf' => ['v=spf1 -all', 'v=spf1 include:_spf.mail.example -all']]))->toBe(advice_for('spf_twice', 0))

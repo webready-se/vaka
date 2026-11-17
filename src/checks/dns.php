@@ -147,8 +147,12 @@ function mail_advice(array $details): string
         ...(!$records['spf'] ? ['an SPF record of v=spf1 -all'] : []),
         ...(!$records['dmarc'] ? ['a DMARC record of v=DMARC1; p=reject'] : []),
     ];
-    $why = $records['spf'] ? 'This domain sends no email (its SPF record allows no sender)' : 'This domain has no mail server and sends no email';
-    return "{$why}, but anyone can still send email that claims to come from it. " . ucfirst(list_words($add)) . (count($add) > 1 ? ' say' : ' says') . ' that none of it is real. Once ' . (count($add) > 1 ? 'they are' : 'it is') . ' there, this warning goes away by itself.';
+    $say = count($add) > 1 ? ' say' : ' says';
+    // Its own SPF record says nothing sends; no mail server only suggests it, and the site may still send (a contact form)
+    if ($records['spf']) return 'This domain sends no email (its SPF record allows no sender), but anyone can still send email that claims to come from it. ' . ucfirst(list_words($add)) . "{$say} that none of it is real. Once " . (count($add) > 1 ? 'they are' : 'it is') . ' there, this warning goes away by itself.';
+    return 'Does anything send email as @' . display_domain((string) $details['domain']) . ', such as a contact form or order email from the site? It has no mail server, so perhaps not. '
+        . 'If nothing does, ' . list_words($add) . "{$say} that any email in its name is false, and this warning goes away by itself. "
+        . 'If something does, ' . (count($add) > 1 ? 'these records' : 'this record') . ' would stop its email: name it in SPF first.';
 }
 
 /**
@@ -192,14 +196,16 @@ function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): 
             'fix' => '',
             'tip' => '',
         ]),
-        $item('spf', [
-            'level' => match (count($records['spf'])) { 0 => 'missing', 1 => 'good', default => 'weak' },
-            'note' => count($records['spf']) > 1 ? 'Two SPF records: receivers treat that as an error. Merge them into one.' : '',
-            'fix_label' => count($records['spf']) > 1 ? "Keep one TXT record at {$shown}, such as:" : "Add a TXT record at {$shown}:",
-            'fix' => $sends || count($records['spf']) > 1 ? 'v=spf1 include:<your mail provider> -all' : 'v=spf1 -all',
-            'tip' => $sends || count($records['spf']) > 1
-                ? 'Sends no email at all? Publish v=spf1 -all, so nobody can send in its name.'
-                : 'Sends email after all, through a mail provider or the site itself? Use v=spf1 include:<your mail provider> -all instead.',
+        // One SPF record is in place: nothing to add, so an assistant that follows fix leaves it alone
+        $item('spf', count($records['spf']) === 1 ? ['level' => 'good', 'note' => '', 'fix_label' => '', 'fix' => '', 'tip' => ''] : [
+            'level' => $records['spf'] ? 'weak' : 'missing',
+            'note' => $records['spf'] ? 'Two SPF records: receivers treat that as an error. Merge them into one.' : '',
+            'fix_label' => $records['spf'] ? "Keep one TXT record at {$shown}, such as:" : "Add a TXT record at {$shown}:",
+            // ~all while every sender is found: -all could bounce one not named yet, whatever DMARC says
+            'fix' => $sends || $records['spf'] ? 'v=spf1 include:<your mail provider> ~all' : 'v=spf1 -all',
+            'tip' => $sends || $records['spf']
+                ? '~all marks other senders as suspect without bouncing their email while you find them all. Does the site\'s own server send email too, such as a contact form? Add a (or ip4: with its address) next to include:. Once the DMARC reports show that all your email passes, change ~all to -all.'
+                : "Does something send as @{$shown} after all, such as a contact form or order email? Name it instead: v=spf1 a include:<your mail provider> ~all, with a for the site's own server and include: for a mail provider.",
         ]),
         $item('dmarc', [
             'level' => !$records['dmarc'] ? 'missing' : ($monitoring ? 'weak' : 'good'),
@@ -209,13 +215,14 @@ function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): 
                 default => 'p=none only monitors: email that fails the check is still delivered',
             },
             'fix_label' => match (true) {
-                $waitForReports => '',
+                $records['dmarc'] && !$monitoring, $waitForReports => '',
                 $monitoring => "Change the TXT record at _dmarc.{$shown} to:",
                 default => "Add a TXT record at _dmarc.{$shown}:",
             },
             // A record that only monitors keeps its own reports and options: only p= changes
             'fix' => match (true) {
-                $waitForReports => '',
+                // In force (quarantine or reject): nothing to add, and never a step back to p=none
+                $records['dmarc'] && !$monitoring, $waitForReports => '',
                 $addReports => rtrim($records['dmarc'][0], '; ') . (str_contains($records['dmarc'][0], '; ') ? '; ' : ';') . 'rua=mailto:<your report address>',
                 $monitoring => preg_replace('/(^|;)(\s*)p\s*=\s*none\b/i', '$1$2p=' . ($sends ? 'quarantine' : 'reject'), $records['dmarc'][0], 1),
                 $sends => 'v=DMARC1; p=none; rua=mailto:<your report address>',
