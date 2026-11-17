@@ -5,8 +5,8 @@ test('parse_import_csv reads group, url and enabled', function () {
 
     expect($result['errors'])->toBe([])
         ->and($result['rows'])->toBe([
-            ['line' => 2, 'url' => 'https://shop.example', 'group' => 'Customers', 'paused' => false, 'name' => '', 'keyword' => '', 'interval' => ''],
-            ['line' => 3, 'url' => 'https://blog.example', 'group' => 'Own', 'paused' => true, 'name' => '', 'keyword' => '', 'interval' => ''],
+            ['line' => 2, 'url' => 'https://shop.example', 'group' => 'Customers', 'paused' => false, 'name' => '', 'keyword' => '', 'check_path' => '', 'interval' => ''],
+            ['line' => 3, 'url' => 'https://blog.example', 'group' => 'Own', 'paused' => true, 'name' => '', 'keyword' => '', 'check_path' => '', 'interval' => ''],
         ]);
 });
 
@@ -60,6 +60,17 @@ test('import_sites adds new sites, creates missing groups and leaves existing si
         ->and(find_site($db, 'new.example')['paused'])->toBe(1)
         ->and(find_site($db, 'new.example')['group_id'])->toBe(find_group($db, 'Customers')['id'])
         ->and(find_site($db, 'loose.example')['group_id'])->toBeNull();
+});
+
+test('import_sites takes an uptime path, as site:add --check-path does, and says on which line one is wrong', function () {
+    $db = get_db(temp_dir() . '/vaka.sqlite');
+    $rows = parse_import_csv("url,check_path,keyword\nshop.example,up,Book a table\nblog.example,,\n")['rows'];
+    import_sites($db, $rows);
+    expect(find_site($db, 'shop.example'))->toMatchArray(['check_path' => '/up', 'keyword' => 'Book a table'])
+        ->and(find_site($db, 'blog.example')['check_path'])->toBe('');
+
+    $wrong = parse_import_csv("url,check_path\ncafe.example,https://cafe.example/up\n")['rows'];
+    expect(fn () => import_sites($db, $wrong))->toThrow(InvalidArgumentException::class, 'line 2: Give the path only, such as /up');
 });
 
 test('import_sites in a dry run saves nothing', function () {
