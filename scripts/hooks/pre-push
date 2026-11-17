@@ -30,6 +30,9 @@ if [ -n "$found" ]; then
 fi
 
 echo "Running tests before push..."
+# As from a shell: from a linked worktree git hands the hook an absolute GIT_DIR, and a test that
+# runs git in a folder of its own would then commit to the branch being pushed
+unset GIT_DIR GIT_WORK_TREE GIT_INDEX_FILE GIT_COMMON_DIR GIT_OBJECT_DIRECTORY
 ./vendor/bin/pest --colors=always
 if [ $? -ne 0 ]; then
     printf "\nTests failed, push aborted.\n"
