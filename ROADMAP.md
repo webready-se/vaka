@@ -149,6 +149,39 @@ A demo that needs no account, as Puls has at demo.puls.webready.se: in a compari
 - [x] "Try the live demo" right under the tagline in README, and the link as the repository's homepage (done 2026-11-17)
 - [x] Count the demo's visits with Puls, as Puls counts its own demo's (`TRACK_SHARED_URL`): which channel worked after a launch. Needs the shared page's policy to let that one Puls through (done 2026-11-17: `TRACK_SHARED_URL` and `TRACK_SHARED_SITE` as in Puls, on shared pages only. Vaka keeps `Referrer-Policy: no-referrer` there, where Puls's demo sends `strict-origin`: tried against a real Puls in Chrome, the beacon still carries its origin, so Puls's `ALLOWED_ORIGINS` lets it through, and Puls still sees where the visitor came from. A value that is not a plain address is said on every command, since Puls's demo was first given its own share link and stayed uncounted without a word)
 
+## Milestone 9: An outside read
+
+What three review agents found on 2026-11-17, reading Vaka with no knowledge of how it was built: a customer who got a share link, a user who runs it for many sites, and a developer who follows each instruction to the letter (Apache lines in a real Apache, records against the RFCs). The words mostly passed the five-second test; what failed was the context around them. Decided 2026-11-17, in this order: what can do harm, then the demo everyone sees, then the share view for customers, then the smaller words.
+
+What can do harm:
+
+- [ ] `share:revoke` asks before it revokes ((y/N), with what the token reads and that it cannot be undone), and its menu numbers tokens as `share:list` does (#6, not 1). The review picked "1" meaning #1 and revoked #6, a customer's working link
+- [ ] Mail advice never stops mail that works today. No MX means the domain may send no email, not that it sends none: ask whether anything sends in its name (a contact form, order mail) before `v=spf1 -all` and `p=reject`. A domain that sends gets `~all` until DMARC reports show everything passes, and the site's own server (`a`, `ip4:`) next to `include:<your mail provider>`. Found by two of the three agents
+- [ ] A keyword follows the site to its uptime path, and says so: in the form's hint, and in what `site:add` and `site:edit` print ("Uptime now checks /up and looks for "Book a table" there"). `site:edit` says what it changed. Today a keyword from the start page moves to /up in silence, and the site alerts as down on the next run
+- [ ] `fix` in the read API is empty for what is already in place, as docs/api.md says. Today a DMARC at `p=reject` gets a `p=none` line, a CSP in force gets a Report-Only one, and an assistant that follows `fix` would weaken what works
+- [ ] The cron line the dashboard offers sends its output nowhere (`>> /dev/null 2>&1`, as the docs have it: `run` prints "Nothing was due." every minute, which cron mails), names PHP by its full path (`php` was not in cron's PATH where the review ran it), and shows whenever Vaka has stopped running, not only before its first run
+- [ ] A paused site shows no uptime for the time it was paused, not 100% next to "No checks in the last 24 hours"
+
+The demo, which everyone who clicks sees:
+
+- [ ] The seed agrees with itself: a site is "up since" after its last outage, an outage's history matches its card ("answered 503", not "no answer"), a site down only in maintenance says so
+- [ ] The demo says it is one: made-up sites, read-only, the view a customer gets from a share link; the README line too. Without it, a visitor looks for snooze and "Add a site"
+
+The share view, for the person who got the link (proposals shown before it is built):
+
+- [ ] A shared page speaks to whoever got the link, not to the agency that sent it. A problem says what it means for visitors and that whoever sent the link was alerted, and when; a snooze reads as "acknowledged"; a grade has words ("F: none of the six browser protections. The site is not down"). The lines to copy and the server tips fold under technical details, not removed, since a developer may get a link too and the demo is where evaluators look. Internal names (group names, alert policies) stay off it, and the phone shows what the link shows and until when, as text. Readers only: no logins for customers, nothing they can change, no alerts to them. The review's customer said the page today makes them call more often, not less, since it hands them the agency's homework and never says the agency knows
+
+Smaller words:
+
+- [ ] A token's last day has one name everywhere (today "valid through", "Works through", "works until", "until" and "Its last day was"), and `share:list` says "No last day", not "Works through never"
+- [ ] "Worth improving" in a group's report is worst first, not fewest sites first, and its pointer to a site's own report says how (`&site=<site>`)
+- [ ] HSTS over http offers no line to add, only "move the site to https first": today it offers the header the site already sends
+- [ ] The report's tips follow the site's server, as the dashboard's do (Apache gets Apache's)
+- [ ] Apache's tip says to reload and that .htaccess needs `AllowOverride FileInfo`; a certificate that missed its renewal suggests `certbot renew --dry-run` and a reload after renewing; exposed files get lines to copy for nginx and Apache
+- [ ] `php vaka help` lists `--check-path`; install.md says how to open the dashboard; `&format=md` with an expired token answers in Markdown
+- [ ] A certificate or domain due for renewal shows on the site's row and in `php vaka status`, not only in its detail, and the certificate tile does not show a green tick next to "late"
+- [ ] "Response time of /up" keeps the path's case (paths are case-sensitive), and the theme switch does not read as a system page
+
 ## Ideas
 
 - [ ] Tags on sites, if one group per site proves too narrow
