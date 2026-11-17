@@ -321,8 +321,13 @@ test('mail DNS shows in words on the overview, and record by record in the site 
 
     $token = create_share_token($this->db, $shop, [], '', utc_now($now + 86400), $now)['token'];
     $api = http_request('GET', WEB . '/?api&site=shop.example&share=' . $token)['json'];
-    expect($api['site']['dns'])->toMatchArray(['status' => 'warn', 'domain' => 'shop.example'])
+    expect($api['site']['dns'])->toMatchArray(['status' => 'warn', 'domain' => 'shop.example', 'spf_broken' => false])
         ->and(array_keys($api['site']['dns']['items'][2]))->toBe(['key', 'label', 'level', 'records', 'note', 'what', 'fix_label', 'fix', 'tip']);
+
+    // Two SPF records: SPF fails for all of the domain's email, more than a record that is missing
+    $twice = evaluate_mail_dns('shop.example', ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 -all', 'v=spf1 include:a.example ~all'], 'dmarc' => []]);
+    save_check_state($this->db, $shop, 'dns', ['status' => $twice['status'], 'summary' => $twice['summary'], 'details' => confirm_mail_dns(null, $twice)['details'], 'fail_count' => 0, 'changed_at' => utc_now($now)], utc_now($now), utc_now($now + 3600));
+    expect(http_request('GET', WEB . '/?api&share=' . $token)['json']['site']['dns']['spf_broken'])->toBeTrue();
 });
 
 test('a site behind a bot check says so, with what to do and the address to let through, in the overview and the read API', function () {
