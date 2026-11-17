@@ -380,6 +380,8 @@ Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.
 
 `ROADMAP.md` is the source of truth for what to build. Check items off when done; completed items stay (it is a historical document). New ideas go under Ideas.
 
+Until 1.0 the scope is frozen (Milestone 10, since 2026-11-17): no new checks and no new kinds of advice, only fixes, that milestone and watching production. A new idea goes under Ideas instead of being built, whoever raises it. Why: the advice grew deeper faster than real use could confirm it, and each review of a new nuance found a real mistake in it.
+
 ## Session Continuity
 
 On session start:
