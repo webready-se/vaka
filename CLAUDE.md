@@ -45,6 +45,8 @@ This repository is public. Nothing about the user, the company, its customers or
 
   Test every screen, message and command output with: would someone understand this in five seconds?
 
+  Claude decides the wording itself (since 2026-11-17), and review agents that know nothing of how a change was made read it before its PR: a customer who got a share link, a user who runs Vaka for many sites, and a developer who follows each instruction to the letter (the line into a real server config, the record into DNS). Any change people will read goes through them: the dashboard, CLI output, alerts, the report, advice and the lines it offers to copy, docs. What they find is fixed, or named in the PR as left for later; the PR shows the wording, and the owner says there if something chafes. Why: progress should not wait on a reply, and the first such review found what neither the owner nor Claude had seen: a share view written for the agency rather than its customer, a menu that numbered tokens unlike the list beside it, a keyword that silently moved to the uptime path.
+
   Small conveniences are part of this, not extras: a prompt offers a good default where one exists (Enter makes a strong password; the dashboard shows this server's own cron line), and the very first run is walked through as a new user would meet it (no users, no sites, no SSH) before calling a flow done.
 
   The look follows the Webready open source design kit (see Design below); `docs/brand.md` holds only what is Vaka's own (the night panel, the owl's states, the tab count). Review visual changes with `node scripts/smoke.mjs --screenshots=<dir>` (login, light, dark, detail, phone, phone detail, and the first visit: no users, no sites).
@@ -331,6 +333,8 @@ Cron in production:
 
 Releasing: a PR sets `VAKA_VERSION` in `src/bootstrap.php` and renames `[Unreleased]` in `CHANGELOG.md` to `[x.y.z] - YYYY-MM-DD` (with a new empty `[Unreleased]`). Once it is merged, tag `main` as `vx.y.z` and push the tag: the release workflow builds the zip, checks that it runs and publishes the release. `scripts/build-release.sh x.y.z` builds the same zip locally, in `build/`.
 
+At most one release a week (since 2026-11-17), so whoever watches the repository is not sent a new version every other day: changes collect under `[Unreleased]` and go out together. A fix for something that loses data or stops a running install may go out sooner.
+
 ## Testing
 
 Pest, dev dependency only. **No real network in tests.** Fixtures use reserved example names and documentation IPs only.
@@ -365,7 +369,7 @@ Look at the dashboard while working on it: `php scripts/seed-demo.php /tmp/demo.
 
 - Conventional commits: `type(scope): short description` with types feat, fix, docs, test, chore, refactor, style.
 - One logical change per commit. Stage files explicitly (never `git add .` or `-A`).
-- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. **Until 1.0, merge a PR to main yourself once CI is green and what it changes has been agreed** (UI text and UX choices are shown before the PR, as above), so finished work goes live without waiting for a reply. After the merge, wait for a production run on the new code (`/?health` with a newer `last_run_at`) before calling it done. At 1.0 the rule is decided again. (Between 0.1.0 and 2026-11-09 every merge was asked for first.)
+- Commits, feature branches, pushing them and opening PRs are fine without asking, so there is always something to show. **Until 1.0, merge a PR to main yourself once CI is green and what it changes has been agreed** (what people will read has been through the review agents first, see Principles), so finished work goes live without waiting for a reply. After the merge, wait for a production run on the new code (`/?health` with a newer `last_run_at`) before calling it done. At 1.0 the rule is decided again. (Between 0.1.0 and 2026-11-09 every merge was asked for first.)
 - Feature branches, never push straight to main. Tests must pass before pushing (pre-push hook).
 - Our own production deploys main by itself on every push, so a merge to main is live within minutes: merge only what may go live, and never change production by hand.
 - Before every commit, scan the staged diff, the commit message and the PR text for real names, domains, IPs and URLs.
