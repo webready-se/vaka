@@ -86,7 +86,7 @@ config.php               Configuration: loads .env, resolves paths (Forge zero-d
 .env.example             Environment template (checked in)
 .env                     Optional environment config (gitignored)
 src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines functions only, no side effects
-src/config.php           parse_env(), load_env(), resolve_path(), int_list(), old_release_warning() (a release that is not current/'s: told on STDERR on every command, which still runs); timezone_setting() and time_format_setting() (TIMEZONE and TIME_FORMAT as in Puls: unset is the server's zone, a wrong value never stops a run and is shown), clock_text()
+src/config.php           parse_env(), load_env(), resolve_path(), int_list(), old_release_warning() (a release that is not current/'s: told on STDERR on every command, which still runs); timezone_setting() and time_format_setting() (TIMEZONE and TIME_FORMAT as in Puls: unset is the server's zone, a wrong value never stops a run and is shown), track_shared_setting() (TRACK_SHARED_URL: a plain address or off, said), clock_text()
 src/db.php               get_db(), enable_wal(), migrations(), run_migrations()
 src/cli.php              parse_args(), allow_options(), prompt(), ask(), confirm(), choose(), print_table(), fail()
 src/sites.php            CHECKS, POLICIES, normalize_url(), clean_check_path() and uptime_url() (an uptime path on the site's own host, for uptime only), groups and sites (validation, storage, plain-words descriptions); host_resolves() and unresolved_note() (a new address not in DNS waits for "Add anyway": a typo is caught before it alerts)
@@ -113,7 +113,7 @@ src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail()
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
 src/report.php           The read API as Markdown for an AI assistant (&format=md): read_api_markdown_site(), read_api_markdown_list(); md_attention() and md_improvements() (what to do, worst first), md_code() (text from a site in a one-line code span); md_token() (when the token stops working: in the guide, or in bold with the command that extends it in its last 14 days)
 src/stats.php            down_periods(), overlap_seconds(), planned_periods() (downtime inside a maintenance window is planned: left out of uptime), uptime_percent(), site_uptime(), daily_uptime() (per day: up, down_seconds, outages, planned_seconds), hourly_buckets()
-src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze; `advice` from advice_for()), read_api() with stable field names (api_site_fields(), CSV)
+src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze; `advice` from advice_for()), read_api() with stable field names (api_site_fields(), CSV); show_shared_dashboard() and shared_tracker() (the Puls in TRACK_SHARED_URL counts shared pages: its script, and its origin in script-src and connect-src, on those pages only)
 src/commands/users.php   user:add, user:edit, user:remove, user:list
 public/index.php         Web front controller (three lines: bootstrap, config, handle_request())
 public/dashboard.html    Dashboard markup (no inline script or style; {{csrf}}, {{version}}, {{user}} filled in by show_dashboard())
@@ -288,6 +288,8 @@ Referrer-Policy: no-referrer
 Permissions-Policy: camera=(), microphone=(), geolocation=()
 Strict-Transport-Security: max-age=31536000 (only over HTTPS)
 ```
+
+A shared page counted by a Puls (`TRACK_SHARED_URL`) adds that one origin to `script-src` and `connect-src`, and nothing else; every other page keeps the policy above.
 
 Vaka's own header check must grade Vaka itself A.
 

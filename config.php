@@ -16,8 +16,12 @@ return [
     // 24h (14:05) or 12h (2:05 PM)
     'time_format' => ($timeFormat = time_format_setting($env('TIME_FORMAT')))['format'],
 
+    // The Puls that counts visits to shared pages (a public demo, say), and the site name it files them under
+    'track_shared_url' => ($tracker = track_shared_setting($env('TRACK_SHARED_URL')))['url'],
+    'track_shared_site' => trim($env('TRACK_SHARED_SITE')),
+
     // What is wrong with the settings above, for the CLI and the dashboard to show
-    'config_problems' => array_values(array_filter([$timezone['problem'], $timeFormat['problem']])),
+    'config_problems' => array_values(array_filter([$timezone['problem'], $timeFormat['problem'], $tracker['problem']])),
 
     'db_path' => resolve_path($env('DB_PATH', 'data/vaka.sqlite'), __DIR__),
 

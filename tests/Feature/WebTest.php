@@ -859,6 +859,43 @@ test('a share link that is unknown, revoked or expired says so to the person who
         ->and($r['body'])->toMatch('/Its last day was 2[67] Jan 2026\. Ask whoever sent it to extend it: the link stays the same\./');
 });
 
+test('a shared page can be counted by the Puls named in TRACK_SHARED_URL, and no other page is', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $token = create_share_token($this->db, null, [$customers], '', null, time())['token'];
+    $tracked = 'http://127.0.0.1:8789';
+    $web = start_web(8789, [
+        'DB_PATH' => $GLOBALS['web_dir'] . '/vaka.sqlite',
+        'USERS_FILE' => $GLOBALS['web_dir'] . '/users.json',
+        'TRACK_SHARED_URL' => 'https://puls.example.com/',
+        'TRACK_SHARED_SITE' => 'demo "site"',
+    ]);
+    try {
+        $page = http_request('GET', "{$tracked}/?share={$token}");
+        // The page is always "/" with no query, so the token in the address never reaches Puls
+        expect($page['body'])->toContain('<script defer src="https://puls.example.com/?js" data-site="demo &quot;site&quot;" data-path="/" data-query="none"></script>')
+            // The policy lets that one origin run its script and send, nothing more
+            ->and($page['headers']['content-security-policy'])->toBe("default-src 'none'; script-src 'self' https://puls.example.com; style-src 'self'; img-src 'self' data:; font-src 'self'; connect-src 'self' https://puls.example.com; manifest-src 'self'; form-action 'self'; frame-ancestors 'none'; base-uri 'none'")
+            // No referrer, as on every page: Puls still learns where the visitor came from, from the page's own
+            ->and($page['headers']['referrer-policy'])->toBe('no-referrer');
+
+        // Someone signed in to their own install is never counted, nor the login page or a link that does not work
+        $jar = ($this->jar)();
+        $login = http_request('GET', "{$tracked}/?login", ['jar' => $jar]);
+        preg_match('/name="_token" value="([a-f0-9]+)"/', $login['body'], $m);
+        http_request('POST', "{$tracked}/?login", ['jar' => $jar, 'form' => ['username' => 'admin', 'password' => 'admin password', '_token' => $m[1] ?? '']]);
+        $dashboard = http_request('GET', "{$tracked}/", ['jar' => $jar]);
+        expect($dashboard['body'])->toContain('/?logout');
+        foreach ([$login, $dashboard, http_request('GET', "{$tracked}/?share=vaka_" . str_repeat('0', 64))] as $other) {
+            expect($other['body'])->not->toContain('puls.example.com')
+                ->and($other['headers']['content-security-policy'])->toBe(CSP)
+                ->and($other['headers']['referrer-policy'])->toBe('no-referrer');
+        }
+    } finally {
+        stop_site($web);
+    }
+});
+
 test('a token says when it stops working, in JSON and in the report near its last day', function () {
     $customers = add_group($this->db, ['name' => 'Customers']);
     add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);

@@ -322,15 +322,45 @@ function show_shared_dashboard(array $config, array $token): never
     // Several groups as words ("Customers and Own sites"); scope's name stays the read API's stable field
     $note = 'Shared view of ' . (isset($scope['groups']) ? list_words($scope['groups']) : $scope['name']) . ($token['expires_at'] === null ? '' : ', until ' . share_expires_words($token['expires_at'], $config['timezone']));
     $shared = '<p class="shared-note" title="' . e($note) . ', read-only"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 13.2 7.6 4.1M15.8 6.7l-7.6 4.1"/></svg><span class="label">' . e($note) . '</span></p>';
+    $tracker = shared_tracker($config);
     // A link can be pasted anywhere: kept out of search engines
-    respond(200, dashboard_html($config, '', '', $shared), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow']);
+    respond(200, dashboard_html($config, '', '', $shared, $tracker['tag']), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow'] + $tracker['headers']);
 }
 
-/** The dashboard's page; on a shared page, $shared takes the place of what needs a login (the owner's API link and signing out). */
-function dashboard_html(array $config, string $csrf, string $user, ?string $shared = null): string
+/**
+ * The Puls that counts visits to shared pages (TRACK_SHARED_URL), so a public
+ * demo knows how many came and from where: its script tag, and the policy
+ * that lets that one origin through. The page is always "/" with no query and
+ * the referrer stays off, so the token in the address never reaches Puls. Only
+ * shared pages: someone signed in to their own install is never counted.
+ *
+ * @return array{tag: string, headers: array<string, string>}
+ */
+function shared_tracker(array $config): array
+{
+    $url = $config['track_shared_url'];
+    if ($url === null) return ['tag' => '', 'headers' => []];
+    $parts = parse_url($url);
+    $origin = $parts['scheme'] . '://' . $parts['host'] . (isset($parts['port']) ? ':' . $parts['port'] : '');
+    $site = $config['track_shared_site'] !== '' ? ' data-site="' . e($config['track_shared_site']) . '"' : '';
+    return [
+        'tag' => '<script defer src="' . e($url) . '/?js"' . $site . ' data-path="/" data-query="none"></script>',
+        'headers' => [
+            'Content-Security-Policy' => str_replace(["script-src 'self'", "connect-src 'self'"], ["script-src 'self' {$origin}", "connect-src 'self' {$origin}"], CSP),
+        ],
+    ];
+}
+
+/**
+ * The dashboard's page; on a shared page, $shared takes the place of what
+ * needs a login (the owner's API link and signing out), and $tracker is the
+ * script of the Puls that counts it, if any.
+ */
+function dashboard_html(array $config, string $csrf, string $user, ?string $shared = null, string $tracker = ''): string
 {
     $html = (string) file_get_contents(__DIR__ . '/../public/dashboard.html');
     if ($shared !== null) $html = (string) preg_replace('#<!-- signed-in -->.*?<!-- /signed-in -->#s', $shared, $html);
+    if ($tracker !== '') $html = str_replace('</head>', $tracker . "\n</head>", $html);
     return strtr($html, [
         '{{csrf}}' => e($csrf),
         '{{version}}' => e(VAKA_VERSION),
