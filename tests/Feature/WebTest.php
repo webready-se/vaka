@@ -281,7 +281,7 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and($site['exposed']['advice'])->toStartWith('Remove the files from the web root')
         ->and($site['domain'])->toMatchArray(['status' => 'warn', 'summary' => 'shop.example expires in 12 days (6 Nov 2026)', 'domain' => 'shop.example', 'label' => 'shop.example', 'days_left' => 12, 'registrar' => 'Example Registrar AB'])
         ->and($site['domain']['advice'])->toStartWith('Renew it with the registrar')
-        ->and($site['headers'])->toBe(['status' => 'warn', 'grade' => 'E', 'in_place' => 2, 'summary' => 'Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy', 'checked_at' => utc_now($now), 'next_at' => utc_now($now + 3600)]);
+        ->and($site['headers'])->toBe(['status' => 'warn', 'grade' => 'E', 'good' => 2, 'summary' => 'Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy', 'checked_at' => utc_now($now), 'next_at' => utc_now($now + 3600)]);
     expect($admin['groups'][1]['sites'][0]['ssl'])->toBeNull()
         ->and($admin['groups'][1]['sites'][0]['exposed'])->toBeNull()
         ->and($admin['groups'][1]['sites'][0]['headers'])->toBeNull()
@@ -851,6 +851,9 @@ test('a shared page names who sent it and carries their note, and says when an a
         // Both told: one by an alert, the digest group only marked for its daily summary
         $this->db->prepare("UPDATE check_state SET alerted_status = 'fail', alerted_at = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([utc_now($now - 540), $id]);
     }
+    // A certificate about to run out, told when it passed a threshold
+    save_check_state($this->db, $shop, 'ssl', ['status' => 'warn', 'summary' => 'The certificate expires in 6 days', 'details' => ['days_left' => 6], 'fail_count' => 0, 'changed_at' => utc_now($now - 86400)], utc_now($now), utc_now($now + 3600));
+    $this->db->prepare("UPDATE check_state SET alerted_status = 'warn', alerted_at = ? WHERE site_id = ? AND check_name = 'ssl'")->execute([utc_now($now - 86000), $shop]);
     $token = create_share_token($this->db, null, [$customers, $nightly], '', null, $now)['token'];
     $shared = 'http://127.0.0.1:8789';
     $web = start_web(8789, [
@@ -868,8 +871,11 @@ test('a shared page names who sent it and carries their note, and says when an a
 
         $sites = array_column(array_merge(...array_column(http_request('GET', "{$shared}/?api=overview", ['headers' => ['Authorization: Bearer ' . $token]])['json']['groups'], 'sites')), null, 'label');
         expect($sites['shop.example']['told_at'])->toBe(utc_now($now - 540))
+            ->and($sites['shop.example']['policy'])->toBe('immediate')
             // A digest group is told in its daily summary, not by an alert
-            ->and($sites['blog.example']['told_at'])->toBeNull();
+            ->and($sites['blog.example']['told_at'])->toBeNull()
+            ->and($sites['blog.example']['policy'])->toBe('digest')
+            ->and($sites['shop.example']['ssl']['told_at'])->toBe(utc_now($now - 86000));
     } finally {
         stop_site($web);
     }

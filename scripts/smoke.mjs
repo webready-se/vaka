@@ -919,7 +919,8 @@ async function main() {
       alerting: /Alerts (right away|after|in a daily|never)/.test(document.body.textContent),
       looseAdvice: [...document.querySelectorAll('.advice')].filter((n) => !n.closest('details.technical')).length,
       openTechnical: document.querySelectorAll('details.technical[open]').length,
-      protections: [...document.querySelectorAll('.site-figure small')].some((n) => n.textContent === 'protections'),
+      headersColumn: [...document.querySelectorAll('.site-figure small')].some((n) => n.textContent === 'headers'),
+      fileWords: /Some files that should be private can be downloaded from the site\./.test(document.body.textContent),
     };
     return out;
   });
@@ -933,6 +934,7 @@ async function main() {
       csp: window.__csp,
     };
   }));
+  await screenshot('shared-detail');
   if (shared.note !== 'Shared view of Customers') fails.push(`a share link says what it shows, where signing out is (got "${shared.note}")`);
   if (shared.logout) fails.push('a share link has no sign out');
   if (shared.rows !== 6) fails.push(`a share link for a group shows that group's sites only (got ${shared.rows})`);
@@ -942,7 +944,8 @@ async function main() {
   if (shared.kicker !== 'Down right now' || !/Visitors may get an error page or nothing at all\. Whoever sent you this link was alerted at \d{1,2}:\d{2}/.test(shared.watchLine)) fails.push(`a share link says what an outage means and that someone was alerted (got "${shared.kicker}", "${shared.watchLine.slice(0, 160)}")`);
   if (shared.groupHeads || shared.alerting) fails.push('a share link for one group shows neither its heading nor how it is alerted');
   if (shared.looseAdvice || shared.openTechnical) fails.push(`advice for the web developer is folded on a share link (${shared.looseAdvice} loose, ${shared.openTechnical} open)`);
-  if (!shared.protections) fails.push('a share link counts browser protections instead of a letter grade');
+  if (shared.headersColumn) fails.push('a share link shows no headers grade in its list, where a letter reads as a verdict on the site');
+  if (!shared.fileWords) fails.push('a share link says in words that private files can be downloaded');
 
   // 8. The very first visit: before the first user, then with no sites and cron not running yet
   await send('Emulation.clearDeviceMetricsOverride');
