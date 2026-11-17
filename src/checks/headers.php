@@ -1245,6 +1245,8 @@ function header_items(array $details): array
         if ($key === 'csp') $item = csp_item($item, $details);
         // Sent twice: where to look, with no line to add, since a line is what is left over
         if (isset($details['twice'][$key])) $item = ['twice' => true, 'fix' => '', 'tip' => twice_tip((string) strstr(SECURITY_HEADERS[$key]['fix'], ':', true), $details['twice'][$key], $details['server'] ?? '')] + $item;
+        // In place: no line to add, so an assistant that follows fix leaves it alone; a suggestion of its own (connect-src) stays
+        if ($item['level'] === 'good' && $item['fix'] === SECURITY_HEADERS[$key]['fix']) $item = ['fix' => '', 'tip' => $item['tip'] === SECURITY_HEADERS[$key]['tip'] ? '' : $item['tip']] + $item;
         $item['value'] = $details['sent'][$key] ?? '';
         $item['fix_label'] = fix_label($item);
         $items[] = $item;

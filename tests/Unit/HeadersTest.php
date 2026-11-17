@@ -365,6 +365,17 @@ test('the protections come in the order to add them: the safest first, CSP last'
     expect(array_column(header_items(evaluate_headers(answered([]), 10)['details']), 'key'))->toBe(['nosniff', 'referrer', 'frames', 'hsts', 'permissions', 'csp']);
 });
 
+test('a protection in place gets no line to add, so an assistant that follows fix leaves it alone', function () {
+    $items = array_column(header_items(evaluate_headers(answered(STRONG_HEADERS), 10)['details']), null, 'key');
+    foreach ($items as $key => $item) {
+        expect([$key, $item['level'], $item['fix'], $item['fix_label'], $item['tip']])->toBe([$key, 'good', '', '', '']);
+    }
+    // Missing, it still gets the line to add
+    $missing = array_column(header_items(evaluate_headers(answered([]), 10)['details']), null, 'key');
+    expect($missing['nosniff']['fix'])->toBe('X-Content-Type-Options: nosniff')
+        ->and($missing['csp']['fix'])->toBe("Content-Security-Policy-Report-Only: default-src 'self'");
+});
+
 // =====================================================================
 // CSP: Report-Only first, and what the page has that it would block
 // =====================================================================
@@ -795,7 +806,7 @@ test('each item says what the site sends and what to do with its line, so the li
 
     $items = array_column(header_items(evaluate_headers(answered($headers), 10)['details']), null, 'key');
     expect($items['hsts'])->toMatchArray(['level' => 'weak', 'value' => 'max-age=86400', 'fix_label' => 'Change it to:'])
-        ->and($items['nosniff'])->toMatchArray(['level' => 'good', 'value' => 'nosniff', 'fix_label' => 'Add this line:'])
+        ->and($items['nosniff'])->toMatchArray(['level' => 'good', 'value' => 'nosniff', 'fix_label' => ''])
         ->and($items['permissions'])->toMatchArray(['level' => 'missing', 'value' => '', 'fix_label' => 'Add this line:'])
         ->and($items['frames'])->toMatchArray(['level' => 'good', 'value' => "frame-ancestors 'self'"])
         ->and($items['csp'])->toMatchArray(['level' => 'weak', 'fix_label' => 'A stricter policy to try first as Report-Only, which blocks nothing:']);
