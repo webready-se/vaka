@@ -134,7 +134,7 @@ test('two SPF records need attention, not only improving: SPF fails for all of t
     $dns = ['status' => 'warn', 'summary' => 'Mail for shop.example: two SPF records, which receivers treat as an error', 'domain' => 'shop.example', 'spf_broken' => true, 'advice' => advice_for('spf_twice', 0), 'items' => [$spf, $dmarc]];
     $md = read_api_markdown_site(report_about(), report_detail(['dns' => $dns]), REPORT_CONFIG);
 
-    expect($md)->toContain("## Needs attention (1)\n\n1. **All of the domain's email fails SPF**: `Mail for shop.example: two SPF records, which receivers treat as an error`\n   What to do: " . advice_for('spf_twice', 0) . "\n   Replace both with one TXT record at shop.example that names every sender in them: `v=spf1 include:_spf.mail.example include:send.newsletter.example ~all`. ~all marks other senders as suspect.")
+    expect($md)->toContain("## Needs attention (1)\n\n1. **Every email from the domain gets an SPF error**: `Mail for shop.example: two SPF records, which receivers treat as an error`\n   What to do: " . advice_for('spf_twice', 0) . "\n   Replace both with one TXT record at shop.example that names every sender in them: `v=spf1 include:_spf.mail.example include:send.newsletter.example ~all`. ~all marks other senders as suspect.")
         // The other mail records are still worth improving, without SPF a second time
         ->and($md)->toContain("1. **Mail records**: SPF is under Needs attention.\n   - **DMARC** is missing.")
         ->and($md)->not->toContain('- **SPF** is weak');
@@ -142,8 +142,9 @@ test('two SPF records need attention, not only improving: SPF fails for all of t
     // Every site: under Needs attention too, and not also as a line to improve
     $totals = ['sites' => 1, 'up' => 1, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0];
     $list = read_api_markdown_list(report_about(['scope' => ['type' => 'group', 'name' => 'Customers']]), $totals, [report_site(['dns' => array_diff_key($dns, ['items' => true])])], REPORT_CONFIG);
-    expect($list)->toContain("## Needs attention (1)\n\n1. **shop.example: all of the domain's email fails SPF**: `Mail for shop.example: two SPF records, which receivers treat as an error`\n   What to do: " . advice_for('spf_twice', 0) . "\n")
-        ->and($list)->toContain("## Worth improving (0)\n");
+    expect($list)->toContain("## Needs attention (1)\n\n1. **shop.example: every email from the domain gets an SPF error**: `Mail for shop.example: two SPF records, which receivers treat as an error`\n   What to do: " . advice_for('spf_twice', 0) . "\n")
+        ->and($list)->toContain("## Worth improving (0)\n")
+        ->and($list)->toContain('| SPF broken |');
 });
 
 test('one site: the CSP item names the inline scripts it would block by their start, as text from the site', function () {

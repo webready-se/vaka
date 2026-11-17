@@ -153,7 +153,7 @@ function md_attention(array $site, array $config): array
     $dns = $site['dns'];
     if ($dns['spf_broken'] ?? false) {
         $spf = array_values(array_filter($dns['items'] ?? [], fn (array $item) => $item['key'] === 'spf' && $item['fix'] !== ''))[0] ?? null;
-        $items[] = ['rank' => 3, 'title' => 'All of the domain\'s email fails SPF', 'summary' => $dns['summary'], 'advice' => $dns['advice'],
+        $items[] = ['rank' => 3, 'title' => 'Every email from the domain gets an SPF error', 'summary' => $dns['summary'], 'advice' => $dns['advice'],
             'lines' => $spf !== null ? ["{$spf['fix_label']} " . md_code($spf['fix']) . '.' . ($spf['tip'] !== '' ? ' ' . md_own($spf['tip']) : '')] : []];
     }
     usort($items, fn (array $a, array $b) => $a['rank'] <=> $b['rank']);
@@ -349,7 +349,7 @@ function read_api_markdown_list(array $about, array $totals, array $sites, array
         $ssl = $site['ssl'] === null ? '-' : ($site['ssl']['status'] === 'fail' ? 'not valid' : ($site['ssl']['days_left'] !== null ? plural((int) $site['ssl']['days_left'], 'day', 'days') : '-'))
             . (($site['ssl']['renewed_by'] ?? null) !== null ? " ({$site['ssl']['renewed_by']} renews it)" : '');
         $domain = $site['domain'] === null || $site['domain']['days_left'] === null ? '-' : ($site['domain']['status'] === 'fail' ? 'expired' : plural((int) $site['domain']['days_left'], 'day', 'days'));
-        $mail = match ($site['dns']['status'] ?? null) { 'ok' => 'ok', 'warn' => 'incomplete', null => '-', default => 'unknown' };
+        $mail = match ($site['dns']['status'] ?? null) { 'ok' => 'ok', 'warn' => ($site['dns']['spf_broken'] ?? false) ? 'SPF broken' : 'incomplete', null => '-', default => 'unknown' };
         $uptime = $site['uptime']['30d'] !== null ? "{$site['uptime']['30d']} %" : '-';
         $md .= '| ' . implode(' | ', [md_text($site['label']), $state, $uptime, $ssl, $domain, $site['headers']['grade'] ?? '-', $mail]) . " |\n";
     }
