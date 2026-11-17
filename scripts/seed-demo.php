@@ -82,8 +82,10 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         'up' => $url === 'https://booking.example' ? [[20 * 3600, 19 * 3600 + 48 * 60]] : [],
         default => [],
     };
+    $downCode = $story === 'down' ? 503 : 0;
+    $downWords = $story === 'down' ? 'Down: the site answered 503 Service Unavailable' : 'Down: no answer within 10 s';
     foreach (array_reverse($outages) as [$from, $to]) {
-        add_event($db, $id, 'uptime', ['status' => 'fail', 'previous' => 'ok', 'message' => 'Down: no answer within 10 s'], utc_now($now - $from));
+        add_event($db, $id, 'uptime', ['status' => 'fail', 'previous' => 'ok', 'message' => $downWords], utc_now($now - $from));
         if ($to > 0) add_event($db, $id, 'uptime', ['status' => 'ok', 'previous' => 'fail', 'message' => 'Up again after ' . human_duration($from - $to) . ': answered 200 OK in ' . $ms . ' ms'], utc_now($now - $to));
     }
     // Further back, for the 30 day bars: restarts in the Nightly group's window (planned), and two outages
@@ -99,14 +101,18 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         add_event($db, $id, 'uptime', ['status' => 'ok', 'previous' => 'fail', 'message' => 'Up again after ' . human_duration($length) . ': answered 200 OK in ' . $ms . ' ms'], utc_now($start + $length), $silencedBy);
     }
 
+    // When it last came back: its last outage's end, or a month ago when it has had none
+    $lastUp = max([$month, ...array_map(fn ($o) => $now - $o[1], array_filter($outages, fn ($o) => $o[1] > 0)), ...array_map(fn ($o) => $o[0] + $o[1], $older)]);
+
     if ($story !== 'paused') {
         for ($t = $now - 86400 + 300; $t <= $now; $t += 300) {
             // Behind a bot check for the last three hours: no samples of the site
             if ($story === 'blocked' && $t >= $now - 3 * 3600) break;
             $down = false;
-            foreach ($outages as [$from, $to]) $down = $down || ($t >= $now - $from && $t < $now - $to);
+            // An outage still going ($to 0) covers the sample taken just now too
+            foreach ($outages as [$from, $to]) $down = $down || ($t >= $now - $from && ($to === 0 || $t < $now - $to));
             $jitter = (int) round($ms * (0.8 + mt_rand(0, 60) / 100) + (date('G', $t) >= 9 && date('G', $t) <= 17 ? $ms * 0.3 : 0));
-            $insertSample->execute([$id, utc_now($t), $down ? 503 : 200, $down ? 0 : $jitter, $down ? 0 : 1, $ip]);
+            $insertSample->execute([$id, utc_now($t), $down ? $downCode : 200, $down ? 0 : $jitter, $down ? 0 : 1, $ip]);
         }
     }
 
@@ -116,7 +122,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         'failing' => ['status' => 'ok', 'summary' => 'Failed once, checking again: no answer within 10 s', 'fail_count' => 1, 'changed_at' => utc_now($month), 'details' => ['status_code' => 0, 'ms' => 0, 'ip' => $ip, 'cdn' => '', 'problem' => 'timeout', 'failing_since' => utc_now($now - 40)]],
         'blocked' => ['status' => 'ok', 'summary' => "Imunify360's bot check answered instead of the site", 'fail_count' => 0, 'changed_at' => utc_now($month), 'details' => ['blocked' => 'Imunify360', 'blocked_since' => utc_now($now - 3 * 3600), 'from_ip' => '2001:db8::5', 'status_code' => 200, 'ms' => $ms, 'ip' => $ip, 'cdn' => '', 'problem' => '']],
         'hostile' => ['status' => 'fail', 'summary' => 'Answered 200 OK, but the page does not contain "<script>window.__xss=3</script>"', 'fail_count' => 2, 'changed_at' => utc_now($now - 120), 'details' => ['status_code' => 200, 'ms' => 300, 'ip' => $ip, 'cdn' => '', 'problem' => 'keyword']],
-        default => ['status' => 'ok', 'summary' => "Answered 200 OK in {$ms} ms", 'fail_count' => 0, 'changed_at' => utc_now($story === 'unstable' ? $now - 21 * 60 : $month), 'details' => ['status_code' => 200, 'ms' => $ms, 'ip' => $ip, 'cdn' => $cdn, 'problem' => '']],
+        default => ['status' => 'ok', 'summary' => "Answered 200 OK in {$ms} ms", 'fail_count' => 0, 'changed_at' => utc_now($lastUp), 'details' => ['status_code' => 200, 'ms' => $ms, 'ip' => $ip, 'cdn' => $cdn, 'problem' => '']],
     };
     if ($story !== 'paused') save_check_state($db, $id, 'uptime', $state, utc_now($now - 20), utc_now($now + 280));
 
