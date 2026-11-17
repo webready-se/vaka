@@ -165,6 +165,22 @@ function time_format_setting(string $value): array
     return ['format' => '24h', 'problem' => "TIME_FORMAT \"{$value}\" is neither 24h nor 12h, so Vaka uses 24h."];
 }
 
+/**
+ * The Puls that counts visits to shared pages, from TRACK_SHARED_URL: a plain
+ * web address, without a trailing slash. Anything else is left out, since it
+ * goes into a header and a script tag, and says so: Puls's own demo was first
+ * given its share link here and stayed uncounted without a word.
+ *
+ * @return array{url: ?string, problem: string}
+ */
+function track_shared_setting(string $value): array
+{
+    $value = trim($value);
+    if ($value === '') return ['url' => null, 'problem' => ''];
+    if (preg_match('#^https?://[a-z0-9.-]+(:\d+)?(/[a-z0-9._~/-]*)?$#iD', $value)) return ['url' => rtrim($value, '/'), 'problem' => ''];
+    return ['url' => null, 'problem' => "TRACK_SHARED_URL \"{$value}\" is not the plain address of a Puls (such as https://puls.example.com, with no ? or #), so visits to shared pages are not counted."];
+}
+
 /** A time of day in TIME_FORMAT: "14:05" or "2:05 PM". */
 function clock_text(DateTimeInterface $time, string $format): string
 {

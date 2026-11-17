@@ -186,12 +186,29 @@ test('TIME_FORMAT is 24h unless it says 12h', function () {
         ->and(time_format_setting('12'))->toBe(['format' => '24h', 'problem' => 'TIME_FORMAT "12" is neither 24h nor 12h, so Vaka uses 24h.']);
 });
 
-test('config.php gathers what is wrong with the time settings, and the server\'s zone stands in', function () {
+test('TRACK_SHARED_URL is the plain address of a Puls, and anything else is left out with a word', function () {
+    expect(track_shared_setting(''))->toBe(['url' => null, 'problem' => ''])
+        ->and(track_shared_setting(' https://puls.example.com/ '))->toBe(['url' => 'https://puls.example.com', 'problem' => ''])
+        // A Puls in a folder, or on a port, as a test install often is
+        ->and(track_shared_setting('http://127.0.0.1:8081/stats/'))->toBe(['url' => 'http://127.0.0.1:8081/stats', 'problem' => ''])
+        // It goes into a header and a script tag, so only a plain address passes; the demo's own share link was Puls's first try
+        ->and(track_shared_setting('https://demo.example/?share=vaka_1'))->toBe(['url' => null, 'problem' => 'TRACK_SHARED_URL "https://demo.example/?share=vaka_1" is not the plain address of a Puls (such as https://puls.example.com, with no ? or #), so visits to shared pages are not counted.'])
+        ->and(track_shared_setting('puls.example.com')['url'])->toBeNull()
+        ->and(track_shared_setting('https://puls.example.com" onload="x')['url'])->toBeNull()
+        ->and(track_shared_setting("https://puls.example.com\r\nX-Evil: 1")['url'])->toBeNull();
+});
+
+test('config.php gathers what is wrong with the settings, and the server\'s zone stands in', function () {
     $config = load_config(['TIMEZONE' => 'Mars/Olympus', 'TIME_FORMAT' => 'am/pm']);
     expect($config['timezone'])->toBe(date_default_timezone_get())
         ->and($config['time_format'])->toBe('24h')
         ->and($config['config_problems'])->toHaveCount(2)
         ->and(load_config()['config_problems'])->toBe([]);
+
+    $tracked = load_config(['TRACK_SHARED_URL' => 'puls.example.com', 'TRACK_SHARED_SITE' => ' demo ']);
+    expect($tracked['track_shared_url'])->toBeNull()
+        ->and($tracked['track_shared_site'])->toBe('demo')
+        ->and($tracked['config_problems'])->toBe([track_shared_setting('puls.example.com')['problem']]);
 });
 
 test('clock times follow TIME_FORMAT', function () {

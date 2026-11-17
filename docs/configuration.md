@@ -33,6 +33,8 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | `WEBHOOK_URL` | (empty) | Default JSON webhook |
 | `ALERT_EMAIL` | (empty) | Default email recipients, comma-separated |
 | `ALERT_FROM` | (empty) | The sender address of email alerts |
+| `TRACK_SHARED_URL` | (empty) | A [Puls](https://github.com/webready-se/puls) that counts visits to shared pages (`/?share=`), such as a public demo, so you see how many came and from where: its address, such as `https://puls.example.com`. The page is always counted as `/` with no query, so the token in the link never reaches Puls, and the policy lets that one address through and nothing else. Someone signed in is never counted. A value that is not a plain address is left out, and every command says so |
+| `TRACK_SHARED_SITE` | this install's host name | The site name that Puls files those visits under |
 | `FOOTER_CREDIT` | `true` | "Made by Webready in Sweden" and the marks of the released Webready tools in the footer and on the login page; `false` leaves only Vaka's own half (the version and how fresh the results are) |
 
 Webhook URLs are secrets: keep `.env` out of git (it is in `.gitignore`).
