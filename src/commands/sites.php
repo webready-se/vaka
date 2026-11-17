@@ -34,8 +34,9 @@ function ask_site_fields(PDO $db, array $config, ?array $current = null): array
         $fields['group'] = choose('Group', $options, $default) ?? 'none';
     }
     $fields['name'] = ask_optional('Name', $current['name'] ?? '', skip: 'Enter to use the domain');
-    $fields['keyword'] = ask_optional('Text that must be on the page', $current['keyword'] ?? '');
+    // The path first, so the keyword question can say where the text is looked for
     $fields['check_path'] = ask_optional('Path for uptime to check instead, such as /up', $current['check_path'] ?? '', skip: 'Enter for the address itself');
+    $fields['keyword'] = ask_optional('Text that must be on ' . (trim((string) $fields['check_path']) !== '' && $fields['check_path'] !== '-' ? $fields['check_path'] : 'the page'), $current['keyword'] ?? '');
 
     $default = (string) ($current['interval_minutes'] ?? $config['uptime_interval']);
     $interval = ask('Check every how many minutes', $default);
@@ -109,11 +110,13 @@ function cmd_site_add(array $config, array $args, array $opts): void
     }
     if ($note !== null && !stream_isatty(STDIN)) fwrite(STDERR, "Warning: {$note} Added anyway: check the spelling.\n");
     $where = $site['group_name'] !== null ? " to {$site['group_name']}" : '';
+    $uptime = $site['check_path'] !== '' ? "Uptime checks {$site['check_path']}" . ($site['keyword'] !== '' ? " and looks for \"{$site['keyword']}\" there" : '') . ".\n" : '';
     if ($site['paused']) {
-        echo "Added {$site['url']}{$where}, paused: Vaka does not check it until you run `php vaka site:edit " . display_url($site['url']) . " --resume`.\n";
+        echo "Added {$site['url']}{$where}, paused: Vaka does not check it until you run `php vaka site:edit " . display_url($site['url']) . " --resume`.\n{$uptime}";
         return;
     }
     echo 'Added ' . readable_url($site['url']) . "{$where}. Vaka checks it every " . site_interval($site, $config) . " min.\n";
+    echo $uptime;
 }
 
 function cmd_site_edit(array $config, array $args, array $opts): void
@@ -158,7 +161,15 @@ function cmd_site_edit(array $config, array $args, array $opts): void
     }
     if ($note !== null && !stream_isatty(STDIN)) fwrite(STDERR, "Warning: {$note} Changed anyway: check the spelling.\n");
     $updated = site_with_group($db, $site['id']);
-    echo 'Updated ' . readable_url($updated['url']) . ': ' . describe_site($updated, $config) . ".\n";
+    $changes = describe_site_changes($db, $site, $updated, $config['uptime_interval']);
+    echo $changes
+        ? 'Updated ' . readable_url($updated['url']) . ': ' . implode(', ', $changes) . ".\n"
+        : 'Nothing changed for ' . readable_url($updated['url']) . ' (' . describe_site($updated, $config) . ").\n";
+    // A keyword that moves with the uptime path, either way, may not be on the page it is now looked for on
+    if ($updated['keyword'] !== '' && ($site['keyword'] !== $updated['keyword'] || $site['check_path'] !== $updated['check_path'])) {
+        $on = $updated['check_path'] !== '' ? $updated['check_path'] : readable_url($updated['url']);
+        echo "Make sure {$on} shows \"{$updated['keyword']}\", or the site counts as down on its next check (clear it with --keyword=).\n";
+    }
     echo readers_lines(readers_change($readers, [$site['group_id']], $updated['group_id']));
 }
 
@@ -259,8 +270,8 @@ function cmd_site_list(array $config, array $args, array $opts): void
         $notes = [];
         if ($site['paused']) $notes[] = 'paused';
         if ($site['name'] !== '') $notes[] = "name \"{$site['name']}\"";
-        if ($site['keyword'] !== '') $notes[] = "looks for \"{$site['keyword']}\"";
-        if ($site['check_path'] !== '') $notes[] = "uptime checks {$site['check_path']}";
+        if ($site['check_path'] !== '') $notes[] = "uptime checks {$site['check_path']}" . ($site['keyword'] !== '' ? ", looks for \"{$site['keyword']}\" there" : '');
+        elseif ($site['keyword'] !== '') $notes[] = "looks for \"{$site['keyword']}\"";
         if ($site['server'] !== '') $notes[] = "server {$site['server']}";
         if ($site['disabled_checks'] !== '') $notes[] = 'skips ' . str_replace(',', ', ', $site['disabled_checks']);
         return [readable_url($site['url']), $site['group_name'] ?? '-', site_interval($site, $config) . ' min', implode('; ', $notes)];
