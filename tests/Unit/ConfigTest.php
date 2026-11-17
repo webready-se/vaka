@@ -68,7 +68,7 @@ test('an isolated Forge site, under its own user, resolves its releases to its s
     expect(resolve_path('data/vaka.sqlite', $root))->toBe('/home/shopdemo/demo.example.com/data/vaka.sqlite')
         ->and(env_file($root))->toBe('/home/shopdemo/demo.example.com/.env')
         ->and(run_dir($root))->toBe('/home/shopdemo/demo.example.com/current')
-        ->and(cron_line($root))->toBe('* * * * * php /home/shopdemo/demo.example.com/current/vaka run')
+        ->and(cron_line($root))->toBe('* * * * * php /home/shopdemo/demo.example.com/current/vaka run >> /dev/null 2>&1')
         // Only a release under a site in a home: elsewhere a releases/ folder is the project's own
         ->and(resolve_path('data/vaka.sqlite', '/srv/vaka/releases/20261117010101'))->toBe('/srv/vaka/releases/20261117010101/data/vaka.sqlite');
 });
@@ -121,9 +121,22 @@ test('php vaka warns from an old release on STDERR and still runs, so its output
     proc_close($live);
 });
 
-test('cron_line runs Vaka from run_dir() with the given PHP', function () {
-    expect(cron_line('/var/www/vaka'))->toBe('* * * * * php /var/www/vaka/vaka run')
-        ->and(cron_line('/home/forge/vaka.example.com/releases/20261026120000', 'php8.5'))->toBe('* * * * * php8.5 /home/forge/vaka.example.com/current/vaka run');
+test('cron_line runs Vaka from run_dir() with the given PHP, its output sent nowhere', function () {
+    // run prints "Nothing was due." every minute, which cron would mail to the server's user
+    expect(cron_line('/var/www/vaka'))->toBe('* * * * * php /var/www/vaka/vaka run >> /dev/null 2>&1')
+        ->and(cron_line('/home/forge/vaka.example.com/releases/20261026120000', '/usr/bin/php8.5'))->toBe('* * * * * /usr/bin/php8.5 /home/forge/vaka.example.com/current/vaka run >> /dev/null 2>&1')
+        // A path with a space (a PHP under Application Support on a Mac) is quoted, or the shell splits it
+        ->and(cron_line('/srv/my sites/vaka', '/Users/anna/Library/Application Support/Herd/bin/php84'))->toBe("* * * * * '/Users/anna/Library/Application Support/Herd/bin/php84' '/srv/my sites/vaka/vaka' run >> /dev/null 2>&1");
+});
+
+test('php_path names PHP by its full path, since cron has only a short PATH', function () {
+    $dir = temp_dir();
+    $versioned = 'php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+    // No PHP by this version's name there: the PHP running now, which the CLI and php -S know by path
+    expect(php_path([$dir]))->toBe(PHP_BINARY);
+    touch("{$dir}/{$versioned}");
+    chmod("{$dir}/{$versioned}", 0755);
+    expect(php_path([$dir]))->toBe("{$dir}/{$versioned}");
 });
 
 test('php_cli is the CLI of this PHP version when the server has one by that name, else php', function () {

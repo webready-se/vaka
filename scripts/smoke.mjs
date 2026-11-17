@@ -980,7 +980,7 @@ async function main() {
   });
   if (empty.title !== 'Nothing to watch yet' || empty.steps !== 3) fails.push(`the first visit shows the three first steps (got "${empty.title}", ${empty.steps} steps)`);
   if (empty.done !== 0) fails.push('nothing is ticked off before cron runs and alerts are set');
-  if (!/^\* \* \* \* \* php[\d.]* \/.+\/vaka run$/.test(empty.cron) || /path\/to/.test(empty.cron)) fails.push(`the cron step shows this server's real line (got "${empty.cron}")`);
+  if (!/^\* \* \* \* \* (\/\S*php[\d.]*|'\/[^']*php[\d.]*') ('\/[^']*\/vaka'|\/\S+\/vaka) run >> \/dev\/null 2>&1$/.test(empty.cron) || /path\/to/.test(empty.cron)) fails.push(`the cron step shows this server's real line (got "${empty.cron}")`);
   if (!empty.dir.startsWith('/')) fails.push(`the first steps say where to run the commands (got "${empty.dir}")`);
   if (empty.pillStale) fails.push('no red top bar before the first site');
   if (!empty.imports) fails.push('the first step shows how to import a list');
@@ -1002,7 +1002,7 @@ async function main() {
       watch: document.querySelector('.watch-stats')?.textContent || '',
     };
   });
-  if (!/^\* \* \* \* \* php[\d.]* \/.+\/vaka run$/.test(waiting.banner)) fails.push(`before the first run, the banner gives this server's cron line (got "${waiting.banner}")`);
+  if (!/^\* \* \* \* \* (\/\S*php[\d.]*|'\/[^']*php[\d.]*') ('\/[^']*\/vaka'|\/\S+\/vaka) run >> \/dev\/null 2>&1$/.test(waiting.banner)) fails.push(`before the first run, the banner gives this server's cron line (got "${waiting.banner}")`);
   if (waiting.figures[1] !== '–') fails.push(`a site not checked yet shows no uptime (got "${waiting.figures[1]}")`);
   if (/Up, 30 days/.test(waiting.watch)) fails.push('the watch shows no 30-day uptime before the first check');
 
