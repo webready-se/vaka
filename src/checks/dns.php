@@ -114,52 +114,65 @@ function evaluate_mail_dns(?string $domain, ?array $records): array
 }
 
 /**
- * Whether a domain sends email, as far as its records tell. An SPF record
- * that names senders (include:, ip4:, a, mx ...) says it does, and so does a
- * mail server, since the people who receive email there send it too. An SPF
- * record that names none (v=spf1 -all), or neither SPF nor a mail server,
- * says it sends none. When in doubt it sends: the advice for a sender is the
- * one that cannot stop the domain's own email.
+ * Whether a domain sends email, as far as its records tell: 'sends', 'none'
+ * or 'unknown'. A mail server says it sends, since the people who receive
+ * email there send it too, and so does an SPF record that names senders
+ * (include:, ip4:, a, mx ...) or two SPF records, one of which may. One SPF
+ * record that names none (v=spf1 -all), without a mail server, is the owner
+ * saying it sends none. Neither SPF nor a mail server only suggests it: the
+ * site itself may still send (a contact form), so the strict records come
+ * with that question, and never as the step a guess leads to.
  */
-function mail_domain_sends(array $records): bool
+function mail_sending(array $records): string
 {
-    $spf = $records['spf'][0] ?? null;
-    if ($spf !== null) {
-        $terms = array_slice(preg_split('/\s+/', strtolower(trim($spf))) ?: [], 1);
-        return (bool) array_filter($terms, fn (string $term) => !preg_match('/^[-~?]all$/', $term));
-    }
-    return $records['mx'] !== [] && $records['mx'] !== ['0 .'];
+    if ($records['mx'] !== [] && $records['mx'] !== ['0 .']) return 'sends';
+    if (count($records['spf']) > 1 || spf_senders($records['spf'][0] ?? '') !== []) return 'sends';
+    return $records['spf'] ? 'none' : 'unknown';
+}
+
+/** The senders an SPF record names: every term but v=spf1 and its all. */
+function spf_senders(string $spf): array
+{
+    $terms = array_slice(preg_split('/\s+/', trim($spf)) ?: [], 1);
+    return array_values(array_filter($terms, fn (string $term) => $term !== '' && !preg_match('/^[-~?+]?all$/i', $term)));
 }
 
 /**
  * What to do about the mail records, for the site detail's lead and the read
  * API: a domain that sends no email is told why it still needs SPF and DMARC
  * (anyone can send in its name) and the records that say none of it is real,
- * since without MX it can look as if there is nothing to do. Others get the
- * advice for their problem; '' with nothing to add.
+ * since without MX it can look as if there is nothing to do. When that is
+ * only a guess, it asks first, and what to do if something sends. Others get
+ * the advice for their problem; '' with nothing to add.
  */
 function mail_advice(array $details): string
 {
     $problem = $details['problem'] ?? '';
     $records = $details['records'] ?? null;
-    if ($records === null || !in_array($problem, ['no_spf', 'no_dmarc', 'no_spf_dmarc'], true) || mail_domain_sends($records)) return advice_for($problem, 0);
+    $sending = $records === null ? 'sends' : mail_sending($records);
+    if (!in_array($problem, ['no_spf', 'no_dmarc', 'no_spf_dmarc'], true) || $sending === 'sends') return advice_for($problem, 0);
     $add = [
         ...(!$records['spf'] ? ['an SPF record of v=spf1 -all'] : []),
         ...(!$records['dmarc'] ? ['a DMARC record of v=DMARC1; p=reject'] : []),
     ];
     $say = count($add) > 1 ? ' say' : ' says';
-    // Its own SPF record says nothing sends; no mail server only suggests it, and the site may still send (a contact form)
-    if ($records['spf']) return 'This domain sends no email (its SPF record allows no sender), but anyone can still send email that claims to come from it. ' . ucfirst(list_words($add)) . "{$say} that none of it is real. Once " . (count($add) > 1 ? 'they are' : 'it is') . ' there, this warning goes away by itself.';
+    // Its own SPF record says nothing sends
+    if ($sending === 'none') return 'This domain sends no email (its SPF record allows no sender), but anyone can still send email that claims to come from it. ' . ucfirst(list_words($add)) . "{$say} that none of it is real. Once " . (count($add) > 1 ? 'they are' : 'it is') . ' there, this warning goes away by itself.';
+    // No mail server only suggests it, and if something sends, p=reject stops it even with the sender named in SPF
     return 'Does anything send email as @' . display_domain((string) $details['domain']) . ', such as a contact form or order email from the site? It has no mail server, so perhaps not. '
-        . 'If nothing does, ' . list_words($add) . "{$say} that any email in its name is false, and this warning goes away by itself. "
-        . 'If something does, ' . (count($add) > 1 ? 'these records' : 'this record') . ' would stop its email: name it in SPF first.';
+        . 'If nothing does, ' . list_words($add) . "{$say} that any email in its name is forged, and this warning goes away by itself. "
+        . ($records['dmarc']
+            ? 'If something does, name it in SPF with ~all instead, such as v=spf1 include:<your mail provider> ~all.'
+            : "If something does, don't add these: they would stop its email. Start with v=DMARC1; p=none; rua=mailto:<your report address> and read the reports first.");
 }
 
 /**
  * MX, SPF and DMARC with what each does, what is there, how well it is in
  * place (good, weak, missing, or none for a domain without mail) and the
- * record to add, for the site detail: `fix_label` says where, `fix` is the
- * value to paste. Empty before the first answer.
+ * record to add, for the site detail: `fix_label` says where, and when the
+ * record depends on an answer only the owner has, on what condition; `fix` is
+ * the value to paste. A record in place gets none of them. Empty before the
+ * first answer.
  *
  * @return list<array{key: string, label: string, what: string, records: list<string>, level: string, note: string, fix_label: string, fix: string, tip: string}>
  */
@@ -172,8 +185,10 @@ function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): 
     $records = $details['records'];
     $monitoring = $records['dmarc'] && $details['dmarc_policy'] === 'none';
     $nullMx = $records['mx'] === ['0 .'];
-    // A domain that sends no email can reject everything in its name at once; one that sends starts with reports
-    $sends = mail_domain_sends($records);
+    // A domain that says it sends no email can reject everything in its name at once; one that sends, or may, starts with reports
+    $sending = mail_sending($records);
+    $sends = $sending !== 'none';
+    $ifNothing = $sending === 'unknown' ? "Only if nothing sends as @{$shown}, add" : 'Add';
     $reports = $monitoring && dmarc_reports($records);
     // Without rua no reports ever come, so on a domain that sends they are the step before quarantine
     $addReports = $monitoring && $sends && !$reports;
@@ -181,8 +196,11 @@ function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): 
     $since = isset($details['reports_since']) ? strtotime($details['reports_since']) : null;
     $waitForReports = $reports && $sends && $since !== null && $now < $since + DMARC_REPORTS_DAYS * 86400;
     $day = fn (int $time) => (new DateTimeImmutable('@' . $time))->setTimezone(new DateTimeZone($timezone))->format('j M');
-    $sendsNone = $records['spf'] ? 'its SPF record allows no sender' : 'it has neither SPF nor a mail server';
     $item = fn (string $key, array $more) => ['key' => $key] + MAIL_RECORDS[$key] + ['records' => $records[$key]] + $more;
+    $none = ['note' => '', 'fix_label' => '', 'fix' => '', 'tip' => ''];
+    // Two records: the one to keep names every sender of both
+    $merged = implode(' ', ['v=spf1', ...array_unique(array_merge(...array_map('spf_senders', $records['spf'] ?: ['']))), '~all']);
+    $siteServer = "Does the site's own server send email too, such as a contact form? Name it with ip4: and the address it sends from, or the term a for the address the site answers on (not behind a CDN). Once the DMARC reports show that all your email passes, change ~all to -all.";
 
     return [
         $item('mx', [
@@ -197,44 +215,59 @@ function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): 
             'tip' => '',
         ]),
         // One SPF record is in place: nothing to add, so an assistant that follows fix leaves it alone
-        $item('spf', count($records['spf']) === 1 ? ['level' => 'good', 'note' => '', 'fix_label' => '', 'fix' => '', 'tip' => ''] : [
-            'level' => $records['spf'] ? 'weak' : 'missing',
-            'note' => $records['spf'] ? 'Two SPF records: receivers treat that as an error. Merge them into one.' : '',
-            'fix_label' => $records['spf'] ? "Keep one TXT record at {$shown}, such as:" : "Add a TXT record at {$shown}:",
+        $item('spf', match (true) {
+            count($records['spf']) === 1 => ['level' => 'good'] + $none,
+            count($records['spf']) > 1 => [
+                'level' => 'weak',
+                'note' => 'Two SPF records: receivers treat that as an error, so SPF fails for all of this domain\'s email today.',
+                'fix_label' => "Replace both with one TXT record at {$shown} that names every sender in them:",
+                'fix' => $merged,
+                'tip' => '~all marks other senders as suspect without bouncing their email while you find them all. ' . $siteServer,
+            ],
             // ~all while every sender is found: -all could bounce one not named yet, whatever DMARC says
-            'fix' => $sends || $records['spf'] ? 'v=spf1 include:<your mail provider> ~all' : 'v=spf1 -all',
-            'tip' => $sends || $records['spf']
-                ? '~all marks other senders as suspect without bouncing their email while you find them all. Does the site\'s own server send email too, such as a contact form? Add a (or ip4: with its address) next to include:. Once the DMARC reports show that all your email passes, change ~all to -all.'
-                : "Does something send as @{$shown} after all, such as a contact form or order email? Name it instead: v=spf1 a include:<your mail provider> ~all, with a for the site's own server and include: for a mail provider.",
-        ]),
-        $item('dmarc', [
-            'level' => !$records['dmarc'] ? 'missing' : ($monitoring ? 'weak' : 'good'),
+            $sending === 'sends' => [
+                'level' => 'missing',
+                'note' => '',
+                'fix_label' => "Add a TXT record at {$shown}:",
+                'fix' => 'v=spf1 include:<your mail provider> ~all',
+                'tip' => 'The include: value is in the setup guide of whoever runs the mail server (MX above). ~all marks other senders as suspect without bouncing their email while you find them all. ' . $siteServer,
+            ],
+            default => [
+                'level' => 'missing',
+                'note' => '',
+                'fix_label' => "{$ifNothing} a TXT record at {$shown}:",
+                'fix' => 'v=spf1 -all',
+                'tip' => 'Something sends after all, such as a contact form or order email? Then name it instead, with ~all: v=spf1 include:<your mail provider> ~all for a mail provider, or ip4: and the address the site sends from.',
+            ],
+        }),
+        $item('dmarc', $records['dmarc'] && !$monitoring ? ['level' => 'good'] + $none : [
+            'level' => !$records['dmarc'] ? 'missing' : 'weak',
             'note' => match (true) {
                 !$monitoring => '',
                 !$reports => 'p=none without rua: it neither stops email that pretends to come from the domain nor sends reports',
                 default => 'p=none only monitors: email that fails the check is still delivered',
             },
             'fix_label' => match (true) {
-                $records['dmarc'] && !$monitoring, $waitForReports => '',
+                $waitForReports => '',
                 $monitoring => "Change the TXT record at _dmarc.{$shown} to:",
-                default => "Add a TXT record at _dmarc.{$shown}:",
+                default => "{$ifNothing} a TXT record at _dmarc.{$shown}:",
             },
             // A record that only monitors keeps its own reports and options: only p= changes
             'fix' => match (true) {
-                // In force (quarantine or reject): nothing to add, and never a step back to p=none
-                $records['dmarc'] && !$monitoring, $waitForReports => '',
+                $waitForReports => '',
                 $addReports => rtrim($records['dmarc'][0], '; ') . (str_contains($records['dmarc'][0], '; ') ? '; ' : ';') . 'rua=mailto:<your report address>',
                 $monitoring => preg_replace('/(^|;)(\s*)p\s*=\s*none\b/i', '$1$2p=' . ($sends ? 'quarantine' : 'reject'), $records['dmarc'][0], 1),
-                $sends => 'v=DMARC1; p=none; rua=mailto:<your report address>',
+                $sending === 'sends' => 'v=DMARC1; p=none; rua=mailto:<your report address>',
                 default => 'v=DMARC1; p=reject',
             },
             'tip' => match (true) {
                 $waitForReports => 'Reports since ' . $day($since) . ': read them until about ' . $day($since + DMARC_REPORTS_DAYS * 86400) . ', so that senders who send once a month show up too. Then Vaka suggests p=quarantine.',
                 $addReports => 'Read the reports for a few weeks: summaries from receivers (zipped XML) of every server that sends in the domain\'s name, and whether its email passes. A free DMARC report service reads them for you and gives the address to use. Once your own email passes, the mail provider\'s and the site\'s own (a contact form, say), change p=none to p=quarantine and keep rua, then p=reject.',
                 $monitoring && $sends => 'Do it once the reports show that your own email passes, the mail provider\'s and the site\'s own (a contact form, say); p=reject is the step after that.',
-                $monitoring => "It looks like it sends no email ({$sendsNone}), so there is nothing of its own to stop: reject right away.",
-                $sends => 'rua is optional, but with p=none the reports are all the record gives: summaries from receivers (zipped XML) of who sends in the domain\'s name. A free DMARC report service reads them for you and gives the address to use. Once your own email passes in them, after a few weeks, move to p=quarantine, then p=reject.',
-                default => "It looks like it sends no email ({$sendsNone}), so reject everything that claims to come from it. Reports are optional. Sends email after all? Start with v=DMARC1; p=none; rua=mailto:<your report address> and read the reports first.",
+                $monitoring => 'Its SPF record allows no sender, so there is nothing of its own to stop: reject right away.',
+                $sending === 'sends' => 'rua is optional, but with p=none the reports are all the record gives: summaries from receivers (zipped XML) of who sends in the domain\'s name. A free DMARC report service reads them for you and gives the address to use. Once your own email passes in them, after a few weeks, move to p=quarantine, then p=reject.',
+                $sending === 'none' => 'Its SPF record allows no sender, so reject everything that claims to come from it. Reports are optional.',
+                default => 'Something sends after all, or you are not sure? Start with v=DMARC1; p=none; rua=mailto:<your report address> instead and read the reports first: p=reject would stop that email, and a contact form the web server sends itself often fails DMARC whatever SPF says.',
             },
         ]),
     ];
