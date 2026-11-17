@@ -37,3 +37,22 @@ test('the live demo seed keeps its link and its sites, fresh, when run again in 
     // A token that is not one is refused before anything is written
     expect(seed_demo([$path, '--refresh', '--token=not-a-token'])['exit'])->toBe(1);
 });
+
+test('the demo agrees with itself: up since its last recovery, and a down site says the same in its card, history and samples', function () {
+    $path = temp_dir() . '/demo.sqlite';
+    expect(seed_demo([$path])['exit'])->toBe(0);
+    $db = get_db($path);
+    $states = $db->query("SELECT s.url, c.site_id, c.status, c.summary, c.changed_at, c.details FROM check_state c JOIN sites s ON s.id = c.site_id WHERE c.check_name = 'uptime'")->fetchAll();
+    foreach ($states as $state) {
+        $last = $db->query("SELECT status, message, created_at FROM events WHERE site_id = {$state['site_id']} AND check_name = 'uptime' ORDER BY created_at DESC, id DESC LIMIT 1")->fetch();
+        if (!$last) continue;
+        // "Up since" no earlier than the last time it came back
+        if ($state['status'] === 'ok' && $last['status'] === 'ok') expect($state['changed_at'] >= $last['created_at'])->toBeTrue("{$state['url']} is up since {$state['changed_at']}, before it came back at {$last['created_at']}");
+        if ($state['status'] === 'fail') {
+            // The history says what the card says, and the samples answered as the card says
+            $code = (int) $db->query("SELECT status_code FROM samples WHERE site_id = {$state['site_id']} ORDER BY checked_at DESC LIMIT 1")->fetchColumn();
+            expect($last['message'])->toBe('Down: ' . lcfirst($state['summary']), $state['url'])
+                ->and($code)->toBe(json_decode($state['details'], true)['status_code'], $state['url']);
+        }
+    }
+});
