@@ -76,23 +76,44 @@ function lookup_mail_dns(string $domain, callable $resolve): ?array
     ];
 }
 
-/** Whether the domain's DMARC record asks for reports (rua). */
+/** Whether the domain's DMARC record asks for reports (rua). With two records receivers apply neither, so none come. */
 function dmarc_reports(array $records): bool
 {
-    return $records['dmarc'] !== [] && (bool) preg_match('/(^|;)\s*rua\s*=/i', $records['dmarc'][0]);
+    return count($records['dmarc']) === 1 && (bool) preg_match('/(^|;)\s*rua\s*=/i', $records['dmarc'][0]);
 }
 
-/** The p= of a DMARC record: none, quarantine or reject, or null. */
+/** The p= of a DMARC record: none, quarantine or reject, or null when it has none or another value (p=rejct). */
 function dmarc_policy(string $record): ?string
 {
-    return preg_match('/(?:^|;)\s*p\s*=\s*(none|quarantine|reject)\b/i', $record, $m) ? strtolower($m[1]) : null;
+    return preg_match('/(?:^|;)\s*p\s*=\s*(none|quarantine|reject)\s*(?:;|$)/i', $record, $m) ? strtolower($m[1]) : null;
+}
+
+/**
+ * The policy receivers apply (RFC 7489 6.6.3): the record's p=, or none for a
+ * record without a valid p= that asks for reports. Null when no DMARC is in
+ * force: no record, two of them, or one with neither a valid p= nor rua.
+ */
+function dmarc_in_force(array $records): ?string
+{
+    if (count($records['dmarc']) !== 1) return null;
+    return dmarc_policy($records['dmarc'][0]) ?? (dmarc_reports($records) ? 'none' : null);
+}
+
+/** A DMARC record with p= set to $policy: a p= that is there, valid or not, changes in place, else it goes right after v=DMARC1, where RFC 7489 puts it. */
+function dmarc_with_policy(string $record, string $policy): string
+{
+    $changed = (string) preg_replace('/(^|;)(\s*)p\s*=[^;]*/i', '$1$2p=' . $policy, $record, 1, $count);
+    if ($count || !preg_match('/^(v\s*=\s*DMARC1)\s*;?\s*(.*)$/is', trim($record), $m)) return $changed;
+    $sep = str_contains($record, ';') && !str_contains($record, '; ') ? ';' : '; ';
+    return $m[1] . $sep . "p={$policy}" . ($m[2] !== '' ? $sep . $m[2] : '');
 }
 
 /**
  * A domain's mail records in plain words: ok when SPF and DMARC are in
- * place, warn when one is missing or SPF is there twice, unknown without a
- * domain or an answer. A domain without MX receives no email, which is fine
- * by itself.
+ * place, warn when one is missing, SPF is there twice, or receivers do not
+ * apply the DMARC record as written (two of them, or no valid p=); unknown
+ * without a domain or an answer. A domain without MX receives no email,
+ * which is fine by itself.
  *
  * @return array{status: string, summary: string, details: array}
  */
@@ -102,12 +123,16 @@ function evaluate_mail_dns(?string $domain, ?array $records): array
     $shown = display_domain($domain);
     if ($records === null) return ['status' => 'unknown', 'summary' => "Could not look up the mail records for {$shown}", 'details' => ['domain' => $domain, 'problem' => 'lookup_failed']];
 
-    $policy = dmarc_policy($records['dmarc'][0] ?? '');
+    $count = count($records['dmarc']);
+    $policy = $count === 1 ? dmarc_policy($records['dmarc'][0]) : null;
     [$status, $words, $problem] = match (true) {
         count($records['spf']) > 1 => ['warn', 'two SPF records, which receivers treat as an error', 'spf_twice'],
         !$records['spf'] && !$records['dmarc'] => ['warn', 'SPF and DMARC are missing', 'no_spf_dmarc'],
         !$records['spf'] => ['warn', 'SPF is missing', 'no_spf'],
         !$records['dmarc'] => ['warn', 'DMARC is missing', 'no_dmarc'],
+        // RFC 7489 6.6.3: with two records receivers apply neither; without a valid p=, one that asks for reports counts as p=none, one that does not as none at all
+        $count > 1 => ['warn', 'DMARC is ignored: there are ' . ($count === 2 ? 'two' : $count) . ' DMARC records', 'dmarc_twice'],
+        $policy === null => ['warn', (dmarc_reports($records) ? 'DMARC only monitors' : 'DMARC is ignored') . ': its record has no valid p=', 'dmarc_no_policy'],
         default => ['ok', 'SPF and DMARC in place' . ($policy === 'none' ? ', DMARC only monitors (p=none)' : ''), ''],
     };
     return ['status' => $status, 'summary' => "Mail for {$shown}: {$words}", 'details' => ['domain' => $domain, 'records' => $records, 'dmarc_policy' => $policy, 'problem' => $problem]];
@@ -151,9 +176,16 @@ function mail_advice(array $details): string
     $records = $details['records'] ?? null;
     $sending = $records === null ? 'sends' : mail_sending($records);
     if (!in_array($problem, ['no_spf', 'no_dmarc', 'no_spf_dmarc'], true) || $sending === 'sends') return advice_for($problem, 0);
+    // A DMARC record receivers do not read as written is named too, so the warning does go away once both are done
+    $valid = count($records['dmarc']) === 1 && dmarc_policy($records['dmarc'][0]) !== null;
     $add = [
         ...(!$records['spf'] ? ['an SPF record of v=spf1 -all'] : []),
-        ...(!$records['dmarc'] ? ['a DMARC record of v=DMARC1; p=reject'] : []),
+        ...match (true) {
+            !$records['dmarc'] => ['a DMARC record of v=DMARC1; p=reject'],
+            count($records['dmarc']) > 1 => ['one DMARC record of v=DMARC1; p=reject in place of the two'],
+            !$valid => ['p=reject in its DMARC record'],
+            default => [],
+        },
     ];
     $say = count($add) > 1 ? ' say' : ' says';
     // Its own SPF record says nothing sends
@@ -161,7 +193,7 @@ function mail_advice(array $details): string
     // No mail server only suggests it, and if something sends, p=reject stops it even with the sender named in SPF
     return 'Does anything send email as @' . display_domain((string) $details['domain']) . ', such as a contact form or order email from the site? It has no mail server, so perhaps not. '
         . 'If nothing does, ' . list_words($add) . "{$say} that any email in its name is forged, and this warning goes away by itself. "
-        . ($records['dmarc']
+        . ($valid
             ? 'If something does, name it in SPF with ~all instead, such as v=spf1 include:<your mail provider> ~all.'
             : "If something does, don't add these: they would stop its email. Start with v=DMARC1; p=none; rua=mailto:<your report address> and read the reports first.");
 }
@@ -183,12 +215,31 @@ function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): 
     $domain = $details['domain'];
     $shown = display_domain($domain);
     $records = $details['records'];
-    $monitoring = $records['dmarc'] && $details['dmarc_policy'] === 'none';
+    // What receivers apply, which is not always what the record says: p=none for one without a valid p= that asks for reports
+    $force = dmarc_in_force($records);
+    $monitoring = $force === 'none';
+    // Two records, or one with neither a valid p= nor rua: receivers ignore it, as if there were none
+    $ignored = $records['dmarc'] && $force === null;
+    $count = count($records['dmarc']);
+    $all = $count === 2 ? 'both' : 'all of them';
+    $record = $records['dmarc'][0] ?? '';
+    $valid = $count === 1 && dmarc_policy($record) !== null;
+    // A p= receivers do not read, in words: the value itself when it is short enough to show
+    $hasP = (bool) preg_match('/(?:^|;)\s*p\s*=\s*([^;]*)/i', $record, $p);
+    $value = trim($p[1] ?? '');
+    $badP = match (true) {
+        !$hasP => 'The record has no p= (none, quarantine or reject)',
+        $value !== '' && strlen($value) <= 20 => "p={$value} is not a policy (none, quarantine or reject)",
+        default => 'The record\'s p= is not a policy (none, quarantine or reject)',
+    };
+    // The report address one of two records has, kept in the one that replaces them
+    $rua = preg_match('/(?:^|;)\s*rua\s*=\s*([^;]+)/i', implode(';', $records['dmarc']), $m) ? trim($m[1]) : null;
+    $withRua = fn (string $dmarc) => rtrim($dmarc, '; ') . (str_contains($dmarc, '; ') ? '; ' : ';') . 'rua=mailto:<your report address>';
     $nullMx = $records['mx'] === ['0 .'];
     // A domain that says it sends no email can reject everything in its name at once; one that sends, or may, starts with reports
     $sending = mail_sending($records);
     $sends = $sending !== 'none';
-    $ifNothing = $sending === 'unknown' ? "Only if nothing sends as @{$shown}, add" : 'Add';
+    $only = fn (string $do) => $sending === 'unknown' ? "Only if nothing sends as @{$shown}, {$do}" : ucfirst($do);
     $reports = $monitoring && dmarc_reports($records);
     // Without rua no reports ever come, so on a domain that sends they are the step before quarantine
     $addReports = $monitoring && $sends && !$reports;
@@ -235,14 +286,17 @@ function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): 
             default => [
                 'level' => 'missing',
                 'note' => '',
-                'fix_label' => "{$ifNothing} a TXT record at {$shown}:",
+                'fix_label' => $only("add a TXT record at {$shown}:"),
                 'fix' => 'v=spf1 -all',
                 'tip' => 'Something sends after all, such as a contact form or order email? Then name it instead, with ~all: v=spf1 include:<your mail provider> ~all for a mail provider, or ip4: and the address the site sends from.',
             ],
         }),
-        $item('dmarc', $records['dmarc'] && !$monitoring ? ['level' => 'good'] + $none : [
+        $item('dmarc', in_array($force, ['quarantine', 'reject'], true) ? ['level' => 'good'] + $none : [
             'level' => !$records['dmarc'] ? 'missing' : 'weak',
             'note' => match (true) {
+                $count > 1 => ucfirst($count === 2 ? 'two' : (string) $count) . " DMARC records: receivers ignore {$all}, so DMARC is not in force.",
+                $ignored => $badP . ($hasP ? ', and the record has no rua' : ' and no rua') . ', so receivers ignore it: DMARC is not in force.',
+                $monitoring && !$valid => $badP . ($hasP ? ', so receivers treat the record as p=none' : ', so receivers treat it as p=none') . ': email that fails the check is still delivered.',
                 !$monitoring => '',
                 !$reports => 'p=none without rua: it neither stops email that pretends to come from the domain nor sends reports',
                 default => 'p=none only monitors: email that fails the check is still delivered',
@@ -250,22 +304,27 @@ function dns_items(array $details, ?int $now = null, string $timezone = 'UTC'): 
             'fix_label' => match (true) {
                 $waitForReports => '',
                 $monitoring => "Change the TXT record at _dmarc.{$shown} to:",
-                default => "{$ifNothing} a TXT record at _dmarc.{$shown}:",
+                $count > 1 => $only("replace {$all} with one TXT record at _dmarc.{$shown}:"),
+                $ignored => $only("change the TXT record at _dmarc.{$shown} to:"),
+                default => $only("add a TXT record at _dmarc.{$shown}:"),
             },
-            // A record that only monitors keeps its own reports and options: only p= changes
+            // A record that only monitors, or that receivers ignore, keeps its own reports and options: only p= changes, and rua is added where it is needed
             'fix' => match (true) {
                 $waitForReports => '',
-                $addReports => rtrim($records['dmarc'][0], '; ') . (str_contains($records['dmarc'][0], '; ') ? '; ' : ';') . 'rua=mailto:<your report address>',
-                $monitoring => preg_replace('/(^|;)(\s*)p\s*=\s*none\b/i', '$1$2p=' . ($sends ? 'quarantine' : 'reject'), $records['dmarc'][0], 1),
-                $sending === 'sends' => 'v=DMARC1; p=none; rua=mailto:<your report address>',
-                default => 'v=DMARC1; p=reject',
+                $addReports => $withRua($record),
+                $monitoring => dmarc_with_policy($record, $sends ? 'quarantine' : 'reject'),
+                $ignored && $count === 1 => $sending === 'sends' ? $withRua(dmarc_with_policy($record, 'none')) : dmarc_with_policy($record, 'reject'),
+                $sending === 'sends' => 'v=DMARC1; p=none; rua=' . ($rua ?? 'mailto:<your report address>'),
+                default => 'v=DMARC1; p=reject' . ($rua !== null ? "; rua={$rua}" : ''),
             },
             'tip' => match (true) {
                 $waitForReports => 'Reports since ' . $day($since) . ': read them until about ' . $day($since + DMARC_REPORTS_DAYS * 86400) . ', so that senders who send once a month show up too. Then Vaka suggests p=quarantine.',
                 $addReports => 'Read the reports for a few weeks: summaries from receivers (zipped XML) of every server that sends in the domain\'s name, and whether its email passes. A free DMARC report service reads them for you and gives the address to use. Once your own email passes, the mail provider\'s and the site\'s own (a contact form, say), change p=none to p=quarantine and keep rua, then p=reject.',
                 $monitoring && $sends => 'Do it once the reports show that your own email passes, the mail provider\'s and the site\'s own (a contact form, say); p=reject is the step after that.',
                 $monitoring => 'Its SPF record allows no sender, so there is nothing of its own to stop: reject right away.',
-                $sending === 'sends' => 'rua is optional, but with p=none the reports are all the record gives: summaries from receivers (zipped XML) of who sends in the domain\'s name. A free DMARC report service reads them for you and gives the address to use. Once your own email passes in them, after a few weeks, move to p=quarantine, then p=reject.',
+                // A record that was never applied stops nothing today, so a stricter one is a change, whatever it meant
+                $sending === 'sends' => ($ignored ? ($count > 1 ? "Start at p=none, whatever the records say: receivers ignore {$all} today" : 'Start at p=none, whatever the record says: receivers ignore it today') . ', so DMARC stops none of your email now, and p=quarantine or p=reject could stop some that fails. ' : '')
+                    . 'rua is optional, but with p=none the reports are all the record gives: summaries from receivers (zipped XML) of who sends in the domain\'s name. A free DMARC report service reads them for you and gives the address to use. Once your own email passes in them, after a few weeks, move to p=quarantine, then p=reject.',
                 $sending === 'none' => 'Its SPF record allows no sender, so reject everything that claims to come from it. Reports are optional.',
                 default => 'Something sends after all, or you are not sure? Start with v=DMARC1; p=none; rua=mailto:<your report address> instead and read the reports first: p=reject would stop that email, and a contact form the web server sends itself often fails DMARC whatever SPF says.',
             },

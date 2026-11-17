@@ -119,6 +119,8 @@ function advice_for(string $problem, int $status): string
         'no_dmarc' => 'Add a DMARC record, so receivers know what to do with email that pretends to come from the domain.',
         'no_spf_dmarc' => 'Add SPF and DMARC records, so nobody else can send email in the domain\'s name.',
         'spf_twice' => 'Merge the two SPF records into one: with two, receivers treat SPF as broken.',
+        'dmarc_twice' => 'Keep one DMARC record: with two, receivers apply neither.',
+        'dmarc_no_policy' => 'Give the DMARC record a p= that receivers read: none, quarantine or reject. Without one, the record does not do what it says.',
         default => '',
     };
 }

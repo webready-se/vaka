@@ -67,6 +67,14 @@ test('evaluate_mail_dns says in plain words whether SPF and DMARC are in place',
     'no SPF' => [['mx' => ['10 mx1.mail.example'], 'spf' => [], 'dmarc' => ['v=DMARC1; p=reject']], 'warn', 'Mail for shop.example: SPF is missing', 'no_spf'],
     'neither' => [['mx' => [], 'spf' => [], 'dmarc' => []], 'warn', 'Mail for shop.example: SPF and DMARC are missing', 'no_spf_dmarc'],
     'two SPF records' => [['mx' => [], 'spf' => ['v=spf1 -all', 'v=spf1 include:a.example -all'], 'dmarc' => ['v=DMARC1; p=reject']], 'warn', 'Mail for shop.example: two SPF records, which receivers treat as an error', 'spf_twice'],
+    // RFC 7489 6.6.3: without a valid p=, a record that asks for reports counts as p=none, one that does not as no record at all
+    'p= misspelt' => [['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=rejct']], 'warn', 'Mail for shop.example: DMARC is ignored: its record has no valid p=', 'dmarc_no_policy'],
+    'p= missing' => [['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; sp=reject']], 'warn', 'Mail for shop.example: DMARC is ignored: its record has no valid p=', 'dmarc_no_policy'],
+    'p= with more after it' => [['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=reject-all']], 'warn', 'Mail for shop.example: DMARC is ignored: its record has no valid p=', 'dmarc_no_policy'],
+    'p= missing, with reports' => [['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; rua=mailto:d@shop.example']], 'warn', 'Mail for shop.example: DMARC only monitors: its record has no valid p=', 'dmarc_no_policy'],
+    // 6.6.3 again: more than one record, and no DMARC is applied
+    'two DMARC records' => [['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=none; rua=mailto:d@shop.example', 'v=DMARC1; p=reject']], 'warn', 'Mail for shop.example: DMARC is ignored: there are two DMARC records', 'dmarc_twice'],
+    'p= with spaces' => [['mx' => [], 'spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p = reject ;']], 'ok', 'Mail for shop.example: SPF and DMARC in place', ''],
 ]);
 
 test('evaluate_mail_dns is unknown without a domain or an answer', function () {
@@ -171,6 +179,52 @@ test('dns_items: a domain that sends no email is told to reject at once; one tha
     expect($items(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=none']])['dmarc']['fix'])->toBe('v=DMARC1; p=reject');
 });
 
+test('dns_items: a DMARC record receivers ignore, without a valid p= or as one of two, is not in force, and the line replaces it', function () {
+    $items = fn (array $records) => array_column(dns_items(evaluate_mail_dns('shop.example', $records + ['mx' => [], 'spf' => [], 'dmarc' => []])['details']), null, 'key');
+    $sends = ['mx' => ['10 mx1.mail.example'], 'spf' => ['v=spf1 include:_spf.mail.example ~all']];
+
+    // Misspelt and no reports: as if there were no record, so a domain that sends starts at p=none with reports, whatever the record meant
+    $misspelt = $items($sends + ['dmarc' => ['v=DMARC1; p=rejct; adkim=s']]);
+    expect($misspelt['dmarc'])->toMatchArray([
+        'level' => 'weak',
+        'note' => 'p=rejct is not a policy (none, quarantine or reject), and the record has no rua, so receivers ignore it: DMARC is not in force.',
+        'fix_label' => 'Change the TXT record at _dmarc.shop.example to:',
+        'fix' => 'v=DMARC1; p=none; adkim=s; rua=mailto:<your report address>',
+    ])->and($misspelt['dmarc']['tip'])->toStartWith('Start at p=none, whatever the record says: receivers ignore it today, so DMARC stops none of your email now, and p=quarantine or p=reject could stop some that fails. rua is optional');
+
+    // One that says it sends none rejects at once; one that may send gets the condition, and p= goes right after v=DMARC1
+    expect($items(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=rejct']])['dmarc']['fix'])->toBe('v=DMARC1; p=reject');
+    $unknown = $items(['dmarc' => ['v=DMARC1; sp=reject']]);
+    expect($unknown['dmarc']['note'])->toBe('The record has no p= (none, quarantine or reject) and no rua, so receivers ignore it: DMARC is not in force.')
+        ->and($unknown['dmarc']['fix_label'])->toBe('Only if nothing sends as @shop.example, change the TXT record at _dmarc.shop.example to:')
+        ->and($unknown['dmarc']['fix'])->toBe('v=DMARC1; p=reject; sp=reject')
+        ->and($items(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1']])['dmarc']['fix'])->toBe('v=DMARC1; p=reject');
+
+    // No valid p= but reports: receivers treat it as p=none, so it only monitors, and the next step is the one p=none gets
+    $monitors = $items($sends + ['dmarc' => ['v=DMARC1;rua=mailto:reports@dmarc.example']]);
+    expect($monitors['dmarc'])->toMatchArray([
+        'level' => 'weak',
+        'note' => 'The record has no p= (none, quarantine or reject), so receivers treat it as p=none: email that fails the check is still delivered.',
+        'fix_label' => 'Change the TXT record at _dmarc.shop.example to:',
+        'fix' => 'v=DMARC1;p=quarantine;rua=mailto:reports@dmarc.example',
+    ]);
+    $quarntine = $items($sends + ['dmarc' => ['v=DMARC1; p=quarntine; rua=mailto:reports@dmarc.example']])['dmarc'];
+    expect($quarntine['note'])->toBe('p=quarntine is not a policy (none, quarantine or reject), so receivers treat the record as p=none: email that fails the check is still delivered.')
+        ->and($quarntine['fix'])->toBe('v=DMARC1; p=quarantine; rua=mailto:reports@dmarc.example');
+
+    // Two records: receivers ignore both. One replaces them, with the report address one of them has
+    $two = $items($sends + ['dmarc' => ['v=DMARC1; p=none; rua=mailto:reports@dmarc.example', 'v=DMARC1; p=reject']]);
+    expect($two['dmarc'])->toMatchArray([
+        'level' => 'weak',
+        'note' => 'Two DMARC records: receivers ignore both, so DMARC is not in force.',
+        'fix_label' => 'Replace both with one TXT record at _dmarc.shop.example:',
+        'fix' => 'v=DMARC1; p=none; rua=mailto:reports@dmarc.example',
+    ])->and($two['dmarc']['tip'])->toStartWith('Start at p=none, whatever the records say: receivers ignore both today');
+    expect($items(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=none', 'v=DMARC1; p=reject']])['dmarc']['fix'])->toBe('v=DMARC1; p=reject')
+        // A p=reject among them was never in force, so a domain that may send gets the condition
+        ->and($items(['dmarc' => ['v=DMARC1; p=none', 'v=DMARC1; p=reject']])['dmarc']['fix_label'])->toBe('Only if nothing sends as @shop.example, replace both with one TXT record at _dmarc.shop.example:');
+});
+
 // =====================================================================
 // Changes, confirmed by a second look
 // =====================================================================
@@ -188,6 +242,14 @@ test('a domain that sends no email leads with why it still needs SPF and DMARC, 
         ->and($advice(['mx' => ['10 mx1.mail.example']]))->toBe(advice_for('no_spf_dmarc', 0))
         ->and($advice(['spf' => ['v=spf1 -all', 'v=spf1 include:_spf.mail.example -all']]))->toBe(advice_for('spf_twice', 0))
         ->and($advice(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=reject']]))->toBe('');
+
+    // A DMARC record receivers ignore is named with SPF, so the warning does go away once both are done
+    expect($advice(['dmarc' => ['v=DMARC1; p=rejct']]))->toBe('Does anything send email as @shop.example, such as a contact form or order email from the site? It has no mail server, so perhaps not. If nothing does, an SPF record of v=spf1 -all and p=reject in its DMARC record say that any email in its name is forged, and this warning goes away by itself. If something does, don\'t add these: they would stop its email. Start with v=DMARC1; p=none; rua=mailto:<your report address> and read the reports first.')
+        ->and($advice(['dmarc' => ['v=DMARC1; p=none', 'v=DMARC1; p=reject']]))->toContain('If nothing does, an SPF record of v=spf1 -all and one DMARC record of v=DMARC1; p=reject in place of the two say that')
+        ->and($advice(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=rejct']]))->toBe(advice_for('dmarc_no_policy', 0))
+        ->and($advice(['spf' => ['v=spf1 -all'], 'dmarc' => ['v=DMARC1; p=none', 'v=DMARC1; p=reject']]))->toBe(advice_for('dmarc_twice', 0))
+        ->and(advice_for('dmarc_no_policy', 0))->not->toBe('')
+        ->and(advice_for('dmarc_twice', 0))->not->toBe('');
 });
 
 test('a DMARC record that only monitors keeps everything else when the hint says to quarantine', function () {
