@@ -173,7 +173,7 @@ What can do harm:
 The demo, which everyone who clicks sees:
 
 - [x] The seed agrees with itself: a site is "up since" after its last outage, an outage's history matches its card ("answered 503", not "no answer"), a site down only in maintenance says so (done 2026-11-17 for the seed's own two: "up since" and the 503. A test now checks that every site agrees, and it found a third: the sample taken just now showed a down site as up. The site down only in maintenance is not the seed's: see the next item)
-- [ ] An outage that starts in a maintenance window and goes on after it counts as an outage: today its down event is written as silenced, so the detail says "No outages in 30 days" next to "Down since 06:10" once the window has ended (seen in the demo, whose Nightly group has a window until 07:00)
+- [x] An outage that starts in a maintenance window and goes on after it counts as an outage (checked 2026-11-17: it already does. Once the window ends, the day counts the rest as down time and as an outage; while it is inside, it is planned, and the detail says so with its maintenance badge. The demo showed "No outages in 30 days" next to "Down since" while its window was still on, read in UTC before the demo's TIMEZONE was set. This item came from the customer agent's report and was written down before it was checked)
 - [x] The demo says it is one: made-up sites, read-only, the view a customer gets from a share link; the README line too. Without it, a visitor looks for snooze and "Add a site" (done 2026-11-17 with `SHARED_NOTE` in the demo's settings)
 
 The share view, for the person who got the link (proposals shown before it is built):
