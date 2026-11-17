@@ -118,7 +118,7 @@ function advice_for(string $problem, int $status): string
         'no_spf' => 'Add an SPF record that lists the servers that send the domain\'s email, so nobody else can send in its name.',
         'no_dmarc' => 'Add a DMARC record, so receivers know what to do with email that pretends to come from the domain.',
         'no_spf_dmarc' => 'Add SPF and DMARC records, so nobody else can send email in the domain\'s name.',
-        'spf_twice' => 'Merge the two SPF records into one: with two, receivers treat SPF as broken.',
+        'spf_twice' => 'Merge the two SPF records into one. Until then SPF gives an error for all of the domain\'s email, so it gets through on DKIM alone: where DKIM does not sign it, it may go to spam or bounce.',
         default => '',
     };
 }

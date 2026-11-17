@@ -652,6 +652,8 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'status' => $row['dns_status'],
             'summary' => $row['dns_summary'],
             'domain' => $dnsDetails['domain'] ?? null,
+            // Two SPF records fail SPF for all of the domain's email: more than a record that is missing
+            'spf_broken' => count($dnsDetails['records']['spf'] ?? []) > 1,
             'advice' => $row['dns_status'] === 'warn' ? mail_advice($dnsDetails) : '',
         ] + $when('dns');
     }
@@ -929,7 +931,7 @@ function api_site_fields(PDO $db, array $config, array $summary, array $row, int
         'domain' => api_pick($summary['domain'], ['status', 'summary', 'domain', 'label', 'days_left', 'expires', 'registrar', 'renewal_near', 'advice', 'checked_at', 'next_at']),
         'exposed' => api_pick($summary['exposed'], ['status', 'summary', 'found', 'since', 'advice', 'checked_at', 'next_at']),
         'headers' => api_pick($summary['headers'], ['status', 'grade', 'summary', 'checked_at', 'next_at']),
-        'dns' => api_pick($summary['dns'], ['status', 'summary', 'domain', 'advice', 'checked_at', 'next_at']),
+        'dns' => api_pick($summary['dns'], ['status', 'summary', 'domain', 'spf_broken', 'advice', 'checked_at', 'next_at']),
     ];
 }
 

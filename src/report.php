@@ -149,6 +149,13 @@ function md_attention(array $site, array $config): array
     if ($ssl !== null && in_array($ssl['status'], ['warn', 'fail'], true)) {
         $items[] = ['rank' => $rank($ssl), 'title' => $ssl['status'] === 'fail' ? 'The certificate is not valid' : 'The certificate expires soon', 'summary' => $ssl['summary'], 'advice' => $ssl['advice'], 'lines' => []];
     }
+    // Two SPF records break what works today, where a record that is missing only leaves a protection out; the line to replace them comes with the site in detail
+    $dns = $site['dns'];
+    if ($dns['spf_broken'] ?? false) {
+        $spf = array_values(array_filter($dns['items'] ?? [], fn (array $item) => $item['key'] === 'spf' && $item['fix'] !== ''))[0] ?? null;
+        $items[] = ['rank' => 3, 'title' => 'Every email from the domain gets an SPF error', 'summary' => $dns['summary'], 'advice' => $dns['advice'],
+            'lines' => $spf !== null ? ["{$spf['fix_label']} " . md_code($spf['fix']) . '.' . ($spf['tip'] !== '' ? ' ' . md_own($spf['tip']) : '')] : []];
+    }
     usort($items, fn (array $a, array $b) => $a['rank'] <=> $b['rank']);
     return $items;
 }
@@ -180,10 +187,13 @@ function md_improvements(array $site, array $config, int $now): array
             . (($item['blocked_assets'] ?? []) ? ' It also blocks: ' . implode(', ', array_map(fn (array $asset) => md_code($asset['kind'] . ' ' . $asset['url']), $item['blocked_assets'])) . '.' : ''), $weak)];
     }
     $dns = $site['dns'];
-    $missing = array_values(array_filter($dns['items'] ?? [], fn (array $item) => in_array($item['level'], ['weak', 'missing'], true)));
+    // Two SPF records are under Needs attention, with their line
+    $broken = $dns['spf_broken'] ?? false;
+    $missing = array_values(array_filter($dns['items'] ?? [], fn (array $item) => in_array($item['level'], ['weak', 'missing'], true) && !($broken && $item['key'] === 'spf')));
     if ($missing) {
         // The advice leads: for a domain that sends no email, why it still needs these records
-        $items[] = ['title' => 'Mail records', 'text' => rtrim($dns['summary'] . '. ' . (($dns['advice'] ?? '') !== '' ? md_own($dns['advice']) . ' ' : '') . md_checked($dns, $config, $now, false), '. ') . '.', 'lines' => array_map(fn (array $item) => "- **{$item['label']}** is {$item['level']}"
+        $lead = $broken ? 'SPF is under Needs attention. ' : $dns['summary'] . '. ' . (($dns['advice'] ?? '') !== '' ? md_own($dns['advice']) . ' ' : '');
+        $items[] = ['title' => 'Mail records', 'text' => rtrim($lead . md_checked($dns, $config, $now, false), '. ') . '.', 'lines' => array_map(fn (array $item) => "- **{$item['label']}** is {$item['level']}"
             . ($item['note'] !== '' ? ': ' . md_code($item['note']) : '') . '. What it says: ' . lcfirst($item['what']) . '.'
             . ($item['fix'] !== '' ? " {$item['fix_label']} " . md_code($item['fix']) . '.' : '')
             . ($item['tip'] !== '' ? ' ' . md_own($item['tip']) : ''), $missing)];
@@ -312,7 +322,7 @@ function read_api_markdown_list(array $about, array $totals, array $sites, array
         if ($site['ssl']['renewal_late'] ?? false) $better['Certificate: missed its renewal'][] = ['label' => $site['label'], 'note' => ' (' . plural((int) $site['ssl']['days_left'], 'day', 'days') . ' left)'];
         if ($site['domain']['renewal_near'] ?? false) $better['Domain: due for renewal'][] = ['label' => $site['label'], 'note' => ' (' . plural((int) $site['domain']['days_left'], 'day', 'days') . ' left)'];
         if (($site['headers']['grade'] ?? 'A') !== 'A') $better['Security headers: ' . preg_replace('/^Grade (\w+): /', 'grade $1, ', $site['headers']['summary'])][] = ['label' => $site['label'], 'note' => ''];
-        if (($site['dns']['status'] ?? '') === 'warn') $better['Mail records: ' . preg_replace('/^Mail for [^:]+: /', '', $site['dns']['summary'])][] = ['label' => $site['label'], 'note' => ''];
+        if (($site['dns']['status'] ?? '') === 'warn' && !($site['dns']['spf_broken'] ?? false)) $better['Mail records: ' . preg_replace('/^Mail for [^:]+: /', '', $site['dns']['summary'])][] = ['label' => $site['label'], 'note' => ''];
     }
     usort($attention, fn (array $a, array $b) => $a['rank'] <=> $b['rank']);
 
@@ -339,7 +349,7 @@ function read_api_markdown_list(array $about, array $totals, array $sites, array
         $ssl = $site['ssl'] === null ? '-' : ($site['ssl']['status'] === 'fail' ? 'not valid' : ($site['ssl']['days_left'] !== null ? plural((int) $site['ssl']['days_left'], 'day', 'days') : '-'))
             . (($site['ssl']['renewed_by'] ?? null) !== null ? " ({$site['ssl']['renewed_by']} renews it)" : '');
         $domain = $site['domain'] === null || $site['domain']['days_left'] === null ? '-' : ($site['domain']['status'] === 'fail' ? 'expired' : plural((int) $site['domain']['days_left'], 'day', 'days'));
-        $mail = match ($site['dns']['status'] ?? null) { 'ok' => 'ok', 'warn' => 'incomplete', null => '-', default => 'unknown' };
+        $mail = match ($site['dns']['status'] ?? null) { 'ok' => 'ok', 'warn' => ($site['dns']['spf_broken'] ?? false) ? 'SPF broken' : 'incomplete', null => '-', default => 'unknown' };
         $uptime = $site['uptime']['30d'] !== null ? "{$site['uptime']['30d']} %" : '-';
         $md .= '| ' . implode(' | ', [md_text($site['label']), $state, $uptime, $ssl, $domain, $site['headers']['grade'] ?? '-', $mail]) . " |\n";
     }

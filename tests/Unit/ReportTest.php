@@ -128,6 +128,25 @@ test('one site: every protection and mail record that is not in place is worth i
         ->and($md)->not->toContain('**Referrer-Policy** is');
 });
 
+test('two SPF records need attention, not only improving: SPF fails for all of the domain\'s email today', function () {
+    $spf = ['key' => 'spf', 'label' => 'SPF', 'level' => 'weak', 'records' => ['v=spf1 include:_spf.mail.example -all', 'v=spf1 include:send.newsletter.example ~all'], 'note' => 'Two SPF records: receivers treat that as an error, so SPF fails for all of this domain\'s email today.', 'what' => 'Which servers may send email in the domain\'s name', 'fix_label' => 'Replace both with one TXT record at shop.example that names every sender in them:', 'fix' => 'v=spf1 include:_spf.mail.example include:send.newsletter.example ~all', 'tip' => '~all marks other senders as suspect.'];
+    $dmarc = ['key' => 'dmarc', 'label' => 'DMARC', 'level' => 'missing', 'records' => [], 'note' => '', 'what' => 'What receivers do with email that pretends to come from the domain', 'fix_label' => 'Add a TXT record at _dmarc.shop.example:', 'fix' => 'v=DMARC1; p=none; rua=mailto:<your report address>', 'tip' => ''];
+    $dns = ['status' => 'warn', 'summary' => 'Mail for shop.example: two SPF records, which receivers treat as an error', 'domain' => 'shop.example', 'spf_broken' => true, 'advice' => advice_for('spf_twice', 0), 'items' => [$spf, $dmarc]];
+    $md = read_api_markdown_site(report_about(), report_detail(['dns' => $dns]), REPORT_CONFIG);
+
+    expect($md)->toContain("## Needs attention (1)\n\n1. **Every email from the domain gets an SPF error**: `Mail for shop.example: two SPF records, which receivers treat as an error`\n   What to do: " . advice_for('spf_twice', 0) . "\n   Replace both with one TXT record at shop.example that names every sender in them: `v=spf1 include:_spf.mail.example include:send.newsletter.example ~all`. ~all marks other senders as suspect.")
+        // The other mail records are still worth improving, without SPF a second time
+        ->and($md)->toContain("1. **Mail records**: SPF is under Needs attention.\n   - **DMARC** is missing.")
+        ->and($md)->not->toContain('- **SPF** is weak');
+
+    // Every site: under Needs attention too, and not also as a line to improve
+    $totals = ['sites' => 1, 'up' => 1, 'down' => 0, 'failing' => 0, 'paused' => 0, 'pending' => 0];
+    $list = read_api_markdown_list(report_about(['scope' => ['type' => 'group', 'name' => 'Customers']]), $totals, [report_site(['dns' => array_diff_key($dns, ['items' => true])])], REPORT_CONFIG);
+    expect($list)->toContain("## Needs attention (1)\n\n1. **shop.example: every email from the domain gets an SPF error**: `Mail for shop.example: two SPF records, which receivers treat as an error`\n   What to do: " . advice_for('spf_twice', 0) . "\n")
+        ->and($list)->toContain("## Worth improving (0)\n")
+        ->and($list)->toContain('| SPF broken |');
+});
+
 test('one site: the CSP item names the inline scripts it would block by their start, as text from the site', function () {
     $csp = ['key' => 'csp', 'label' => 'CSP', 'level' => 'missing', 'note' => "the page has 2 inline scripts, which default-src 'self' would block", 'what' => 'Limits which scripts may run', 'fix' => "Content-Security-Policy-Report-Only: default-src 'self'", 'tip' => 'Do it last.',
         'inline' => ['window.dataLayer = window.dataLayer || [];…', 'document.write("<b>`x`</b>")']];
