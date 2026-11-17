@@ -60,7 +60,7 @@ Every command asks for what it needs when you leave out its arguments. `php vaka
 | Command | What it does |
 |---------|--------------|
 | `php vaka run` | Run the checks that are due and send alerts (from cron, every minute) |
-| `php vaka check <url> [--keyword=]` | Check a URL once and show the result, certificate included; saves nothing |
+| `php vaka check <url> [--keyword=] [--check-path=]` | Check a URL once and show the result, certificate included; saves nothing. With `--check-path=/up`, uptime asks that path on the site's host and the other checks the address, as a run does |
 | `php vaka status` | How every site is doing right now, by group |
 
 ### Sites
@@ -73,7 +73,7 @@ Every command asks for what it needs when you leave out its arguments. `php vaka
 | `php vaka site:edit --group=<name or none>` | Move several sites to a group, picked from a numbered list |
 | `php vaka site:remove <site>` | Stop watching a site and delete its history (`--force` skips the question) |
 | `php vaka site:list [--group=]` | Every site |
-| `php vaka site:import <file.csv> [--dry-run]` | Add sites from a CSV file: a `url` column, and optionally `group`, `enabled`, `name`, `keyword`, `interval` |
+| `php vaka site:import <file.csv> [--dry-run]` | Add sites from a CSV file: a `url` column, and optionally `group`, `enabled`, `name`, `keyword`, `check_path` (an uptime path such as `/up`, as `site:add --check-path`), `interval` |
 
 `<site>` is a URL or a domain (`shop.example`), with the port if it has one. A domain with several sites means the one without a path.
 

@@ -58,26 +58,31 @@ function cmd_run(array $config, array $args, array $opts): void
 
 function cmd_check(array $config, array $args, array $opts): void
 {
-    allow_options($opts, ['keyword']);
+    allow_options($opts, ['keyword', 'check-path']);
     try {
         $url = normalize_url($args[1] ?? ask('URL to check'));
+        $path = clean_check_path(is_string($opts['check-path'] ?? null) ? $opts['check-path'] : '');
     } catch (InvalidArgumentException $e) {
         fail($e->getMessage() . '.');
     }
     $keyword = is_string($opts['keyword'] ?? null) ? $opts['keyword'] : '';
 
-    $response = fetch_many(['check' => $url], $config['uptime_timeout'], user_agent($config), 1, $config['ssl_ca_file'])['check'];
-    $result = evaluate_uptime($response, $keyword, $config['uptime_timeout']);
+    // As a run does: uptime asks the path, the other checks the address
+    $requests = ['check' => uptime_url(['url' => $url, 'check_path' => $path])] + ($path !== '' ? ['page' => $url] : []);
+    $responses = fetch_many($requests, $config['uptime_timeout'], user_agent($config), 2, $config['ssl_ca_file']);
+    $response = $responses['page'] ?? $responses['check'];
+    $result = evaluate_uptime($responses['check'], $keyword, $config['uptime_timeout'], $path);
+    $at = $path !== '' ? " at {$path}" : '';
 
     echo "{$url}\n";
     if ($result['ok']) {
         $from = $result['cdn'] !== '' ? "behind {$result['cdn']}" : "from {$result['ip']}";
-        echo "  Up: " . lcfirst($result['summary']) . ", {$from}\n";
+        echo "  Up{$at}: " . lcfirst($result['summary']) . ", {$from}\n";
     } elseif ($result['problem'] === 'blocked') {
         echo "  Could not check: {$result['summary']}\n";
         echo '  ' . advice_for('blocked', 0) . ($result['from_ip'] !== '' ? " Vaka asked from {$result['from_ip']}." : '') . "\n";
     } else {
-        echo "  Down: " . lcfirst($result['summary']) . "\n";
+        echo "  Down{$at}: " . lcfirst($result['summary']) . "\n";
     }
     if (str_starts_with($url, 'https://') && !in_array($result['problem'], ['timeout', 'dns', 'refused', 'connect'], true)) {
         $ssl = check_certificate($url, $config, time(), $result['cdn'] ?: null);

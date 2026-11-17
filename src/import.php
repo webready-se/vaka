@@ -67,6 +67,7 @@ function parse_import_csv(string $contents): array
             'paused' => !$on,
             'name' => $field($record, 'name'),
             'keyword' => $field($record, 'keyword'),
+            'check_path' => $field($record, 'check_path'),
             'interval' => $field($record, 'interval'),
         ];
     }
@@ -105,6 +106,7 @@ function import_sites(PDO $db, array $rows, bool $dryRun = false): array
                     'paused' => $row['paused'],
                     'name' => $row['name'],
                     'keyword' => $row['keyword'],
+                    'check_path' => $row['check_path'] ?? '',
                     'interval' => $row['interval'],
                 ]);
             } catch (InvalidArgumentException $e) {

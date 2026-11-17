@@ -70,7 +70,7 @@ function print_help(): void
     Watching
       run                  Run the checks that are due (from cron, every minute)
       check <url>          Check a URL once and show the result; saves nothing
-                           --keyword=<text on the page>
+                           --keyword=<text on the page>  --check-path=/up
       status               How every site is doing right now
 
     Sites (<site> is a URL or a domain)
@@ -90,7 +90,8 @@ function print_help(): void
       site:remove <site>   Stop watching a site and delete its history  --force
       site:list            List every site  --group=<name>
       site:import <file>   Add sites from a CSV file: a url column, and optionally
-                           group, enabled, name, keyword, interval  --dry-run
+                           group, enabled, name, keyword, check_path, interval
+                           --dry-run
 
     Groups (each with its own alert rules)
       group:add <name>     Add a group

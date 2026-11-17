@@ -116,6 +116,22 @@ test('php vaka check shows the grade', function () {
     expect($r['out'])->toContain('Security headers: grade B: 5 of 6 in place, missing HSTS', $r['out'] . $r['err']);
 });
 
+test('php vaka check --check-path asks uptime at the path and grades the headers at the address, as a run does', function () {
+    // /weaker drops the CSP, so a grade B says the headers came from the address
+    $r = vaka(['check', 'http://127.0.0.1:8794', '--check-path=weaker'], cli_env());
+    expect($r['exit'])->toBe(0, $r['out'] . $r['err'])
+        ->and($r['out'])->toContain('  Up at /weaker: answered 200 OK')
+        ->and($r['out'])->toContain('Security headers: grade B: 5 of 6 in place, missing HSTS');
+
+    $down = vaka(['check', 'http://127.0.0.1:8794', '--check-path=/error'], cli_env());
+    expect($down['exit'])->toBe(1)
+        ->and($down['out'])->toContain('  Down at /error: ');
+
+    $wrong = vaka(['check', 'http://127.0.0.1:8794', '--check-path=https://other.example/up'], cli_env());
+    expect($wrong['exit'])->toBe(1)
+        ->and($wrong['err'])->toContain('Give the path only, such as /up');
+});
+
 test('Vaka grades its own pages: everything but HSTS over plain http, which only https can have', function () {
     $env = cli_env();
     $web = start_web(8795, $env);

@@ -299,12 +299,12 @@ Vaka's own header check must grade Vaka itself A.
 | Command | Purpose |
 |---------|---------|
 | `php vaka run` | Run due checks and send alerts (cron, every minute) |
-| `php vaka check [<url>]` | Run every check once against a URL and print the result (no state, no alerts) |
+| `php vaka check [<url>] [--check-path=]` | Run every check once against a URL and print the result (no state, no alerts); with an uptime path, uptime asks it and the rest the address |
 | `php vaka status` | Overview of every site in the terminal |
 | `php vaka site:add [<url>] [--group=] [--name=] [--keyword=] [--check-path=] [--interval=]` | Add a site (`--check-path=/up`: uptime asks that path on the site's host instead, the other checks stay on the address) |
 | `php vaka site:edit [<url>]` | Change group, name, keyword, uptime path (`--check-path=`), interval, paused, disabled checks, server (`--server=<label>`); `site:edit <server> --group=` moves every site on a server (IP or name, the same rule as `snooze`); `site:edit --group=` without a site moves several picked from a list (ranges, 0 for all), offering to add a missing group |
 | `php vaka site:remove [<url>]` / `site:list` | Remove a site and its history / list sites |
-| `php vaka site:import [<file.csv>]` | Import sites from CSV (`group,url,enabled`) |
+| `php vaka site:import [<file.csv>]` | Import sites from CSV (`group,url,enabled`, and optionally `name`, `keyword`, `check_path`, `interval`) |
 | `php vaka group:add [<name>]` / `group:edit` / `group:remove` / `group:list` | Groups: policy, delay, Slack webhook, JSON webhook, email |
 | `php vaka server:label [<ip> <label>]` | Name a server's IP, so alerts say "web-1 (203.0.113.10)" (empty label removes it) |
 | `php vaka maintenance:add [<group\|site>] --at=HH:MM-HH:MM [--days=] \| --from= --to= [--label=]` | Maintenance window per group or site (a group name wins) |
