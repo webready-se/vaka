@@ -723,7 +723,7 @@ function api_overview(PDO $db, array $config, ?array $allowed, int $now, ?string
         'setup' => $allowed === null ? [
             'php' => php_cli(),
             'dir' => run_dir(dirname(__DIR__)),
-            'cron' => cron_line(dirname(__DIR__), php_cli()),
+            'cron' => cron_line(dirname(__DIR__), php_path()),
             'alerts' => alerts_configured($db, $config),
             // For adding and changing sites in the dashboard
             'groups' => array_column(list_groups($db), 'name'),

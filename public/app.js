@@ -423,7 +423,9 @@
     } else if (!data.run_ok) {
       append(node, h('div', { class: 'banner', role: 'alert' }, [icon('failing'), h('span', {}, [
         h('strong', {}, 'The last check was ' + ago(data.last_run_at) + '. '),
-        'Is cron still running ', h('code', {}, 'php vaka run'), ' every minute? Until it does, what you see here is out of date.'
+        data.setup
+          ? ['Is cron still running Vaka every minute? Until it does, what you see here is out of date. The line: ', h('code', {}, data.setup.cron)]
+          : 'Is cron still running Vaka every minute? Until it does, what you see here is out of date.'
       ])]));
     }
   }

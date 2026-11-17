@@ -99,10 +99,27 @@ function php_cli(array $dirs = ['/usr/bin', '/usr/local/bin']): string
     return 'php';
 }
 
-/** The cron line that runs Vaka every minute from run_dir(). */
+/**
+ * PHP by its full path, for a cron line: cron starts with a short PATH
+ * (/usr/bin:/bin), where php may not be found. This version's PHP in $dirs,
+ * else the PHP running now when it is the command line's or php -S's (the
+ * web server's is php-fpm), else plain php.
+ */
+function php_path(array $dirs = ['/usr/bin', '/usr/local/bin']): string
+{
+    $versioned = 'php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
+    foreach ($dirs as $dir) {
+        if (is_executable("{$dir}/{$versioned}")) return "{$dir}/{$versioned}";
+    }
+    return str_starts_with(PHP_SAPI, 'cli') && PHP_BINARY !== '' ? PHP_BINARY : 'php';
+}
+
+/** The cron line that runs Vaka every minute from run_dir(), its output sent nowhere: run prints a line every minute, which cron would mail. */
 function cron_line(string $root, string $php = 'php'): string
 {
-    return "* * * * * {$php} " . run_dir($root) . '/vaka run';
+    // A path with a space (PHP under Application Support on a Mac) is quoted, or the shell splits it
+    $word = fn (string $path) => preg_match('#^[\w./+-]+$#', $path) ? $path : escapeshellarg($path);
+    return '* * * * * ' . $word($php) . ' ' . $word(run_dir($root) . '/vaka') . ' run >> /dev/null 2>&1';
 }
 
 /** "se=whois.iis.se,nu=whois.iis.nu" as key => value, keys lowercased. Pairs without both halves are dropped. */

@@ -228,7 +228,7 @@ test('the first steps come with the real cron line and whether alerts are set up
     expect($admin['setup'])->toMatchArray([
         'php' => php_cli(),
         'dir' => run_dir(dirname(__DIR__, 2)),
-        'cron' => cron_line(dirname(__DIR__, 2), php_cli()),
+        'cron' => cron_line(dirname(__DIR__, 2), php_path()),
         'alerts' => false,
     ]);
     $anna = http_request('GET', WEB . '/?api=overview', ['jar' => ($this->login)('anna', 'anna password')['jar']])['json'];
