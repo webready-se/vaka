@@ -162,7 +162,7 @@ What can do harm:
 - [ ] A keyword follows the site to its uptime path, and says so: in the form's hint, and in what `site:add` and `site:edit` print ("Uptime now checks /up and looks for "Book a table" there"). `site:edit` says what it changed. Today a keyword from the start page moves to /up in silence, and the site alerts as down on the next run
 - [ ] `fix` in the read API is empty for what is already in place, as docs/api.md says. Today a DMARC at `p=reject` gets a `p=none` line, a CSP in force gets a Report-Only one, and an assistant that follows `fix` would weaken what works
 - [ ] The cron line the dashboard offers sends its output nowhere (`>> /dev/null 2>&1`, as the docs have it: `run` prints "Nothing was due." every minute, which cron mails), names PHP by its full path (`php` was not in cron's PATH where the review ran it), and shows whenever Vaka has stopped running, not only before its first run
-- [ ] A paused site shows no uptime for the time it was paused, not 100% next to "No checks in the last 24 hours"
+- [x] A paused site shows no uptime for the time it was paused, not 100% next to "No checks in the last 24 hours" (done 2026-11-17: none at all while paused, as the list and the day bars already had it, and `null` in the read API; when a pause started is not stored, so the time before it cannot be told apart)
 
 The demo, which everyone who clicks sees:
 

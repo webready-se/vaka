@@ -186,7 +186,10 @@ test('downtime inside a maintenance window is planned: shown on its own and left
     expect($days[1])->toBe(['date' => '2026-11-02', 'up' => 97.56, 'down_seconds' => 35 * 60, 'outages' => 2, 'planned_seconds' => 30 * 60])
         ->and($days[2])->toMatchArray(['up' => 100.0, 'down_seconds' => 0, 'outages' => 0, 'planned_seconds' => 0])
         // Watched for two days, 35 minutes of them down outside the window
-        ->and(site_uptime($db, $site, 7 * 86400, $now, 'Europe/Stockholm'))->toBe(uptime_percent(35 * 60, 2 * 86400));
+        ->and(site_uptime($db, $site, 7 * 86400, $now, 'Europe/Stockholm'))->toBe(uptime_percent(35 * 60, 2 * 86400))
+        // Paused, nothing is checked: its uptime is unknown, not 100% next to "No checks in the last 24 hours"
+        ->and(site_uptime($db, ['paused' => 1] + $site, 86400, $now, 'Europe/Stockholm'))->toBeNull()
+        ->and(site_uptime($db, ['paused' => 1] + $site, 30 * 86400, $now, 'Europe/Stockholm'))->toBeNull();
 });
 
 test('response time buckets: the average per hour, and how many checks were up', function () {

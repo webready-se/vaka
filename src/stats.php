@@ -77,10 +77,12 @@ function watched_since(PDO $db, array $site): ?int
  * A site's uptime over the last $seconds, from its events, leaving out
  * downtime in its maintenance windows. The period starts no earlier than the
  * first check: before it nothing is known, so a site not checked yet has no
- * uptime (null), not 100%.
+ * uptime (null), not 100%. Neither has a paused site, which nothing checks:
+ * the dashboard's day bars and the list already show it as paused.
  */
 function site_uptime(PDO $db, array $site, int $seconds, int $now, string $timezone): ?float
 {
+    if (!empty($site['paused'])) return null;
     $since = watched_since($db, $site);
     if ($since === null) return null;
     $from = max($now - $seconds, $since);
