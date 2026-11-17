@@ -32,7 +32,7 @@ test('with an uptime path, uptime asks that path on the site, and the keyword is
     expect(($this->state)('http://127.0.0.1:8791')['summary'])->toContain('503')
         ->and((int) $this->db->query("SELECT status_code FROM samples WHERE site_id = {$down}")->fetchColumn())->toBe(503)
         // /up answers, but without the shop page's text
-        ->and(($this->state)('http://127.0.0.1:8791/second')['summary'])->toContain('does not contain "Welcome to the shop"');
+        ->and(($this->state)('http://127.0.0.1:8791/second')['summary'])->toContain('but /up does not contain "Welcome to the shop"');
 });
 
 test('a site that answers is up, with its response time and IP recorded', function () {

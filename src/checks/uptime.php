@@ -8,10 +8,11 @@
  * or `blocked` when a bot check answered instead of the site (see
  * bot_check()), which is neither up nor down. Then `from_ip` is the address
  * Vaka asked from, for the host to let through, when it is a public one.
+ * $path is the site's uptime path, named when the keyword is missing there.
  *
  * @return array{ok: bool, summary: string, status_code: int, ms: int, ip: string, cdn: string, problem: string, blocked: string, from_ip: string}
  */
-function evaluate_uptime(array $response, string $keyword, int $timeout): array
+function evaluate_uptime(array $response, string $keyword, int $timeout, string $path = ''): array
 {
     $result = [
         'ok' => false,
@@ -44,7 +45,8 @@ function evaluate_uptime(array $response, string $keyword, int $timeout): array
         $result['summary'] = "The site answered {$answered}";
         $result['problem'] = 'http';
     } elseif ($keyword !== '' && !page_contains($response['body'], $keyword)) {
-        $result['summary'] = "Answered {$answered}, but the page does not contain \"{$keyword}\"";
+        // On an uptime path it names it: the start page may well have the text, and a night alert would send someone there
+        $result['summary'] = "Answered {$answered}, but " . ($path !== '' ? $path : 'the page') . " does not contain \"{$keyword}\"";
         $result['problem'] = 'keyword';
     } else {
         $result['ok'] = true;

@@ -87,7 +87,9 @@ test('a keyword must be on the page, in any case and with entities decoded', fun
 
     $missing = evaluate_uptime($page, 'Add to cart', 10);
     expect($missing['ok'])->toBeFalse()
-        ->and($missing['summary'])->toBe('Answered 200 OK, but the page does not contain "Add to cart"');
+        ->and($missing['summary'])->toBe('Answered 200 OK, but the page does not contain "Add to cart"')
+        // Looked for on an uptime path, it names it: the start page may well have the text
+        ->and(evaluate_uptime($page, 'Add to cart', 10, '/up')['summary'])->toBe('Answered 200 OK, but /up does not contain "Add to cart"');
 });
 
 test('the keyword is not looked for on an error page', function () {
