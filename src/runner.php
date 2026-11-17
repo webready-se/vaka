@@ -133,7 +133,7 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array $win
     $sample = $db->prepare('INSERT INTO samples (site_id, checked_at, status_code, ms, ok, ip) VALUES (?, ?, ?, ?, ?, ?)');
     $where = $db->prepare('UPDATE sites SET ip = ?, cdn = ? WHERE id = ?');
     foreach ($sites as $site) {
-        $result = evaluate_uptime($responses[$site['id']], $site['keyword'], $config['uptime_timeout']);
+        $result = evaluate_uptime($responses[$site['id']], $site['keyword'], $config['uptime_timeout'], $site['check_path'] ?? '');
         $state = $site['state_status'] === null
             ? ['status' => 'pending', 'fail_count' => 0, 'changed_at' => null, 'details' => []]
             : ['status' => $site['state_status'], 'fail_count' => $site['state_fail_count'], 'changed_at' => $site['state_changed_at'], 'details' => json_decode($site['state_details'], true) ?: []];
