@@ -178,6 +178,7 @@ function track_shared_setting(string $value): array
     $value = trim($value);
     if ($value === '') return ['url' => null, 'problem' => ''];
     if (preg_match('#^https?://[a-z0-9.-]+(:\d+)?(/[a-z0-9._~/-]*)?$#iD', $value)) return ['url' => rtrim($value, '/'), 'problem' => ''];
+    if (!preg_match('#^[a-z]+://#i', $value)) return ['url' => null, 'problem' => "TRACK_SHARED_URL \"{$value}\" has no https:// in front (such as https://puls.example.com), so visits to shared pages are not counted."];
     return ['url' => null, 'problem' => "TRACK_SHARED_URL \"{$value}\" is not the plain address of a Puls (such as https://puls.example.com, with no ? or #), so visits to shared pages are not counted."];
 }
 

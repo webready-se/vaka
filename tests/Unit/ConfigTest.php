@@ -193,7 +193,8 @@ test('TRACK_SHARED_URL is the plain address of a Puls, and anything else is left
         ->and(track_shared_setting('http://127.0.0.1:8081/stats/'))->toBe(['url' => 'http://127.0.0.1:8081/stats', 'problem' => ''])
         // It goes into a header and a script tag, so only a plain address passes; the demo's own share link was Puls's first try
         ->and(track_shared_setting('https://demo.example/?share=vaka_1'))->toBe(['url' => null, 'problem' => 'TRACK_SHARED_URL "https://demo.example/?share=vaka_1" is not the plain address of a Puls (such as https://puls.example.com, with no ? or #), so visits to shared pages are not counted.'])
-        ->and(track_shared_setting('puls.example.com')['url'])->toBeNull()
+        // The most likely slip gets its own words
+        ->and(track_shared_setting('puls.example.com'))->toBe(['url' => null, 'problem' => 'TRACK_SHARED_URL "puls.example.com" has no https:// in front (such as https://puls.example.com), so visits to shared pages are not counted.'])
         ->and(track_shared_setting('https://puls.example.com" onload="x')['url'])->toBeNull()
         ->and(track_shared_setting("https://puls.example.com\r\nX-Evil: 1")['url'])->toBeNull();
 });

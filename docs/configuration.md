@@ -33,11 +33,21 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | `WEBHOOK_URL` | (empty) | Default JSON webhook |
 | `ALERT_EMAIL` | (empty) | Default email recipients, comma-separated |
 | `ALERT_FROM` | (empty) | The sender address of email alerts |
-| `TRACK_SHARED_URL` | (empty) | A [Puls](https://github.com/webready-se/puls) that counts visits to shared pages (`/?share=`), such as a public demo, so you see how many came and from where: its address, such as `https://puls.example.com`. The page is always counted as `/` with no query, so the token in the link never reaches Puls, and the policy lets that one address through and nothing else. Someone signed in is never counted. A value that is not a plain address is left out, and every command says so |
+| `TRACK_SHARED_URL` | (empty) | A [Puls](https://github.com/webready-se/puls) that counts visits to shared pages (`/?share=`), such as a public demo: its address, such as `https://puls.example.com`. See [Counting a public share link](#counting-a-public-share-link) |
 | `TRACK_SHARED_SITE` | this install's host name | The site name that Puls files those visits under |
 | `FOOTER_CREDIT` | `true` | "Made by Webready in Sweden" and the marks of the released Webready tools in the footer and on the login page; `false` leaves only Vaka's own half (the version and how fresh the results are) |
 
 Webhook URLs are secrets: keep `.env` out of git (it is in `.gitignore`).
+
+## Counting a public share link
+
+A share link you publish, such as a demo, can be counted by a [Puls](https://github.com/webready-se/puls), so you see how many came and from where:
+
+1. If that Puls sets `ALLOWED_ORIGINS`, add this install's domain to it first (`vaka.example.com`, or `example.com` for every subdomain). Without it, Puls turns every visit away and nothing on either side says so.
+2. Set `TRACK_SHARED_URL` to the Puls's address, such as `https://puls.example.com`, and `TRACK_SHARED_SITE` to the name it should file the visits under (empty: this install's host name). Use https: a page on https cannot load a script over http.
+3. Open a share link in your own browser and look for the site in Puls. A headless browser is counted as a bot, not as a visit.
+
+The page is always counted as `/` with no query, and Vaka sends no referrer, so the token in the link never reaches Puls. The policy lets that one address through, on shared pages only, and someone signed in to the dashboard is never counted. A value that is not a plain address is left out, and every command and the dashboard say so.
 
 ## Command line
 
