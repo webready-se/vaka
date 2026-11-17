@@ -39,6 +39,27 @@ test('parse_args treats everything after -- as positional', function () {
         ->and($opts)->toBe([]);
 });
 
+test('a short option is an option, refused with the long one it may mean, never a site or a token', function () {
+    [$args, $opts] = parse_args(['share:revoke', '-f', '-5', '-', '--', '-x']);
+    expect($args)->toBe(['share:revoke', '-5', '-', '-x'])
+        ->and($opts)->toBe(['-f' => true]);
+
+    $env = cli_env();
+    vaka(['site:add', 'https://shop.example', '--group=none'], $env);
+    vaka(['share:create', 'https://shop.example', '--expires=never'], $env);
+    // share:revoke -f in a script read -f as a token's start; with a site it would have looked for one
+    foreach ([['share:revoke', '-f'], ['share:revoke', '1', '-f'], ['site:remove', 'https://shop.example', '-f']] as $command) {
+        $r = vaka($command, $env);
+        expect($r['exit'])->toBe(1)
+            ->and($r['err'])->toContain('Unknown option -f. Vaka\'s options are written out in full: did you mean --force?');
+    }
+    expect(vaka(['share:list'], $env)['out'])->toMatch('/^1\s+shop\.example/m')
+        ->and(vaka(['site:list'], $env)['out'])->toContain('shop.example');
+
+    $r = vaka(['site:list', '-x'], $env);
+    expect($r['err'])->toContain('Unknown option -x. Vaka\'s options are written out in full: run `php vaka help` to see them.');
+});
+
 test('the CLI tells times in 12h when TIME_FORMAT says so', function () {
     $env = cli_env() + ['DOWN_AFTER_FAILURES' => '1'];
     vaka(['site:add', 'http://127.0.0.1:9/', '--group=none'], $env);

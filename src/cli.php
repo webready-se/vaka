@@ -13,7 +13,10 @@ function parse_args(array $argv): array
     $opts = [];
     $rest = false;
     foreach ($argv as $arg) {
-        if ($rest || !str_starts_with($arg, '--')) {
+        // -f is an option too, though Vaka has none that short: as an argument it would be looked up as a site or a token
+        if (!$rest && preg_match('/^-[a-z]/i', $arg)) {
+            $opts[$arg] = true;
+        } elseif ($rest || !str_starts_with($arg, '--')) {
             $args[] = $arg;
         } elseif ($arg === '--') {
             $rest = true;
@@ -31,9 +34,12 @@ function parse_args(array $argv): array
 function allow_options(array $opts, array $known): void
 {
     foreach (array_keys($opts) as $name) {
-        if (!in_array($name, $known, true)) {
-            fail("Unknown option --{$name}. Run `php vaka help` to see the options.");
-        }
+        if (in_array($name, $known, true)) continue;
+        if (!str_starts_with((string) $name, '-')) fail("Unknown option --{$name}. Run `php vaka help` to see the options.");
+        // A short one: the long ones it could stand for
+        $meant = array_values(array_filter($known, fn (string $long) => str_starts_with($long, substr((string) $name, 1))));
+        fail("Unknown option {$name}. Vaka's options are written out in full: "
+            . ($meant ? 'did you mean ' . implode(' or ', array_map(fn (string $long) => "--{$long}", $meant)) . '?' : 'run `php vaka help` to see them.'));
     }
 }
 
