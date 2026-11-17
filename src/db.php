@@ -202,6 +202,35 @@ function migrations(): array
             // A path on the site that uptime asks instead of its address, such as /up: '' for the address itself
             "ALTER TABLE sites ADD COLUMN check_path TEXT NOT NULL DEFAULT ''",
         ],
+        11 => [
+            // A revoked token's number is never handed out again: a revoke deletes the row, and without
+            // AUTOINCREMENT the next token took the newest's number, so a script's `share:revoke 6 --force`
+            // could take it. SQLite cannot add AUTOINCREMENT to a table, so it is rebuilt; its groups are
+            // kept aside first, since dropping it would cascade to them
+            'CREATE TABLE share_groups_old AS SELECT token_id, group_id FROM share_groups',
+            'DROP TABLE share_groups',
+            'CREATE TABLE share_tokens_new (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token_hash TEXT NOT NULL UNIQUE,
+                prefix TEXT NOT NULL,
+                site_id INTEGER REFERENCES sites (id) ON DELETE CASCADE,
+                label TEXT NOT NULL DEFAULT \'\',
+                expires_at TEXT,
+                last_used_at TEXT,
+                created_at TEXT NOT NULL
+            )',
+            'INSERT INTO share_tokens_new (id, token_hash, prefix, site_id, label, expires_at, last_used_at, created_at)
+                SELECT id, token_hash, prefix, site_id, label, expires_at, last_used_at, created_at FROM share_tokens',
+            'DROP TABLE share_tokens',
+            'ALTER TABLE share_tokens_new RENAME TO share_tokens',
+            'CREATE TABLE share_groups (
+                token_id INTEGER NOT NULL REFERENCES share_tokens (id) ON DELETE CASCADE,
+                group_id INTEGER NOT NULL REFERENCES groups (id) ON DELETE CASCADE,
+                PRIMARY KEY (token_id, group_id)
+            )',
+            'INSERT INTO share_groups (token_id, group_id) SELECT token_id, group_id FROM share_groups_old',
+            'DROP TABLE share_groups_old',
+        ],
     ];
 }
 

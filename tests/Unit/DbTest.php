@@ -67,3 +67,25 @@ test('processes opening a new database at the same time all end up on the latest
             ->and($out)->toBe($latest);
     }
 });
+
+test('a revoked token\'s number is never handed out again, and an older database keeps its tokens and their groups', function () {
+    // Before: a database at version 10, with a token for two groups and one for a site
+    $db = new PDO('sqlite:' . temp_dir() . '/vaka.sqlite');
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $db->exec('PRAGMA foreign_keys = ON');
+    run_migrations($db, array_filter(migrations(), fn (int $version) => $version <= 10, ARRAY_FILTER_USE_KEY));
+    $groups = [add_group($db, ['name' => 'Customers']), add_group($db, ['name' => 'Own sites'])];
+    $site = add_site($db, ['url' => 'https://shop.example']);
+    $both = create_share_token($db, null, $groups, 'Both', null, time());
+    $one = create_share_token($db, $site, [], 'Shop', null, time());
+
+    run_migrations($db);
+    $kept = array_column(list_share_tokens($db), null, 'id');
+    expect(array_keys($kept))->toEqualCanonicalizing([$both['id'], $one['id']])
+        ->and(array_column($kept[$both['id']]['groups'], 'name'))->toEqualCanonicalizing(['Customers', 'Own sites'])
+        ->and(find_share_token($db, $one['token'], time())['label'])->toBe('Shop');
+
+    // The newest revoked: the next token gets a number of its own, so a script's `share:revoke 2 --force` never takes it
+    revoke_share_token($db, $one['id']);
+    expect(create_share_token($db, null, [$groups[0]], '', null, time())['id'])->toBeGreaterThan($one['id']);
+});
