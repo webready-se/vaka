@@ -20,6 +20,10 @@ return [
     'track_shared_url' => ($tracker = track_shared_setting($env('TRACK_SHARED_URL')))['url'],
     'track_shared_site' => trim($env('TRACK_SHARED_SITE')),
 
+    // Who sends the share links, so a shared page can say "Webready was alerted at 06:36", and a line for its top
+    'shared_by' => shared_text($env('SHARED_BY'), 60),
+    'shared_note' => shared_text($env('SHARED_NOTE'), 300),
+
     // What is wrong with the settings above, for the CLI and the dashboard to show
     'config_problems' => array_values(array_filter([$timezone['problem'], $timeFormat['problem'], $tracker['problem']])),
 

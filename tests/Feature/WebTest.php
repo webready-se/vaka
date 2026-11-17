@@ -281,7 +281,7 @@ test('the overview lists sites with their state, and a restricted user only sees
         ->and($site['exposed']['advice'])->toStartWith('Remove the files from the web root')
         ->and($site['domain'])->toMatchArray(['status' => 'warn', 'summary' => 'shop.example expires in 12 days (6 Nov 2026)', 'domain' => 'shop.example', 'label' => 'shop.example', 'days_left' => 12, 'registrar' => 'Example Registrar AB'])
         ->and($site['domain']['advice'])->toStartWith('Renew it with the registrar')
-        ->and($site['headers'])->toBe(['status' => 'warn', 'grade' => 'E', 'summary' => 'Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy', 'checked_at' => utc_now($now), 'next_at' => utc_now($now + 3600)]);
+        ->and($site['headers'])->toBe(['status' => 'warn', 'grade' => 'E', 'in_place' => 2, 'summary' => 'Grade E: 2 of 6 in place, missing HSTS, CSP, Referrer-Policy and Permissions-Policy', 'checked_at' => utc_now($now), 'next_at' => utc_now($now + 3600)]);
     expect($admin['groups'][1]['sites'][0]['ssl'])->toBeNull()
         ->and($admin['groups'][1]['sites'][0]['exposed'])->toBeNull()
         ->and($admin['groups'][1]['sites'][0]['headers'])->toBeNull()
@@ -838,6 +838,45 @@ test('a share link opens a read-only dashboard of its sites, without a login or 
     expect(http_request('GET', WEB . '/?share=' . $site)['body'])->toContain('Shared view of shop.example<');
     $both = create_share_token($this->db, null, [$customers, add_group($this->db, ['name' => 'Own'])], '', null, $now)['token'];
     expect(http_request('GET', WEB . '/?share=' . $both)['body'])->toContain('Shared view of Customers and Own<');
+});
+
+test('a shared page names who sent it and carries their note, and says when an alert went out', function () {
+    $customers = add_group($this->db, ['name' => 'Customers']);
+    $nightly = add_group($this->db, ['name' => 'Nightly', 'policy' => 'digest']);
+    $shop = add_site($this->db, ['url' => 'https://shop.example', 'group' => 'Customers']);
+    $blog = add_site($this->db, ['url' => 'https://blog.example', 'group' => 'Nightly']);
+    $now = time();
+    foreach ([$shop, $blog] as $id) {
+        save_check_state($this->db, $id, 'uptime', ['status' => 'fail', 'summary' => 'No answer within 10 s', 'details' => [], 'fail_count' => 3, 'changed_at' => utc_now($now - 600)], utc_now($now), utc_now($now + 60));
+        // Both told: one by an alert, the digest group only marked for its daily summary
+        $this->db->prepare("UPDATE check_state SET alerted_status = 'fail', alerted_at = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([utc_now($now - 540), $id]);
+    }
+    $token = create_share_token($this->db, null, [$customers, $nightly], '', null, $now)['token'];
+    $shared = 'http://127.0.0.1:8789';
+    $web = start_web(8789, [
+        'DB_PATH' => $GLOBALS['web_dir'] . '/vaka.sqlite',
+        'USERS_FILE' => $GLOBALS['web_dir'] . '/users.json',
+        'SHARED_BY' => 'Webready & "Co"',
+        'SHARED_NOTE' => 'Questions? <b>Call</b> us.',
+    ]);
+    try {
+        $page = http_request('GET', "{$shared}/?share={$token}")['body'];
+        expect($page)->toContain('data-shared-by="Webready &amp; &quot;Co&quot;"')
+            ->and($page)->toContain('<p class="shared-message">Questions? &lt;b&gt;Call&lt;/b&gt; us.</p>')
+            // On a phone, what the link shows and until when, as words
+            ->and($page)->toContain('<p class="shared-line">Shared view of Customers and Nightly</p>');
+
+        $sites = array_column(array_merge(...array_column(http_request('GET', "{$shared}/?api=overview", ['headers' => ['Authorization: Bearer ' . $token]])['json']['groups'], 'sites')), null, 'label');
+        expect($sites['shop.example']['told_at'])->toBe(utc_now($now - 540))
+            // A digest group is told in its daily summary, not by an alert
+            ->and($sites['blog.example']['told_at'])->toBeNull();
+    } finally {
+        stop_site($web);
+    }
+    // Without the settings, nothing of them
+    $page = http_request('GET', WEB . "/?share={$token}")['body'];
+    expect($page)->not->toContain('data-shared-by=')
+        ->and($page)->not->toContain('shared-message');
 });
 
 test('a share link that is unknown, revoked or expired says so to the person who opened it', function () {

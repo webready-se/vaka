@@ -275,6 +275,31 @@
   // address, sent as a header and without cookies; it can change nothing, so it offers nothing that would
   var SHARE = new URLSearchParams(window.location.search).get('share');
 
+  // On a shared page the reader is whoever got the link, often a customer: what a problem means for
+  // them and who knows about it, with the technical detail for their web developer one click away.
+  // SHARED_BY names who sent it ("Webready was alerted at 06:36"); without it, in general words
+  var SENT_BY = (document.querySelector('[data-shared-by]') || { getAttribute: function () { return ''; } }).getAttribute('data-shared-by') || '';
+  function sender(start) {
+    return SENT_BY || (start ? 'Whoever sent you this link' : 'whoever sent you this link');
+  }
+
+  /** On a shared page, what is being done about a site that is down: acknowledged, planned or alerted. */
+  function handledWords(site) {
+    if (site.snoozed_until) return sender(true) + ' is on it (acknowledged until ' + clock(site.snoozed_until) + ').';
+    if (site.maintenance) return 'Planned maintenance.';
+    if (site.told_at) return sender(true) + ' was alerted at ' + clock(site.told_at) + '.';
+    return '';
+  }
+
+  /** What is for whoever looks after the site, folded on a shared page: one click away, not in the way. */
+  function technical(key, body) {
+    var dataKey = 'tech:' + key;
+    return h('details', { class: 'technical', 'data-key': dataKey, open: state.open[dataKey] || false }, [
+      h('summary', {}, [icon('chevron'), 'Technical details for your web developer']),
+      body
+    ]);
+  }
+
   function api(path, options) {
     var headers = SHARE ? { Accept: 'application/json', Authorization: 'Bearer ' + SHARE } : { Accept: 'application/json' };
     return fetch(path, Object.assign({ credentials: SHARE ? 'omit' : 'same-origin', headers: headers }, options || {}))
@@ -452,13 +477,28 @@
     var watched = t.sites - t.paused;
     var kind, kicker, title, line;
 
-    if (downNow > 0) {
+    if (downNow > 0 && SHARE) {
+      // For whoever got the link: what it means for visitors, and that someone knows
+      var down = sites.filter(function (site) { return site.status === 'down' && !isQuiet(site); });
+      var told = down.map(function (site) { return site.told_at; }).filter(Boolean).sort()[0];
+      kind = 'alert';
+      kicker = 'Down right now';
+      title = plural(downNow, 'site is down', 'sites are down');
+      line = ['Visitors may get an error page or nothing at all.', told ? sender(true) + ' was alerted at ' + clock(told) + '.' : '',
+        downQuiet ? downQuiet + ' more ' + (downQuiet === 1 ? 'is' : 'are') + ' down, acknowledged or in planned maintenance.' : ''].filter(Boolean).join(' ');
+    } else if (downNow > 0) {
       kind = 'alert';
       kicker = 'Needs you now';
       title = plural(downNow, 'site is down', 'sites are down');
       // The numbers beside it say how many are down or checking; the line says what they do not
       line = downQuiet ? downQuiet + ' more ' + (downQuiet === 1 ? 'is' : 'are') + ' down but snoozed or in a maintenance window.'
         : t.failing ? 'Everything else is up or being checked again.' : 'Everything else is up.';
+    } else if (downQuiet > 0 && SHARE) {
+      var quietSites = sites.filter(function (site) { return site.status === 'down' && isQuiet(site); });
+      kind = 'watch';
+      kicker = 'Being looked after';
+      title = plural(downQuiet, 'site is down', 'sites are down');
+      line = downQuiet === 1 ? handledWords(quietSites[0]) : 'Each is acknowledged by ' + sender() + ' or in planned maintenance.';
     } else if (downQuiet > 0) {
       kind = 'watch';
       kicker = 'Keeping watch';
@@ -638,7 +678,7 @@
     }).concat(checks.map(function (check) { return check.row; }));
     if (quiet.length) rows.push(quietGroup(quiet));
 
-    append(node, h('h2', { class: 'section-title', id: 'attention-title' }, 'Needs your attention'));
+    append(node, h('h2', { class: 'section-title', id: 'attention-title' }, SHARE ? 'What is wrong right now' : 'Needs your attention'));
     append(node, h('ul', { class: 'incidents' }, rows));
   }
 
@@ -661,7 +701,9 @@
   }
 
   function advice(text) {
-    return text ? h('p', { class: 'advice' }, [icon('bulb'), h('span', {}, text)]) : null;
+    if (!text) return null;
+    var line = h('p', { class: 'advice' }, [icon('bulb'), h('span', {}, text)]);
+    return SHARE ? technical('advice:' + text.slice(0, 60), line) : line;
   }
 
   function timeBox(big, small) {
@@ -673,12 +715,14 @@
     var kind = quiet ? 'quiet' : site.status;
     var what = site.status === 'down' ? 'is down' : 'failed a check';
     var time = site.snoozed_until
-      ? timeBox(clock(site.snoozed_until), 'Snoozed until')
+      ? timeBox(clock(site.snoozed_until), SHARE ? 'Acknowledged until' : 'Snoozed until')
       : timeBox(site.since ? shortDuration(secondsSince(site.since)) : '–', site.status === 'down' ? (site.maintenance ? 'In maintenance' : 'Down for') : 'Failing for');
-    var meta = [site.group || 'No group', site.since ? 'since ' + clock(site.since) : null].filter(Boolean).join(' · ');
+    // A group's name is the sender's own word for it: a shared page leaves it out
+    var meta = [SHARE ? null : site.group || 'No group', site.since ? (SHARE ? 'Since ' : 'since ') + clock(site.since) : null].filter(Boolean).join(' · ');
 
     return incident('site:' + site.id, kind, quiet ? 'quiet' : site.status, site.label, what, site.summary, time, [
       h('p', { class: 'incident-meta' }, meta),
+      SHARE && site.status === 'down' && handledWords(site) ? h('p', { class: 'incident-handled' }, handledWords(site)) : null,
       advice(site.advice),
       badges(site, true),
       h('div', { class: 'actions' }, siteActions(site, true))
@@ -774,8 +818,11 @@
   /** Snoozed and maintenance outages, folded into one row: known, and quiet for now. */
   function quietGroup(sites) {
     var snoozed = sites.filter(function (site) { return site.snoozed_until; }).length;
-    var words = snoozed === sites.length ? 'snoozed' : snoozed ? 'snoozed or in maintenance' : 'in maintenance';
-    var again = sites.length === 1 ? 'Vaka alerts again if it is still down when that ends' : 'Vaka alerts again for each that is still down when that ends';
+    var words = SHARE
+      ? (snoozed === sites.length ? 'acknowledged' : snoozed ? 'acknowledged or in planned maintenance' : 'in planned maintenance')
+      : (snoozed === sites.length ? 'snoozed' : snoozed ? 'snoozed or in maintenance' : 'in maintenance');
+    var again = SHARE ? sender(true) + ' knows, and is told again if it is still down when that ends'
+      : sites.length === 1 ? 'Vaka alerts again if it is still down when that ends' : 'Vaka alerts again for each that is still down when that ends';
     return incident('quiet', 'quiet', 'quiet', plural(sites.length, 'site is', 'sites are') + ' down, ' + words, '', again, null, [
       h('ul', { class: 'incidents is-nested' }, sites.map(siteIncident))
     ]);
@@ -784,8 +831,8 @@
   /** Snoozed, in maintenance, unstable. In an incident card the snooze is in the time box already. */
   function badges(site, inCard) {
     var list = [];
-    if (site.snoozed_until && !inCard) list.push(h('li', { class: 'badge' }, [icon('quiet'), 'Snoozed until ' + clock(site.snoozed_until)]));
-    if (site.maintenance) list.push(h('li', { class: 'badge' }, [icon('quiet'), 'In a maintenance window: not alerted']));
+    if (site.snoozed_until && !inCard) list.push(h('li', { class: 'badge' }, [icon('quiet'), SHARE ? sender(true) + ' is on it until ' + clock(site.snoozed_until) : 'Snoozed until ' + clock(site.snoozed_until)]));
+    if (site.maintenance) list.push(h('li', { class: 'badge' }, [icon('quiet'), SHARE ? 'Planned maintenance' : 'In a maintenance window: not alerted']));
     if (site.unstable) list.push(h('li', { class: 'badge is-warn' }, [icon('failing'), 'Unstable: went down several times lately']));
     if (site.blocked && !inCard) list.push(h('li', { class: 'badge is-warn' }, [icon('failing'), 'Behind a bot check: Vaka cannot see the site']));
     return list.length ? h('ul', { class: 'badges' }, list) : null;
@@ -843,11 +890,11 @@
       if (!sites.length && !empty) return;
       shown += sites.length;
       var title = group.name || 'No group';
-      var head = h('div', { class: 'group-head' }, [
+      var head = SHARE && state.data.groups.length === 1 ? null : h('div', { class: 'group-head' }, [
         h('h3', {}, title),
         h('ul', { class: 'group-meta' }, [
           h('li', {}, group.sites.length ? plural(group.sites.length, 'site', 'sites') : 'No sites yet'),
-          h('li', {}, [icon('bell'), 'Alerts ' + group.alerting]),
+          SHARE ? null : h('li', {}, [icon('bell'), 'Alerts ' + group.alerting]),
           editable && group.id !== null ? h('li', {}, h('button', { type: 'button', class: 'button', 'data-action': 'edit-group', 'data-group': group.id, 'aria-label': 'Change the group ' + title }, 'Change')) : null
         ])
       ]);
@@ -862,7 +909,7 @@
         head,
         h('div', { class: 'columns', 'aria-hidden': 'true' }, [
           h('span', {}, 'Status'), h('span', {}, 'Site'), h('span', {}, 'Last 30 days'), h('span', { class: 'right' }, 'Response'), h('span', { class: 'right' }, 'Uptime'),
-          h('span', { class: 'right' }, 'Headers')
+          h('span', { class: 'right' }, SHARE ? 'Security' : 'Headers')
         ]),
         h('ul', { class: 'site-list' }, sites.map(siteRow))
       ]));
@@ -974,6 +1021,7 @@
     var hidden = site.blocked ? h('span', { class: 'is-warn' }, 'hidden behind a bot check') : null;
     var small = [subtitle, hidden, cert, registration, files].filter(Boolean).reduce(function (list, part) { return list.length ? list.concat([' · ', part]) : [part]; }, []);
     var grade = site.headers && site.headers.grade ? site.headers.grade : null;
+    var protections = SHARE && grade && typeof site.headers.in_place === 'number' ? site.headers.in_place : null;
 
     return h('li', {}, h('button', {
       type: 'button',
@@ -981,7 +1029,7 @@
       'data-action': 'open',
       'data-site': site.id,
       'aria-label': site.label + ': ' + STATUS_WORDS[site.status] + (site.status === 'up' ? ', ' + ms + ', ' + month + ' up over 30 days' : '. ' + site.summary) +
-        (grade ? '. Security headers: grade ' + grade : '')
+        (protections !== null ? '. Browser protections: ' + protections + ' of 6 set up' : grade ? '. Security headers: grade ' + grade : '')
     }, [
       statusLabel(site.status),
       h('span', { class: 'site-name' }, [h('strong', {}, site.label), small.length ? h('small', {}, small) : null]),
@@ -989,7 +1037,7 @@
       h('span', { class: 'site-figures' }, [
         h('span', { class: 'site-figure' }, [ms, h('small', {}, 'now')]),
         h('span', { class: 'site-figure' }, [month, h('small', {}, '30 days')]),
-        h('span', { class: 'site-figure' }, [grade || '–', h('small', {}, 'headers')])
+        h('span', { class: 'site-figure' }, protections !== null ? [protections + '/6', h('small', {}, 'protections')] : [grade || '–', h('small', {}, 'headers')])
       ])
     ]));
   }
@@ -1097,10 +1145,9 @@
       chart(d.samples),
       h('h3', { id: 'seen-title' }, 'What Vaka sees'),
       seenTiles(site, editable),
-      h('h3', {}, 'Security headers'),
-      headerList(site.headers),
-      h('h3', {}, 'Mail'),
-      mailList(site.dns),
+      // The lines to add and the server tips are for whoever looks after the site
+      SHARE ? technical('site:' + site.id, [h('h3', {}, 'Security headers'), headerList(site.headers), h('h3', {}, 'Mail'), mailList(site.dns)])
+        : [h('h3', {}, 'Security headers'), headerList(site.headers), h('h3', {}, 'Mail'), mailList(site.dns)],
       settingsCard(site, d.maintenance, editable),
       h('h3', {}, 'History'),
       timeline(d.events)
@@ -1336,7 +1383,7 @@
     else if (!headers) tiles.push(waiting('Security headers'));
     else if (!headers.grade) tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, headers.summary), headers, 'headers'));
     // "Grade E: 2 of 6 in place, missing ...": the first part, the rest is further down
-    else tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, 'Grade ' + headers.grade, capitalize(headers.summary.replace(/^Grade [A-F]: /, '').split(', ')[0])), headers, 'headers'));
+    else tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, 'Grade ' + headers.grade, capitalize(headers.summary.replace(/^Grade [A-F]: /, '').split(', ')[0].replace(/ in place$/, SHARE ? ' browser protections set up' : ' in place'))), headers, 'headers'));
 
     var dns = site.dns;
     var mail = dns && /^Mail for ([^:]+): (.+)$/.exec(dns.summary);
@@ -1355,7 +1402,7 @@
     var setup = state.data.setup;
     var rows = [];
     if (site.name) rows.push(['Name', site.name]);
-    rows.push(['Group', site.group || 'No group']);
+    if (!SHARE) rows.push(['Group', site.group || 'No group']);
     rows.push(['Checked every', site.interval_minutes + ' min']);
     if (site.keyword) rows.push(['Looks for the text', '"' + site.keyword + '"' + (site.check_path ? ' on ' + site.check_path : '')]);
     if (site.check_path) rows.push(['Uptime checks', site.check_path]);

@@ -243,8 +243,11 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
     }
 
     $alerted = in_array($story, ['down', 'snoozed', 'hostile'], true) ? 'fail' : 'ok';
-    $db->prepare("UPDATE check_state SET alerted_status = ?, flapping_since = ?, snoozed_until = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([
+    // Told a minute after it went down, as a run would: a shared page says when
+    $toldAt = ['down' => $now - 13 * 60, 'snoozed' => $now - 39 * 60, 'hostile' => $now - 60][$story] ?? null;
+    $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_at = ?, flapping_since = ?, snoozed_until = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([
         $story === 'snoozed' ? 'snoozed' : $alerted,
+        $toldAt === null ? null : utc_now($toldAt),
         $story === 'unstable' ? utc_now($now - 35 * 60) : null,
         $story === 'snoozed' ? utc_now($now + 3 * 3600 + 20 * 60) : null,
         $id,

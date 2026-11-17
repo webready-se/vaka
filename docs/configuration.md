@@ -33,6 +33,8 @@ Vaka works without any configuration. To change something, copy `.env.example` t
 | `WEBHOOK_URL` | (empty) | Default JSON webhook |
 | `ALERT_EMAIL` | (empty) | Default email recipients, comma-separated |
 | `ALERT_FROM` | (empty) | The sender address of email alerts |
+| `SHARED_BY` | (empty) | Who sends the share links, such as your company's name: a shared page then says "Webready was alerted at 06:36" and "Webready is on it" where it otherwise says "Whoever sent you this link". 60 characters at most |
+| `SHARED_NOTE` | (empty) | One line at the top of every shared page, such as how to reach you ("Questions? Call 010-123 45 67") or, for a public demo, what it is. 300 characters at most |
 | `TRACK_SHARED_URL` | (empty) | A [Puls](https://github.com/webready-se/puls) that counts visits to shared pages (`/?share=`), such as a public demo: its address, such as `https://puls.example.com`. See [Counting a public share link](#counting-a-public-share-link) |
 | `TRACK_SHARED_SITE` | this install's host name | The site name that Puls files those visits under |
 | `FOOTER_CREDIT` | `true` | "Made by Webready in Sweden" and the marks of the released Webready tools in the footer and on the login page; `false` leaves only Vaka's own half (the version and how fresh the results are) |

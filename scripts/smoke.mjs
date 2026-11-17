@@ -899,7 +899,8 @@ async function main() {
   if (!/A setting in \.env needs fixing\. TIMEZONE "Europe\/Stokholm" is not a time zone.*Did you mean Europe\/Stockholm\?/.test(typo)) fails.push(`a typo in TIMEZONE is shown, with what was meant (got "${typo}")`);
 
   // 7b. A share link: a read-only dashboard for a person, such as a customer, with nothing that changes anything
-  const shareToken = execFileSync('php', ['-r', 'require $argv[1]; $db = get_db($argv[2]); echo create_share_token($db, null, [find_group($db, "Customers")["id"]], "Smoke", null, time())["token"];', join(root, 'src/bootstrap.php'), dbPath]).toString().trim();
+  // shop.example down again and told a minute ago, whatever the steps above did to it, so the page has an outage to speak of
+  const shareToken = execFileSync('php', ['-r', 'require $argv[1]; $db = get_db($argv[2]); $db->exec("UPDATE check_state SET status = \'fail\', summary = \'No answer within 10 s\', alerted_status = \'fail\', alerted_at = \'" . utc_now(time() - 60) . "\', snoozed_until = NULL, flapping_since = NULL WHERE check_name = \'uptime\' AND site_id = " . find_site($db, "shop.example")["id"]); echo create_share_token($db, null, [find_group($db, "Customers")["id"]], "Smoke", null, time())["token"];', join(root, 'src/bootstrap.php'), dbPath]).toString().trim();
   wait = loaded();
   await send('Page.navigate', { url: `${base}/?share=${shareToken}` });
   await wait;
@@ -911,6 +912,14 @@ async function main() {
       rows: document.querySelectorAll('.site-row').length,
       changes: document.querySelectorAll('[data-action="snooze"], [data-action="unsnooze"], [data-action="recheck"]').length,
       add: !document.querySelector('[data-add-site]').hidden || !document.querySelector('[data-add-group]').hidden,
+      // Spoken to whoever got the link: what it means and who knows, the technical part folded
+      kicker: document.querySelector('.watch-kicker')?.textContent || '',
+      watchLine: document.querySelector('[data-region="watch"]')?.textContent || '',
+      groupHeads: document.querySelectorAll('.group-head').length,
+      alerting: /Alerts (right away|after|in a daily|never)/.test(document.body.textContent),
+      looseAdvice: [...document.querySelectorAll('.advice')].filter((n) => !n.closest('details.technical')).length,
+      openTechnical: document.querySelectorAll('details.technical[open]').length,
+      protections: [...document.querySelectorAll('.site-figure small')].some((n) => n.textContent === 'protections'),
     };
     return out;
   });
@@ -930,6 +939,10 @@ async function main() {
   if (shared.changes || shared.add) fails.push('a share link offers no snooze, no "Check again" and no adding');
   if (!shared.detail || shared.detailChanges) fails.push('a site opens from a share link, with nothing in it that changes anything');
   if (shared.csp.length) fails.push(`no CSP violations on a share link: ${shared.csp.join(', ')}`);
+  if (shared.kicker !== 'Down right now' || !/Visitors may get an error page or nothing at all\. Whoever sent you this link was alerted at \d{1,2}:\d{2}/.test(shared.watchLine)) fails.push(`a share link says what an outage means and that someone was alerted (got "${shared.kicker}", "${shared.watchLine.slice(0, 160)}")`);
+  if (shared.groupHeads || shared.alerting) fails.push('a share link for one group shows neither its heading nor how it is alerted');
+  if (shared.looseAdvice || shared.openTechnical) fails.push(`advice for the web developer is folded on a share link (${shared.looseAdvice} loose, ${shared.openTechnical} open)`);
+  if (!shared.protections) fails.push('a share link counts browser protections instead of a letter grade');
 
   // 8. The very first visit: before the first user, then with no sites and cron not running yet
   await send('Emulation.clearDeviceMetricsOverride');

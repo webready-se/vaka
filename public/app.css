@@ -414,6 +414,19 @@ main { max-width: 1120px; margin: 0 auto; padding: 28px 16px 48px; }
 .incident-summary { margin: 10px 0 0; font-weight: 500; overflow-wrap: anywhere; }
 .advice { display: flex; gap: 9px; margin: 10px 0 0; padding: 10px 12px; border-radius: 12px; background: var(--surface-2); color: var(--text-2); font-size: 14px; }
 .advice .icon { width: 16px; height: 16px; margin-top: 2px; color: var(--accent); }
+/* A shared page: who knows about an outage, and what is for the web developer, folded */
+.incident-handled { margin: 8px 0 0; color: var(--text); font-size: 14.5px; font-weight: 600; }
+details.technical { margin: 12px 0 0; color: var(--text-2); font-size: 14px; }
+details.technical > summary { display: inline-flex; gap: 6px; align-items: center; padding: 2px 4px 2px 0; border-radius: 4px; cursor: pointer; list-style: none; font-weight: 600; }
+details.technical > summary::-webkit-details-marker { display: none; }
+details.technical > summary:hover { background: none; color: var(--text); }
+details.technical > summary > .icon { width: 14px; height: 14px; transform: rotate(-90deg); transition: transform 0.15s; }
+details.technical[open] > summary > .icon { transform: none; }
+/* What a shared link shows, with the sender's note: on a phone the top bar has room for the icon only */
+.shared-intro { display: grid; gap: 8px; margin: 0 0 16px; }
+.shared-line { display: none; margin: 0; color: var(--text-2); font-size: 14px; font-weight: 600; }
+.shared-message { margin: 0; padding: 10px 14px; border-radius: 12px; background: var(--surface-2); color: var(--text); font-size: 14.5px; }
+.shared-intro:not(:has(.shared-message)) { margin: 0; }
 .incident-sites { display: flex; flex-wrap: wrap; gap: 6px; margin: 12px 0 0; padding: 0; list-style: none; }
 .incident-files { display: grid; gap: 6px; margin: 10px 0 0; padding: 0; list-style: none; font-size: 14px; }
 .incident-files li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; }
@@ -764,6 +777,8 @@ details[open]::details-content { block-size: auto; opacity: 1; transition: block
   .topbar [data-api-link] { display: none; }
   /* The icon only, as for the buttons beside it; the words stay for a screen reader */
   .shared-note .label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+  .shared-line { display: block; }
+  .shared-intro:not(:has(.shared-message)) { margin: 0 0 12px; }
   main { padding-top: 18px; }
   .watch { grid-template-columns: 1fr; padding: 24px 22px; }
   .watch-owl, .watch-perch .watch-owl { position: absolute; right: 16px; top: 16px; bottom: auto; width: 72px; height: 72px; }
