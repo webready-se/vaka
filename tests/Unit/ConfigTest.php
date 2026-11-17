@@ -225,6 +225,16 @@ test('config.php gathers what is wrong with the settings, and the server\'s zone
         ->and($tracked['config_problems'])->toBe([track_shared_setting('puls.example.com')['problem']]);
 });
 
+test('SHARED_BY and SHARED_NOTE are one line of plain text each, kept short', function () {
+    expect(shared_text("  Webready \n", 60))->toBe('Webready')
+        ->and(shared_text("Questions?\r\nCall us\t", 300))->toBe('Questions? Call us')
+        ->and(text_length(shared_text(str_repeat('å', 80), 60)))->toBe(60);
+    $config = load_config(['SHARED_BY' => ' Webready ', 'SHARED_NOTE' => 'A demo with made-up sites']);
+    expect($config['shared_by'])->toBe('Webready')
+        ->and($config['shared_note'])->toBe('A demo with made-up sites')
+        ->and(load_config()['shared_by'])->toBe('');
+});
+
 test('clock times follow TIME_FORMAT', function () {
     $at = fn (string $time) => new DateTimeImmutable("2026-10-27 {$time}");
     expect(clock_text($at('14:05'), '24h'))->toBe('14:05')

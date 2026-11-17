@@ -199,6 +199,13 @@ function track_shared_setting(string $value): array
     return ['url' => null, 'problem' => "TRACK_SHARED_URL \"{$value}\" is not the plain address of a Puls (such as https://puls.example.com, with no ? or #), so visits to shared pages are not counted."];
 }
 
+/** SHARED_BY and SHARED_NOTE: one line of plain text, control characters as spaces, at most $max characters. */
+function shared_text(string $value, int $max): string
+{
+    $line = trim((string) preg_replace('/[\x00-\x1F\x7F]+/', ' ', $value));
+    return mb_substr((string) preg_replace('/ {2,}/', ' ', $line), 0, $max);
+}
+
 /** A time of day in TIME_FORMAT: "14:05" or "2:05 PM". */
 function clock_text(DateTimeInterface $time, string $format): string
 {

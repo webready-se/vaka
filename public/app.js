@@ -13,6 +13,8 @@
     regions[node.getAttribute('data-region')] = node;
   });
   var filterInput = document.querySelector('[data-filter]');
+  // A shared page shows no group names: it filters by name
+  if (new URLSearchParams(window.location.search).get('share')) filterInput.placeholder = 'Filter by name';
   var state = { data: null, filter: '', detailId: null, detail: null, headerFormat: null, form: null, sample: null, timezone: undefined, failed: false, open: {}, autoOpen: null, recheck: null, watched: null };
 
   // =================================================================
@@ -275,6 +277,67 @@
   // address, sent as a header and without cookies; it can change nothing, so it offers nothing that would
   var SHARE = new URLSearchParams(window.location.search).get('share');
 
+  // On a shared page the reader is whoever got the link, often a customer: what a problem means for
+  // them and who knows about it, with the technical detail for their web developer one click away.
+  // SHARED_BY names who sent it ("Webready was alerted at 06:36"); without it, in general words
+  var SENT_BY = (document.querySelector('[data-shared-by]') || { getAttribute: function () { return ''; } }).getAttribute('data-shared-by') || '';
+  function sender(start) {
+    return SENT_BY || (start ? 'Whoever sent you this link' : 'whoever sent you this link');
+  }
+
+  /** On a shared page, who knows about a problem: when the alert went out, or how the sender is told instead. */
+  function knowsWords(site, toldAt) {
+    if (toldAt) return sender(true) + ' was alerted ' + (secondsSince(toldAt) < 12 * 3600 ? 'at ' + clock(toldAt) : ago(toldAt)) + '.';
+    if (site.policy === 'digest') return sender(true) + ' sees it in the daily summary.';
+    if (site.policy === 'silent') return sender(true) + ' gets no alerts for this site: tell them if it matters.';
+    if (site.policy === 'delayed') return sender(true) + ' is alerted if it goes on.';
+    return '';
+  }
+
+  /** On a shared page, what is being done about a site that is down: acknowledged, planned or told. */
+  function handledWords(site) {
+    if (site.snoozed_until) return acknowledgedWords(site);
+    if (site.maintenance) return 'Planned maintenance.';
+    return knowsWords(site, site.told_at);
+  }
+
+  function acknowledgedWords(site) {
+    return sender(true) + ' is on it. If it is still down at ' + clock(site.snoozed_until) + ', they are alerted again.';
+  }
+
+  function certWords(ssl) {
+    if (ssl.status === 'fail') return 'Browsers warn visitors that the site is not safe: its security certificate is not valid.';
+    var days = ssl.days_left;
+    return 'The security certificate runs out ' + (days === 0 ? 'today' : days === 1 ? 'tomorrow' : 'in ' + days + ' days') + '. After that, browsers warn visitors.';
+  }
+
+  function registrationWords(domain) {
+    if (domain.status === 'fail') return 'The domain has expired: the site and its email may stop working.';
+    return 'The domain must be renewed' + (domain.expires ? ' by ' + date(domain.expires) : '') + ', or the site and its email stop working.';
+  }
+
+  var FILES_WORDS = 'Some files that should be private can be downloaded from the site.';
+
+  /** On a shared page, a site's problems in words for whoever got the link, each with who knows. */
+  function problemLines(site) {
+    var join = function (parts) { return parts.filter(Boolean).join(' '); };
+    var lines = [];
+    if (site.status === 'down') lines.push(join(['Visitors may get an error page or nothing at all.', handledWords(site)]));
+    if (site.exposed && site.exposed.status !== 'ok') lines.push(join([FILES_WORDS, knowsWords(site, site.exposed.told_at)]));
+    if (site.ssl && site.ssl.status !== 'ok') lines.push(join([certWords(site.ssl), knowsWords(site, site.ssl.told_at)]));
+    if (site.domain && (site.domain.status === 'warn' || site.domain.status === 'fail')) lines.push(join([registrationWords(site.domain), knowsWords(site, site.domain.told_at)]));
+    return lines.map(function (line) { return h('p', { class: 'incident-handled' }, line); });
+  }
+
+  /** What is for whoever looks after the site, folded on a shared page and named for what it holds. */
+  function technical(key, label, body) {
+    var dataKey = 'tech:' + key;
+    return h('details', { class: 'technical', 'data-key': dataKey, open: state.open[dataKey] || false }, [
+      h('summary', {}, [icon('chevron'), label]),
+      body
+    ]);
+  }
+
   function api(path, options) {
     var headers = SHARE ? { Accept: 'application/json', Authorization: 'Bearer ' + SHARE } : { Accept: 'application/json' };
     return fetch(path, Object.assign({ credentials: SHARE ? 'omit' : 'same-origin', headers: headers }, options || {}))
@@ -452,13 +515,28 @@
     var watched = t.sites - t.paused;
     var kind, kicker, title, line;
 
-    if (downNow > 0) {
+    if (downNow > 0 && SHARE) {
+      // For whoever got the link: what it means for visitors, and that someone knows
+      var down = sites.filter(function (site) { return site.status === 'down' && !isQuiet(site); });
+      var told = down.map(function (site) { return site.told_at; }).filter(Boolean).sort()[0];
+      kind = 'alert';
+      kicker = 'Down right now';
+      title = t.sites === 1 ? 'Your site is down' : plural(downNow, 'site is down', 'sites are down');
+      line = ['Visitors may get an error page or nothing at all.', told ? sender(true) + ' was alerted at ' + clock(told) + '.' : downNow === 1 ? knowsWords(down[0], null) : '',
+        downQuiet ? downQuiet + ' more ' + (downQuiet === 1 ? 'is' : 'are') + ' down, acknowledged or in planned maintenance.' : ''].filter(Boolean).join(' ');
+    } else if (downNow > 0) {
       kind = 'alert';
       kicker = 'Needs you now';
       title = plural(downNow, 'site is down', 'sites are down');
       // The numbers beside it say how many are down or checking; the line says what they do not
       line = downQuiet ? downQuiet + ' more ' + (downQuiet === 1 ? 'is' : 'are') + ' down but snoozed or in a maintenance window.'
         : t.failing ? 'Everything else is up or being checked again.' : 'Everything else is up.';
+    } else if (downQuiet > 0 && SHARE) {
+      var quietSites = sites.filter(function (site) { return site.status === 'down' && isQuiet(site); });
+      kind = 'watch';
+      kicker = 'Being looked after';
+      title = plural(downQuiet, 'site is down', 'sites are down');
+      line = downQuiet === 1 ? handledWords(quietSites[0]) : 'Each is acknowledged by ' + sender() + ' or in planned maintenance.';
     } else if (downQuiet > 0) {
       kind = 'watch';
       kicker = 'Keeping watch';
@@ -638,7 +716,7 @@
     }).concat(checks.map(function (check) { return check.row; }));
     if (quiet.length) rows.push(quietGroup(quiet));
 
-    append(node, h('h2', { class: 'section-title', id: 'attention-title' }, 'Needs your attention'));
+    append(node, h('h2', { class: 'section-title', id: 'attention-title' }, SHARE ? 'What is wrong right now' : 'Needs your attention'));
     append(node, h('ul', { class: 'incidents' }, rows));
   }
 
@@ -660,8 +738,11 @@
     ]));
   }
 
-  function advice(text) {
-    return text ? h('p', { class: 'advice' }, [icon('bulb'), h('span', {}, text)]) : null;
+  /** What to do; on a shared page folded for the web developer. $key keeps it open across a refresh. */
+  function advice(text, key, more) {
+    if (!text) return null;
+    var line = h('p', { class: 'advice' }, [icon('bulb'), h('span', {}, text)]);
+    return SHARE ? technical('advice:' + key, 'What your web developer can do', [more || null, line]) : [more || null, line];
   }
 
   function timeBox(big, small) {
@@ -673,13 +754,15 @@
     var kind = quiet ? 'quiet' : site.status;
     var what = site.status === 'down' ? 'is down' : 'failed a check';
     var time = site.snoozed_until
-      ? timeBox(clock(site.snoozed_until), 'Snoozed until')
+      ? timeBox(clock(site.snoozed_until), SHARE ? 'Acknowledged until' : 'Snoozed until')
       : timeBox(site.since ? shortDuration(secondsSince(site.since)) : '–', site.status === 'down' ? (site.maintenance ? 'In maintenance' : 'Down for') : 'Failing for');
-    var meta = [site.group || 'No group', site.since ? 'since ' + clock(site.since) : null].filter(Boolean).join(' · ');
+    // A group's name is the sender's own word for it: a shared page leaves it out
+    var meta = [SHARE ? null : site.group || 'No group', site.since ? (SHARE ? 'Since ' : 'since ') + clock(site.since) : null].filter(Boolean).join(' · ');
 
     return incident('site:' + site.id, kind, quiet ? 'quiet' : site.status, site.label, what, site.summary, time, [
       h('p', { class: 'incident-meta' }, meta),
-      advice(site.advice),
+      SHARE && site.status === 'down' && handledWords(site) ? h('p', { class: 'incident-handled' }, handledWords(site)) : null,
+      advice(site.advice, 'site:' + site.id),
       badges(site, true),
       h('div', { class: 'actions' }, siteActions(site, true))
     ]);
@@ -695,7 +778,7 @@
       same ? reasons[0] : 'The sites fail in different ways',
       timeBox(earliest ? shortDuration(secondsSince(earliest)) : '–', 'Down for'), [
         h('p', { class: 'incident-meta' }, earliest ? 'Since ' + clock(earliest) + '. Open a site to see its history.' : ''),
-        same ? advice(sites[0].advice) : null,
+        same ? advice(sites[0].advice, 'server:' + item.server) : null,
         h('ul', { class: 'incident-sites', 'aria-label': 'Sites on this server' }, sites.map(function (site) {
           return h('li', {}, h('button', { type: 'button', class: 'chip', 'data-action': 'open', 'data-site': site.id }, site.label));
         })),
@@ -713,8 +796,8 @@
     var kind = site.ssl.status === 'fail' ? 'down' : 'warn';
     return incident('cert:' + site.id, kind, 'shield', site.label, certificateWords(site.ssl), site.ssl.summary,
       site.ssl.status === 'fail' ? timeBox('Invalid', 'Certificate') : timeBox(plural(site.ssl.days_left, 'day', 'days'), 'Expires in'), [
-        h('p', { class: 'incident-meta' }, site.group || 'No group'),
-        advice(site.ssl.advice),
+        SHARE ? h('p', { class: 'incident-handled' }, [certWords(site.ssl), ' ', knowsWords(site, site.ssl.told_at)]) : h('p', { class: 'incident-meta' }, site.group || 'No group'),
+        advice(site.ssl.advice, 'cert:' + site.id),
         h('div', { class: 'actions' }, siteActions(site, false))
       ]);
   }
@@ -734,8 +817,9 @@
     var when = domain.expires ? (domain.status === 'fail' ? 'Ran out ' : 'Runs out ') + date(domain.expires) + (domain.registrar ? ', with ' + domain.registrar : '') : domain.summary;
     return incident('domain:' + domain.domain, domain.status === 'fail' ? 'down' : 'warn', 'globe', shown, domainWords(domain), when,
       domain.status === 'fail' ? timeBox('Expired', 'Domain') : timeBox(plural(domain.days_left, 'day', 'days'), 'Expires in'), [
-        h('p', { class: 'incident-meta' }, [sites[0].group || 'No group', others.length ? ' · used by ' + others.join(', ') : null]),
-        advice(domain.advice),
+        SHARE ? h('p', { class: 'incident-handled' }, [registrationWords(domain), ' ', knowsWords(sites[0], domain.told_at)])
+          : h('p', { class: 'incident-meta' }, [sites[0].group || 'No group', others.length ? ' · used by ' + others.join(', ') : null]),
+        advice(domain.advice, 'domain:' + domain.domain),
         h('div', { class: 'actions' }, siteActions(sites[0], false))
       ]);
   }
@@ -750,11 +834,11 @@
     return incident('exposed:' + site.id, exposed.status === 'fail' ? 'down' : 'warn', 'file', site.label, exposedWords(exposed),
       found.length === 1 ? found[0].what : found.map(function (file) { return file.label; }).join(', '),
       timeBox(exposed.since ? shortDuration(secondsSince(exposed.since)) : '–', 'Public for'), [
-        h('p', { class: 'incident-meta' }, site.group || 'No group'),
-        h('ul', { class: 'incident-files', 'aria-label': 'Public files' }, found.map(function (file) {
+        SHARE ? h('p', { class: 'incident-handled' }, [FILES_WORDS, ' ', knowsWords(site, exposed.told_at)]) : h('p', { class: 'incident-meta' }, site.group || 'No group'),
+        // Which files, for whoever removes them
+        advice(exposed.advice, 'exposed:' + site.id, h('ul', { class: 'incident-files', 'aria-label': 'Public files' }, found.map(function (file) {
           return h('li', {}, [h('code', {}, file.label), h('span', {}, file.what)]);
-        })),
-        advice(exposed.advice),
+        }))),
         h('div', { class: 'actions' }, siteActions(site, false))
       ]);
   }
@@ -764,8 +848,9 @@
     var blocked = site.blocked;
     return incident('blocked:' + site.id, 'warn', 'failing', site.label, 'is hidden behind a bot check', blocked.by + '\'s bot check answers instead of the site',
       timeBox(blocked.since ? shortDuration(secondsSince(blocked.since)) : '–', 'Hidden for'), [
-        h('p', { class: 'incident-meta' }, [site.group || 'No group', blocked.since ? ' · since ' + clock(blocked.since) : null]),
-        advice(site.advice),
+        SHARE ? h('p', { class: 'incident-handled' }, 'A security check on the site\'s server keeps Vaka from looking at it, so an outage could go unnoticed.')
+          : h('p', { class: 'incident-meta' }, [site.group || 'No group', blocked.since ? ' · since ' + clock(blocked.since) : null]),
+        advice(site.advice, 'blocked:' + site.id),
         blocked.from_ip ? h('p', { class: 'incident-meta' }, ['Vaka\'s server asks from ', h('code', {}, blocked.from_ip), ': the address to let through.']) : null,
         h('div', { class: 'actions' }, siteActions(site, false))
       ]);
@@ -774,8 +859,11 @@
   /** Snoozed and maintenance outages, folded into one row: known, and quiet for now. */
   function quietGroup(sites) {
     var snoozed = sites.filter(function (site) { return site.snoozed_until; }).length;
-    var words = snoozed === sites.length ? 'snoozed' : snoozed ? 'snoozed or in maintenance' : 'in maintenance';
-    var again = sites.length === 1 ? 'Vaka alerts again if it is still down when that ends' : 'Vaka alerts again for each that is still down when that ends';
+    var words = SHARE
+      ? (snoozed === sites.length ? 'acknowledged' : snoozed ? 'acknowledged or in planned maintenance' : 'in planned maintenance')
+      : (snoozed === sites.length ? 'snoozed' : snoozed ? 'snoozed or in maintenance' : 'in maintenance');
+    var again = SHARE ? sender(true) + ' knows, and is told again if it is still down when that ends'
+      : sites.length === 1 ? 'Vaka alerts again if it is still down when that ends' : 'Vaka alerts again for each that is still down when that ends';
     return incident('quiet', 'quiet', 'quiet', plural(sites.length, 'site is', 'sites are') + ' down, ' + words, '', again, null, [
       h('ul', { class: 'incidents is-nested' }, sites.map(siteIncident))
     ]);
@@ -784,8 +872,8 @@
   /** Snoozed, in maintenance, unstable. In an incident card the snooze is in the time box already. */
   function badges(site, inCard) {
     var list = [];
-    if (site.snoozed_until && !inCard) list.push(h('li', { class: 'badge' }, [icon('quiet'), 'Snoozed until ' + clock(site.snoozed_until)]));
-    if (site.maintenance) list.push(h('li', { class: 'badge' }, [icon('quiet'), 'In a maintenance window: not alerted']));
+    if (site.snoozed_until && !inCard) list.push(h('li', { class: 'badge' }, [icon('quiet'), SHARE ? acknowledgedWords(site) : 'Snoozed until ' + clock(site.snoozed_until)]));
+    if (site.maintenance) list.push(h('li', { class: 'badge' }, [icon('quiet'), SHARE ? 'Planned maintenance' : 'In a maintenance window: not alerted']));
     if (site.unstable) list.push(h('li', { class: 'badge is-warn' }, [icon('failing'), 'Unstable: went down several times lately']));
     if (site.blocked && !inCard) list.push(h('li', { class: 'badge is-warn' }, [icon('failing'), 'Behind a bot check: Vaka cannot see the site']));
     return list.length ? h('ul', { class: 'badges' }, list) : null;
@@ -833,6 +921,8 @@
     clear(node);
     // The bar it pointed at is gone
     hideTip();
+    // A link for one site needs no filter
+    filterInput.closest('.filter').hidden = Boolean(SHARE) && state.data.totals.sites <= 1;
     var filter = state.filter.trim().toLowerCase();
     var shown = 0;
 
@@ -843,11 +933,11 @@
       if (!sites.length && !empty) return;
       shown += sites.length;
       var title = group.name || 'No group';
-      var head = h('div', { class: 'group-head' }, [
+      var head = SHARE && state.data.groups.length === 1 ? null : h('div', { class: 'group-head' }, [
         h('h3', {}, title),
         h('ul', { class: 'group-meta' }, [
           h('li', {}, group.sites.length ? plural(group.sites.length, 'site', 'sites') : 'No sites yet'),
-          h('li', {}, [icon('bell'), 'Alerts ' + group.alerting]),
+          SHARE ? null : h('li', {}, [icon('bell'), 'Alerts ' + group.alerting]),
           editable && group.id !== null ? h('li', {}, h('button', { type: 'button', class: 'button', 'data-action': 'edit-group', 'data-group': group.id, 'aria-label': 'Change the group ' + title }, 'Change')) : null
         ])
       ]);
@@ -862,7 +952,7 @@
         head,
         h('div', { class: 'columns', 'aria-hidden': 'true' }, [
           h('span', {}, 'Status'), h('span', {}, 'Site'), h('span', {}, 'Last 30 days'), h('span', { class: 'right' }, 'Response'), h('span', { class: 'right' }, 'Uptime'),
-          h('span', { class: 'right' }, 'Headers')
+          SHARE ? null : h('span', { class: 'right' }, 'Headers')
         ]),
         h('ul', { class: 'site-list' }, sites.map(siteRow))
       ]));
@@ -965,7 +1055,7 @@
     var notes = [];
     if (site.name) notes.push(site.name);
     if (site.cdn) notes.push('behind ' + site.cdn);
-    if (site.snoozed_until) notes.push('snoozed');
+    if (site.snoozed_until) notes.push(SHARE ? 'acknowledged' : 'snoozed');
     if (site.maintenance) notes.push('in maintenance');
     var subtitle = notes.join(' · ');
     var cert = site.ssl && site.ssl.status !== 'ok' ? h('span', { class: site.ssl.status === 'fail' ? 'is-down' : 'is-warn' }, certificateWords(site.ssl)) : null;
@@ -980,8 +1070,10 @@
       class: 'site-row',
       'data-action': 'open',
       'data-site': site.id,
+      // What the row shows in words, its notes too (a certificate, public files), so a screen reader hears it all
       'aria-label': site.label + ': ' + STATUS_WORDS[site.status] + (site.status === 'up' ? ', ' + ms + ', ' + month + ' up over 30 days' : '. ' + site.summary) +
-        (grade ? '. Security headers: grade ' + grade : '')
+        [hidden, cert, registration, files].filter(Boolean).map(function (n) { return '. ' + n.textContent; }).join('') +
+        (grade && !SHARE ? '. Security headers: grade ' + grade : '')
     }, [
       statusLabel(site.status),
       h('span', { class: 'site-name' }, [h('strong', {}, site.label), small.length ? h('small', {}, small) : null]),
@@ -989,7 +1081,7 @@
       h('span', { class: 'site-figures' }, [
         h('span', { class: 'site-figure' }, [ms, h('small', {}, 'now')]),
         h('span', { class: 'site-figure' }, [month, h('small', {}, '30 days')]),
-        h('span', { class: 'site-figure' }, [grade || '–', h('small', {}, 'headers')])
+        SHARE ? null : h('span', { class: 'site-figure' }, [grade || '–', h('small', {}, 'headers')])
       ])
     ]));
   }
@@ -1070,10 +1162,11 @@
         h('button', { type: 'button', class: 'close-button', 'data-action': 'close', 'aria-label': 'Close' }, icon('close'))
       ]),
       site.summary ? h('p', { class: 'incident-summary' }, site.summary) : null,
-      advice(site.advice),
-      site.ssl && site.ssl.advice ? advice(site.ssl.summary + '. ' + site.ssl.advice) : null,
-      site.domain && site.domain.advice ? advice(site.domain.summary + '. ' + site.domain.advice) : null,
-      site.exposed && site.exposed.advice ? advice(site.exposed.summary + '. ' + site.exposed.advice) : null,
+      SHARE ? problemLines(site) : null,
+      advice(site.advice, 'detail:' + site.id),
+      site.ssl && site.ssl.advice ? advice(SHARE ? site.ssl.advice : site.ssl.summary + '. ' + site.ssl.advice, 'detail-cert:' + site.id) : null,
+      site.domain && site.domain.advice ? advice(SHARE ? site.domain.advice : site.domain.summary + '. ' + site.domain.advice, 'detail-domain:' + site.id) : null,
+      site.exposed && site.exposed.advice ? advice(SHARE ? site.exposed.advice : site.exposed.summary + '. ' + site.exposed.advice, 'detail-exposed:' + site.id) : null,
       badges(site),
       h('div', { class: 'actions' }, siteActions(site, true).filter(function (n) { return n.getAttribute('data-action') !== 'open'; }).concat(recheckButton(site))),
       recheckNote(site),
@@ -1095,12 +1188,11 @@
       // With an uptime path, the times are that path's
       h('h3', {}, site.check_path ? 'Response time of ' + site.check_path + ', last 24 hours' : 'Response time, last 24 hours'),
       chart(d.samples),
-      h('h3', { id: 'seen-title' }, 'What Vaka sees'),
+      h('h3', { id: 'seen-title' }, SHARE ? 'What is checked' : 'What Vaka sees'),
       seenTiles(site, editable),
-      h('h3', {}, 'Security headers'),
-      headerList(site.headers),
-      h('h3', {}, 'Mail'),
-      mailList(site.dns),
+      // The lines to add and the server tips are for whoever looks after the site
+      SHARE ? technical('site:' + site.id, 'Security headers and mail records, for your web developer', [h('h3', {}, 'Security headers'), headerList(site.headers), h('h3', {}, 'Mail'), mailList(site.dns)])
+        : [h('h3', {}, 'Security headers'), headerList(site.headers), h('h3', {}, 'Mail'), mailList(site.dns)],
       settingsCard(site, d.maintenance, editable),
       h('h3', {}, 'History'),
       timeline(d.events)
@@ -1257,7 +1349,7 @@
   }
 
   var TILE_ICONS = { ok: 'up', warn: 'failing', down: 'down', none: 'info' };
-  var TILE_WORDS = { warn: 'Needs a look: ', down: 'Problem: ' };
+  var TILE_WORDS = SHARE ? { warn: 'For your web developer: ', down: 'Problem: ' } : { warn: 'Needs a look: ', down: 'Problem: ' };
 
   /** A check's status as a tile's tone: ok, warn, down, or none for pending and unknown. */
   function tone(status) {
@@ -1305,7 +1397,8 @@
     var serverButton = editable && site.server_ip
       ? h('button', { type: 'button', class: 'link-button', 'data-action': 'edit-server' }, name === site.server_ip ? 'Name it' : 'Server settings')
       : null;
-    if (site.cdn) tiles.push(tile('Server', quiet('server'), 'Behind ' + site.cdn, 'Its addresses are shared, so it is alerted on its own'));
+    if (SHARE) { /* The server is the sender's own business */ }
+    else if (site.cdn) tiles.push(tile('Server', quiet('server'), 'Behind ' + site.cdn, 'Its addresses are shared, so it is alerted on its own'));
     else if (site.server) tiles.push(tile('Server', quiet('server'), name, site.server_ip ? (name === site.server_ip ? 'No name yet' : site.server_ip) : 'Set by hand', serverButton));
     else tiles.push(tile('Server', quiet('server'), 'Not known yet', 'Known after the first check'));
 
@@ -1336,6 +1429,7 @@
     else if (!headers) tiles.push(waiting('Security headers'));
     else if (!headers.grade) tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, headers.summary), headers, 'headers'));
     // "Grade E: 2 of 6 in place, missing ...": the first part, the rest is further down
+    else if (SHARE && typeof headers.good === 'number') tiles.push(stamped(tile('Browser protections', { tone: tone(headers.status) }, headers.good + ' of 6', 'Set up in full'), headers, 'headers'));
     else tiles.push(stamped(tile('Security headers', { tone: tone(headers.status) }, 'Grade ' + headers.grade, capitalize(headers.summary.replace(/^Grade [A-F]: /, '').split(', ')[0])), headers, 'headers'));
 
     var dns = site.dns;
@@ -1355,7 +1449,7 @@
     var setup = state.data.setup;
     var rows = [];
     if (site.name) rows.push(['Name', site.name]);
-    rows.push(['Group', site.group || 'No group']);
+    if (!SHARE) rows.push(['Group', site.group || 'No group']);
     rows.push(['Checked every', site.interval_minutes + ' min']);
     if (site.keyword) rows.push(['Looks for the text', '"' + site.keyword + '"' + (site.check_path ? ' on ' + site.check_path : '')]);
     if (site.check_path) rows.push(['Uptime checks', site.check_path]);
@@ -2360,7 +2454,7 @@
       var cls = { fail: 'is-fail', ok: 'is-ok', warn: 'is-warn', snoozed: 'is-quiet' }[event.status] || null;
       return h('li', { class: cls }, [
         h('time', { datetime: event.created_at }, clock(event.created_at)),
-        h('span', {}, [event.message, event.silenced_by ? h('span', { class: 'history-tag' }, event.silenced_by === 'maintenance' ? 'during maintenance' : 'while snoozed') : null])
+        h('span', {}, [event.message, event.silenced_by ? h('span', { class: 'history-tag' }, event.silenced_by === 'maintenance' ? 'during maintenance' : SHARE ? 'while acknowledged' : 'while snoozed') : null])
       ]);
     }));
   }

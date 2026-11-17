@@ -321,10 +321,13 @@ function show_shared_dashboard(array $config, array $token): never
     $scope = share_scope($token);
     // Several groups as words ("Customers and Own sites"); scope's name stays the read API's stable field
     $note = 'Shared view of ' . (isset($scope['groups']) ? list_words($scope['groups']) : $scope['name']) . ($token['expires_at'] === null ? '' : ', until ' . share_expires_words($token['expires_at'], $config['timezone']));
-    $shared = '<p class="shared-note" title="' . e($note) . ', read-only"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 13.2 7.6 4.1M15.8 6.7l-7.6 4.1"/></svg><span class="label">' . e($note) . '</span></p>';
+    $by = $config['shared_by'] !== '' ? ' data-shared-by="' . e($config['shared_by']) . '"' : '';
+    // On a phone the top bar has room for the icon only: the words go at the top of the page, with the note of whoever sent it
+    $intro = '<div class="shared-intro"><p class="shared-line">' . e($note) . '</p>' . ($config['shared_note'] !== '' ? '<p class="shared-message">' . e($config['shared_note']) . '</p>' : '') . '</div>';
+    $shared = '<p class="shared-note"' . $by . ' title="' . e($note) . ', read-only"><svg class="icon" viewBox="0 0 24 24" aria-hidden="true" focusable="false"><circle cx="18" cy="5.5" r="2.5"/><circle cx="6" cy="12" r="2.5"/><circle cx="18" cy="18.5" r="2.5"/><path d="m8.2 13.2 7.6 4.1M15.8 6.7l-7.6 4.1"/></svg><span class="label">' . e($note) . '</span></p>';
     $tracker = shared_tracker($config);
     // A link can be pasted anywhere: kept out of search engines
-    respond(200, dashboard_html($config, '', '', $shared, $tracker['tag']), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow'] + $tracker['headers']);
+    respond(200, dashboard_html($config, '', '', $shared, $tracker['tag'], $intro), 'text/html; charset=utf-8', ['Cache-Control' => 'no-store', 'X-Robots-Tag' => 'noindex, nofollow'] + $tracker['headers']);
 }
 
 /**
@@ -356,7 +359,7 @@ function shared_tracker(array $config): array
  * needs a login (the owner's API link and signing out), and $tracker is the
  * script of the Puls that counts it, if any.
  */
-function dashboard_html(array $config, string $csrf, string $user, ?string $shared = null, string $tracker = ''): string
+function dashboard_html(array $config, string $csrf, string $user, ?string $shared = null, string $tracker = '', string $intro = ''): string
 {
     $html = (string) file_get_contents(__DIR__ . '/../public/dashboard.html');
     if ($shared !== null) $html = (string) preg_replace('#<!-- signed-in -->.*?<!-- /signed-in -->#s', $shared, $html);
@@ -368,6 +371,7 @@ function dashboard_html(array $config, string $csrf, string $user, ?string $shar
         '{{user}}' => e($user),
         '{{mark}}' => mark_svg('vaka', 'mark'),
         '{{credit}}' => footer_credit($config),
+        '{{shared}}' => $intro,
     ]);
 }
 
@@ -533,14 +537,25 @@ function group_filter(?array $allowed): string
     return 's.group_id IN (' . implode(', ', array_map('intval', $allowed)) . ')';
 }
 
+/**
+ * When the alert for a check's current problem went out, for a shared page to
+ * say someone knows; null when there is no problem, it was not told yet, or
+ * the group only marks it (a digest or a silent group).
+ */
+function told_at(?string $status, ?string $alertedStatus, ?string $alertedAt, ?string $policy): ?string
+{
+    if (!in_array($status, ['warn', 'fail'], true) || $alertedStatus !== $status) return null;
+    return in_array($policy ?? 'immediate', ['immediate', 'delayed'], true) ? $alertedAt : null;
+}
+
 function overview_rows(PDO $db, string $where): array
 {
     $rows = $db->query("SELECT s.*, g.name AS group_name, g.policy, g.delay_minutes,
-            c.status, c.summary, c.details, c.fail_count, c.checked_at, c.next_at AS uptime_next_at, c.changed_at, c.snoozed_until, c.flapping_since,
-            cs.status AS ssl_status, cs.summary AS ssl_summary, cs.details AS ssl_details, cs.checked_at AS ssl_checked_at, cs.next_at AS ssl_next_at,
-            ce.status AS exposed_status, ce.summary AS exposed_summary, ce.details AS exposed_details, ce.changed_at AS exposed_changed_at, ce.checked_at AS exposed_checked_at, ce.next_at AS exposed_next_at,
+            c.status, c.summary, c.details, c.fail_count, c.checked_at, c.next_at AS uptime_next_at, c.changed_at, c.snoozed_until, c.flapping_since, c.alerted_status, c.alerted_at,
+            cs.status AS ssl_status, cs.summary AS ssl_summary, cs.alerted_status AS ssl_alerted_status, cs.alerted_at AS ssl_alerted_at, cs.details AS ssl_details, cs.checked_at AS ssl_checked_at, cs.next_at AS ssl_next_at,
+            ce.status AS exposed_status, ce.summary AS exposed_summary, ce.alerted_status AS exposed_alerted_status, ce.alerted_at AS exposed_alerted_at, ce.details AS exposed_details, ce.changed_at AS exposed_changed_at, ce.checked_at AS exposed_checked_at, ce.next_at AS exposed_next_at,
             ch.status AS headers_status, ch.summary AS headers_summary, ch.details AS headers_details, ch.checked_at AS headers_checked_at, ch.next_at AS headers_next_at,
-            cd.status AS domain_status, cd.summary AS domain_summary, cd.details AS domain_details, cd.checked_at AS domain_checked_at, cd.next_at AS domain_next_at,
+            cd.status AS domain_status, cd.summary AS domain_summary, cd.alerted_status AS domain_alerted_status, cd.alerted_at AS domain_alerted_at, cd.details AS domain_details, cd.checked_at AS domain_checked_at, cd.next_at AS domain_next_at,
             cm.status AS dns_status, cm.summary AS dns_summary, cm.details AS dns_details, cm.checked_at AS dns_checked_at, cm.next_at AS dns_next_at
         FROM sites s
         LEFT JOIN groups g ON g.id = s.group_id
@@ -587,6 +602,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'renewed_by' => $sslDetails['renewed_by'] ?? null,
             'renewal_late' => $late,
             'advice' => $row['ssl_status'] === 'ok' ? ($late ? ssl_late_advice($sslDetails) : '') : ssl_advice($sslDetails),
+            'told_at' => told_at($row['ssl_status'], $row['ssl_alerted_status'], $row['ssl_alerted_at'], $row['policy']),
         ] + $when('ssl');
     }
     $exposed = null;
@@ -598,6 +614,7 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'found' => $exposedDetails['found'] ?? [],
             'since' => $row['exposed_changed_at'],
             'advice' => advice_for($exposedDetails['problem'] ?? '', 0),
+            'told_at' => told_at($row['exposed_status'], $row['exposed_alerted_status'], $row['exposed_alerted_at'], $row['policy']),
         ] + $when('exposed');
     }
     $domain = null;
@@ -616,12 +633,16 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
             'registrar' => $domainDetails['registrar'] ?? '',
             'renewal_near' => $near,
             'advice' => in_array($row['domain_status'], ['warn', 'fail'], true) ? advice_for($domainDetails['problem'] ?? '', 0) : ($near ? domain_renewal_advice($first) : ''),
+            'told_at' => told_at($row['domain_status'], $row['domain_alerted_status'], $row['domain_alerted_at'], $row['policy']),
         ] + $when('domain');
     }
     // The grade only: what each header does comes with the site detail (see api_site())
     $headers = null;
     if (in_array($row['headers_status'], ['ok', 'warn', 'unknown'], true)) {
-        $headers = ['status' => $row['headers_status'], 'grade' => (json_decode((string) $row['headers_details'], true) ?: [])['grade'] ?? null, 'summary' => $row['headers_summary']] + $when('headers');
+        $graded = json_decode((string) $row['headers_details'], true) ?: [];
+        // How many of the six are set up in full, for a shared page, where a letter reads as a verdict on the site
+        $good = isset($graded['headers']) ? count(array_filter($graded['headers'], fn ($header) => ($header['level'] ?? 'missing') === 'good')) : null;
+        $headers = ['status' => $row['headers_status'], 'grade' => $graded['grade'] ?? null, 'good' => $good, 'summary' => $row['headers_summary']] + $when('headers');
     }
     // Mail records in words; what each record is comes with the site detail (see api_site())
     $dns = null;
@@ -661,6 +682,9 @@ function site_summary(PDO $db, array $config, array $row, array $labels, array $
         'server' => $serverKey === null ? null : server_display($row, $labels),
         'cdn' => $row['cdn'] !== '' ? $row['cdn'] : null,
         'snoozed_until' => $quiet === 'snooze' ? $row['snoozed_until'] : null,
+        // When the alert for this outage went out, and how the group is told, for a shared page to say who knows
+        'told_at' => $status === 'down' ? told_at($row['status'], $row['alerted_status'], $row['alerted_at'], $row['policy']) : null,
+        'policy' => $row['policy'] ?? 'immediate',
         'maintenance' => $quiet === 'maintenance',
         'unstable' => $row['flapping_since'] !== null,
         'blocked' => $blocked,

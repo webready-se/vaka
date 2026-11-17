@@ -140,6 +140,8 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         : ['status' => 'ok', 'summary' => ($cdn === 'Cloudflare' ? "Cloudflare's certificate, which Cloudflare renews by itself: valid" : 'Valid') . ' until ' . date('j M Y', $validTo) . " ({$days} days), issued by {$issuer}", 'problem' => ''];
     if (!in_array($story, ['paused', 'hostile'], true)) {
         save_check_state($db, $id, 'ssl', ['status' => $ssl['status'], 'summary' => $ssl['summary'], 'fail_count' => 0, 'changed_at' => utc_now($month), 'details' => ['days_left' => $days, 'valid_from' => utc_now($validTo - 90 * 86400), 'valid_to' => utc_now($validTo), 'issuer' => $issuer, 'problem' => $ssl['problem'], 'renewed_by' => $cdn === 'Cloudflare' ? 'Cloudflare' : null]], utc_now($now - 3600), utc_now($now + 5 * 3600));
+        // Told when it passed its threshold, as a run would: a shared page says so
+        if ($ssl['status'] !== 'ok') $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_at = ? WHERE site_id = ? AND check_name = 'ssl'")->execute([$ssl['status'], utc_now($now - 6 * 3600), $id]);
         $db->prepare("UPDATE check_state SET alerted_status = ?, thresholds_sent = ? WHERE site_id = ? AND check_name = 'ssl'")
             ->execute([$ssl['status'], json_encode(['valid_to' => utc_now($validTo), 'sent' => $days <= 7 ? [14, 7] : []]), $id]);
     }
@@ -173,6 +175,7 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
         $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_snapshot = ? WHERE site_id = ? AND check_name = 'exposed'")
             ->execute([$exposed['status'], json_encode(array_column($found, 'label')), $id]);
         if ($found) add_event($db, $id, 'exposed', ['status' => 'fail', 'previous' => 'ok', 'message' => $exposed['summary']], $exposed['changed_at']);
+        if ($found) $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_at = ? WHERE site_id = ? AND check_name = 'exposed'")->execute([$exposed['status'], utc_now(strtotime($exposed['changed_at']) + 60), $id]);
     }
 
     // Security headers: a spread of grades, from a hardened site to a bare one
@@ -243,8 +246,11 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
     }
 
     $alerted = in_array($story, ['down', 'snoozed', 'hostile'], true) ? 'fail' : 'ok';
-    $db->prepare("UPDATE check_state SET alerted_status = ?, flapping_since = ?, snoozed_until = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([
+    // Told a minute after it went down, as a run would: a shared page says when
+    $toldAt = ['down' => $now - 13 * 60, 'snoozed' => $now - 39 * 60, 'hostile' => $now - 60][$story] ?? null;
+    $db->prepare("UPDATE check_state SET alerted_status = ?, alerted_at = ?, flapping_since = ?, snoozed_until = ? WHERE site_id = ? AND check_name = 'uptime'")->execute([
         $story === 'snoozed' ? 'snoozed' : $alerted,
+        $toldAt === null ? null : utc_now($toldAt),
         $story === 'unstable' ? utc_now($now - 35 * 60) : null,
         $story === 'snoozed' ? utc_now($now + 3 * 3600 + 20 * 60) : null,
         $id,
