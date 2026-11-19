@@ -238,6 +238,25 @@ test('site:edit moves every site on a server into a group, by IP or by its name'
     expect(vaka(['site:edit', 'web-2', '--group=none'], $this->env)['out'])->toContain('Moved 1 site on server web-2 (198.51.100.7) out of its group: other.example.');
 });
 
+test('moving several sites writes it in the history of each site that moved, as the dashboard does', function () {
+    vaka(['group:add', 'Customers'], $this->env);
+    vaka(['group:add', 'web-1'], $this->env);
+    vaka(['site:add', 'shop.example', '--group=Customers'], $this->env);
+    vaka(['site:add', 'blog.example', '--group=web-1'], $this->env);
+    vaka(['site:add', 'other.example', '--group=Customers'], $this->env);
+    $db = get_db($this->env['DB_PATH']);
+    $db->exec("UPDATE sites SET ip = '203.0.113.10' WHERE url IN ('https://shop.example', 'https://blog.example')");
+    $history = fn () => $db->query("SELECT s.url, e.message FROM events e JOIN sites s ON s.id = e.site_id WHERE e.check_name = 'settings' ORDER BY e.id")->fetchAll(PDO::FETCH_NUM);
+
+    vaka(['site:edit', '203.0.113.10', '--group=web-1'], $this->env);
+    // blog.example was in web-1 already: nothing to write
+    expect($history())->toBe([['https://shop.example', 'Moved to group web-1 on the command line, with every site on server 203.0.113.10']]);
+
+    // Listed by group: other.example (Customers) first
+    vaka(['site:edit', '--group=none'], $this->env, "1\n");
+    expect($history()[1])->toBe(['https://other.example', 'Moved out of its group on the command line']);
+});
+
 test('a move says who it shows the sites to and hides them from, since logins and tokens for a group follow its sites', function () {
     vaka(['group:add', 'Customers'], $this->env);
     vaka(['group:add', 'Agency'], $this->env);
