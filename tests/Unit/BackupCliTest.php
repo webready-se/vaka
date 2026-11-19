@@ -32,6 +32,16 @@ test('backup writes a checked, compressed copy of the database that only its own
         ->and(fileperms($files[0]) & 0777)->toBe(0600);
 });
 
+test('a backup leaves out the login log, which holds who tried to log in and from where', function () {
+    audit_log(get_db($this->env['DB_PATH']), 'admin', 'login_failed', '198.51.100.23', time());
+    vaka(['backup', $this->dir], $this->env);
+    $path = glob("{$this->dir}/vaka-*")[0];
+
+    expect((int) unpack_backup($path)->query('SELECT COUNT(*) FROM audit_log')->fetchColumn())->toBe(0)
+        // Not even in the free pages of the file
+        ->and(file_get_contents("compress.zlib://{$path}"))->not->toContain('198.51.100.23');
+});
+
 test('the first backup says how to make one every night, as whom, and that the copies are on this server', function () {
     $first = vaka(['backup', $this->dir, '--keep=14'], $this->env)['out'];
     expect($first)->toContain("This is the first backup here. For one every night, add this line to cron (crontab -e) as the user that runs `vaka run`:\n")

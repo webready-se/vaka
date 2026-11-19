@@ -118,7 +118,7 @@ Three things tell you when Vaka itself stops:
 
 ## Backups
 
-Your sites can be added again from a CSV file, but the rest of what Vaka knows is only in its database (`data/vaka.sqlite`): the groups and where they alert (their webhook URLs), maintenance windows, server names, read tokens, snoozes and every site's history. A backup leaves out `users.json` (the logins) and `.env` (the settings, default alert addresses among them), which change only when you add a user or a setting: copy those off the server yourself when they do.
+Your sites can be added again from a CSV file, but the rest of what Vaka knows is only in its database (`data/vaka.sqlite`): the groups and where they alert (their webhook URLs), maintenance windows, server names, read tokens, snoozes and every site's history. A backup leaves out `users.json` (the logins) and `.env` (the settings, default alert addresses among them), which change only when you add a user or a setting: copy those off the server yourself when they do. It also leaves out the log of who tried to log in and from where, which is only there to lock out guessing and is kept for 30 days.
 
 `php vaka backup` copies the database as it is at one moment, so runs can go on meanwhile, checks the copy, compresses it with gzip and keeps the newest 7 in `data/backups/` (`--keep=14` keeps 14). A folder you give it instead must exist; a relative one is read from Vaka's folder, as `DB_PATH` is. Without PHP's zlib the copy is kept uncompressed. Only the owner can read the copies, since they hold the groups' webhook URLs.
 

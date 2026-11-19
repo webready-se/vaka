@@ -314,7 +314,8 @@ const BACKUP_NAME = '/^vaka-\d{4}-\d{2}-\d{2}-\d{6}\.sqlite(\.gz)?$/';
  * URLs and every site's history. The copy is checked, then compressed with
  * gzip where PHP has zlib, and the compressed file is read back against the
  * copy. Only then are the backups beyond the newest $keep removed; a copy
- * that fails a check is removed instead. The same as Puls's.
+ * that fails a check is removed instead. The same as Puls's, without the
+ * login log.
  *
  * It is written under a name that starts with a dot and takes its own name
  * when whole, so a job that copies vaka-* off the server never takes half a
@@ -352,7 +353,13 @@ function backup_database(PDO $db, string $dir, int $keep, ?bool $compress = null
         }
 
         $db->prepare('VACUUM INTO ?')->execute([$copy]);
-        $check = (new PDO('sqlite:' . $copy))->query('PRAGMA integrity_check')->fetchColumn();
+        // The login log (who tried to log in, and from where) is for the lockout only and kept 30 days, so a copy
+        // kept longer leaves it out, its bytes overwritten too
+        $copied = new PDO('sqlite:' . $copy);
+        $copied->exec('PRAGMA secure_delete = ON');
+        $copied->exec('DELETE FROM audit_log');
+        $check = $copied->query('PRAGMA integrity_check')->fetchColumn();
+        $copied = null;
         if ($check !== 'ok') {
             throw new RuntimeException("The copy failed its check ({$check}), so it was removed and older backups kept.");
         }
