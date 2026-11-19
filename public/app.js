@@ -966,7 +966,7 @@
   /**
    * A day bar's colour: green without an outage, amber when down for less
    * than an hour, red for an hour or more, the quiet colour when it was only
-   * down in maintenance, grey without data.
+   * down in maintenance, grey without data (not watched yet, or paused all day).
    */
   function dayClass(d, paused) {
     if (paused || d.up === null) return 'is-none';
@@ -988,16 +988,21 @@
     return count === 1 ? 'once' : count === 2 ? 'twice' : count + ' times';
   }
 
-  /** What a day bar says: "Yesterday: down twice, 1 h 20 min in all". */
+  /** What a day bar says: "Yesterday: down twice, 1 h 20 min in all", "Mon 2 Nov: paused 9 h, up the rest of the day". */
   function dayWords(d, paused, name) {
     if (paused) return name + ': paused';
-    if (d.up === null) return name + ': not watched yet';
+    if (d.up === null) return name + (d.paused_seconds > 0 ? ': paused' : ': not watched yet');
+    // Paused time is neither up nor down, so it is said apart from both
+    var pause = d.paused_seconds > 0 ? 'paused ' + duration(d.paused_seconds) : '';
     var words;
     if (d.down_seconds > 0) {
       words = 'down ' + times(d.outages) + ', ' + duration(d.down_seconds) + (d.outages > 1 ? ' in all' : '');
       if (d.planned_seconds > 0) words += ', and ' + duration(d.planned_seconds) + ' in maintenance (not counted)';
+      if (pause) words += ', ' + pause;
     } else if (d.planned_seconds > 0) {
-      words = 'down ' + duration(d.planned_seconds) + ' in maintenance (planned, not counted)';
+      words = 'down ' + duration(d.planned_seconds) + ' in maintenance (planned, not counted)' + (pause ? ', ' + pause : '');
+    } else if (pause) {
+      words = pause + (name === 'Today' ? ', up so far' : ', up the rest of the day');
     } else {
       words = name === 'Today' ? 'up so far' : 'up all day';
     }
@@ -1030,18 +1035,24 @@
     if (!watched.length) return 'Not watched yet.';
     var down = watched.filter(function (d) { return d.down_seconds > 0; });
     var planned = watched.filter(function (d) { return d.planned_seconds > 0; });
+    var pausedDays = list.filter(function (d) { return d.paused_seconds > 0; });
     var span = plural(watched.length, 'day', 'days');
     var text = down.length
       ? 'Down on ' + down.length + ' of ' + span + ', ' + duration(down.reduce(function (sum, d) { return sum + d.down_seconds; }, 0)) + ' in all.'
       : 'No outages in ' + span + '.';
-    return text + (planned.length ? ' Planned maintenance on ' + plural(planned.length, 'day', 'days') + ', not counted.' : '');
+    return text + (planned.length ? ' Planned maintenance on ' + plural(planned.length, 'day', 'days') + ', not counted.' : '')
+      + (pausedDays.length ? ' Paused on ' + plural(pausedDays.length, 'day', 'days') + ', not counted.' : '');
   }
 
   /** What the colours mean: the three that always matter, and maintenance and no data when there are such days. */
   function dayKey(list, paused) {
     var classes = list.map(function (d) { return dayClass(d, paused); });
+    // Grey is a day not watched yet, or one paused from start to end: the key names the ones there are
+    var grey = list.filter(function (d) { return !paused && d.up === null; });
+    var pausedAllDay = grey.filter(function (d) { return d.paused_seconds > 0; }).length;
+    var none = paused || !pausedAllDay ? 'Not watched' : pausedAllDay === grey.length ? 'Paused' : 'Not watched or paused';
     return h('ul', { class: 'day-key', 'aria-hidden': 'true' }, [
-      [null, 'No outage'], ['is-partial', 'Down less than an hour'], ['is-down', 'An hour or more'], ['is-planned', 'Maintenance'], ['is-none', 'Not watched']
+      [null, 'No outage'], ['is-partial', 'Down less than an hour'], ['is-down', 'An hour or more'], ['is-planned', 'Maintenance'], ['is-none', none]
     ].filter(function (item) {
       return item[0] === null || item[0] === 'is-partial' || item[0] === 'is-down' || classes.indexOf(item[0]) !== -1;
     }).map(function (item) {

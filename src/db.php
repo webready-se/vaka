@@ -231,6 +231,20 @@ function migrations(): array
             'INSERT INTO share_groups (token_id, group_id) SELECT token_id, group_id FROM share_groups_old',
             'DROP TABLE share_groups_old',
         ],
+        12 => [
+            // When a site was paused: neither up nor down, so left out of its uptime. A pause ends at
+            // the first check after the site is resumed (ended_at is null until then)
+            "CREATE TABLE pauses (
+                site_id INTEGER NOT NULL REFERENCES sites (id) ON DELETE CASCADE,
+                started_at TEXT NOT NULL,
+                ended_at TEXT
+            )",
+            'CREATE INDEX idx_pauses_site ON pauses (site_id, started_at)',
+            // A site paused before this has been paused since its last check
+            "INSERT INTO pauses (site_id, started_at)
+                SELECT s.id, c.checked_at FROM sites s JOIN check_state c ON c.site_id = s.id AND c.check_name = 'uptime'
+                WHERE s.paused = 1 AND c.checked_at IS NOT NULL",
+        ],
     ];
 }
 

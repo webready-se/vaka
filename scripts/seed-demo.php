@@ -35,7 +35,7 @@ $month = $now - 30 * 86400;
 // One transaction for all of it: in place, the old demo goes and the new one comes at once
 $db->beginTransaction();
 if ($refresh) {
-    foreach (['share_groups', 'share_tokens', 'samples', 'events', 'check_state', 'maintenance', 'sites', 'servers', 'groups'] as $table) $db->exec("DELETE FROM {$table}");
+    foreach (['share_groups', 'share_tokens', 'samples', 'events', 'check_state', 'maintenance', 'pauses', 'sites', 'servers', 'groups'] as $table) $db->exec("DELETE FROM {$table}");
 }
 
 add_group($db, ['name' => 'Customers', 'slack_webhook' => 'https://hooks.example/services/demo/demo/demo1234']);
@@ -99,6 +99,10 @@ foreach ($sites as [$url, $group, $ip, $cdn, $ms, $story]) {
     foreach ($older as [$start, $length, $silencedBy]) {
         add_event($db, $id, 'uptime', ['status' => 'fail', 'previous' => 'ok', 'message' => 'Down: no answer within 10 s'], utc_now($start), $silencedBy);
         add_event($db, $id, 'uptime', ['status' => 'ok', 'previous' => 'fail', 'message' => 'Up again after ' . human_duration($length) . ': answered 200 OK in ' . $ms . ' ms'], utc_now($start + $length), $silencedBy);
+    }
+    // Paused for a few days last week: grey days, and two that were paused part of the day
+    if ($url === 'https://docs.example') {
+        $db->prepare('INSERT INTO pauses (site_id, started_at, ended_at) VALUES (?, ?, ?)')->execute([$id, utc_now($at(8, 11)), utc_now($at(5, 15))]);
     }
 
     // When it last came back: its last outage's end, or a month ago when it has had none

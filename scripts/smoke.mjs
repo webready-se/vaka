@@ -295,6 +295,12 @@ async function main() {
       fails.push('cafe.example has a red day 16 days ago');
     }
     expect(/: down \d+ min in maintenance \(planned, not counted\)$/.test(q('.site-row .days i.is-planned')?.getAttribute('data-tip') || ''), 'a maintenance day says it is planned and not counted');
+    // docs.example was paused from 11:00 eight days ago until 15:00 five days ago: neither up nor down
+    const docsBars = Array.from(all('.site-row').find((r) => /docs\.example/.test(r.textContent))?.querySelectorAll('.days i') || []);
+    const pausedBars = docsBars.filter((i) => / paused$/.test(i.getAttribute('data-tip')));
+    const partlyPaused = docsBars.filter((i) => /: paused \d+ h( \d+ min)?, up the rest of the day$/.test(i.getAttribute('data-tip')));
+    expect(pausedBars.length === 2 && pausedBars.every((i) => i.classList.contains('is-none')) && partlyPaused.length === 2 && partlyPaused.every((i) => !i.className),
+      `days paused from start to end are grey and say so, and a day paused part of the day says how long and stays green (got ${docsBars.map((i) => i.getAttribute('data-tip')).filter((t) => /paused/.test(t)).join(' | ')})`);
     expect(all('.site-row').some((r) => /behind Cloudflare/.test(r.textContent)), 'a CDN site says so');
     expect(all('.site-row').some((r) => /cafe\.example\s*2 private files are public/.test(r.textContent)), 'a site with public files says so in its row');
     expect(all('.columns').every((c) => /Headers/.test(c.textContent)), 'a column for the security headers grade');

@@ -136,6 +136,15 @@ test('overlap_seconds counts the time inside the cover once, even where the cove
         ->and(overlap_seconds([], [[0, 1000]]))->toBe(0);
 });
 
+test('without_periods takes the cover out of each period, splitting one the cover falls inside', function () {
+    expect(without_periods([[100, 200]], [[120, 150]]))->toBe([[100, 120], [150, 200]])
+        ->and(without_periods([[100, 200], [300, 400]], [[150, 350]]))->toBe([[100, 150], [350, 400]])
+        ->and(without_periods([[100, 200]], [[50, 250]]))->toBe([])
+        ->and(without_periods([[100, 200]], [[200, 300], [0, 100]]))->toBe([[100, 200]])
+        ->and(without_periods([[100, 200]], [[160, 180], [110, 120], [115, 130]]))->toBe([[100, 110], [130, 160], [180, 200]])
+        ->and(without_periods([[100, 200]], []))->toBe([[100, 200]]);
+});
+
 test('uptime_percent rounds to what is worth showing and is null without data', function () {
     expect(uptime_percent(0, 86400))->toBe(100.0)
         ->and(uptime_percent(30 * 60 + 3600, 86400))->toBe(93.75)
@@ -183,13 +192,58 @@ test('downtime inside a maintenance window is planned: shown on its own and left
     $now = (new DateTimeImmutable('2026-11-03 12:00', new DateTimeZone('Europe/Stockholm')))->getTimestamp();
 
     $days = daily_uptime($db, $site, $now, 3, 'Europe/Stockholm');
-    expect($days[1])->toBe(['date' => '2026-11-02', 'up' => 97.56, 'down_seconds' => 35 * 60, 'outages' => 2, 'planned_seconds' => 30 * 60])
+    expect($days[1])->toBe(['date' => '2026-11-02', 'up' => 97.56, 'down_seconds' => 35 * 60, 'outages' => 2, 'planned_seconds' => 30 * 60, 'paused_seconds' => 0])
         ->and($days[2])->toMatchArray(['up' => 100.0, 'down_seconds' => 0, 'outages' => 0, 'planned_seconds' => 0])
         // Watched for two days, 35 minutes of them down outside the window
         ->and(site_uptime($db, $site, 7 * 86400, $now, 'Europe/Stockholm'))->toBe(uptime_percent(35 * 60, 2 * 86400))
         // Paused, nothing is checked: its uptime is unknown, not 100% next to "No checks in the last 24 hours"
         ->and(site_uptime($db, ['paused' => 1] + $site, 86400, $now, 'Europe/Stockholm'))->toBeNull()
         ->and(site_uptime($db, ['paused' => 1] + $site, 30 * 86400, $now, 'Europe/Stockholm'))->toBeNull();
+});
+
+test('time while a site was paused is neither up nor down: left out of its uptime and its days', function () {
+    $db = get_db(temp_dir() . '/vaka.sqlite');
+    $id = add_site($db, ['url' => 'https://shop.example']);
+    $at = fn (string $local) => (new DateTimeImmutable($local, new DateTimeZone('Europe/Stockholm')))->getTimestamp();
+    $event = fn (string $status, string $local) => add_event($db, $id, 'uptime', ['status' => $status, 'previous' => '', 'message' => ''], utc_now($at($local)));
+    $event('ok', '2026-11-01 12:00');
+    // Down at 10:00, paused at noon while still down, resumed two days later and up on the first check after
+    $event('fail', '2026-11-02 10:00');
+    update_site($db, $id, ['paused' => true], $at('2026-11-02 12:00'));
+    update_site($db, $id, ['paused' => false], $at('2026-11-04 09:00'));
+    end_pauses($db, [$id], $at('2026-11-04 09:01'));
+    $event('ok', '2026-11-04 09:01');
+    $site = find_site($db, (string) $id);
+    $now = $at('2026-11-05 12:00');
+
+    $days = daily_uptime($db, $site, $now, 5, 'Europe/Stockholm');
+    expect($days[1])->toBe(['date' => '2026-11-02', 'up' => 83.33, 'down_seconds' => 2 * 3600, 'outages' => 1, 'planned_seconds' => 0, 'paused_seconds' => 12 * 3600])
+        // Paused from start to end: nothing was checked, so no uptime
+        ->and($days[2])->toMatchArray(['up' => null, 'down_seconds' => 0, 'outages' => 0, 'paused_seconds' => 86400])
+        // Paused until the first check after it was resumed, so the minute in between is no outage
+        ->and($days[3])->toMatchArray(['up' => 100.0, 'down_seconds' => 0, 'outages' => 0, 'paused_seconds' => 9 * 3600 + 60])
+        ->and($days[0]['paused_seconds'])->toBe(0)
+        // Watched four days less the 45 h paused, two hours of it down
+        ->and(site_uptime($db, $site, 7 * 86400, $now, 'Europe/Stockholm'))->toBe(uptime_percent(2 * 3600, $now - $at('2026-11-01 12:00') - (45 * 3600 + 60)));
+});
+
+test('a pause is kept once, however often the site is saved as paused, and ends at the first check after', function () {
+    $db = get_db(temp_dir() . '/vaka.sqlite');
+    $id = add_site($db, ['url' => 'https://shop.example']);
+    $pauses = fn () => $db->query("SELECT started_at, ended_at FROM pauses WHERE site_id = {$id} ORDER BY started_at")->fetchAll();
+    $now = strtotime('2026-11-02T10:00:00Z');
+
+    update_site($db, $id, ['paused' => true], $now);
+    update_site($db, $id, ['paused' => true, 'name' => 'Shop'], $now + 60);
+    // Resumed and paused again before any check: one pause
+    update_site($db, $id, ['paused' => false], $now + 120);
+    update_site($db, $id, ['paused' => true], $now + 130);
+    expect($pauses())->toBe([['started_at' => utc_now($now), 'ended_at' => null]]);
+
+    update_site($db, $id, ['paused' => false], $now + 3600);
+    end_pauses($db, [$id], $now + 3615);
+    update_site($db, $id, ['name' => 'Shop again'], $now + 7200);
+    expect($pauses())->toBe([['started_at' => utc_now($now), 'ended_at' => utc_now($now + 3615)]]);
 });
 
 test('response time buckets: the average per hour, and how many checks were up', function () {

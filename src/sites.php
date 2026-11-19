@@ -484,7 +484,7 @@ function add_site(PDO $db, array $input): int
     return (int) $db->lastInsertId();
 }
 
-function update_site(PDO $db, int $id, array $input): void
+function update_site(PDO $db, int $id, array $input, ?int $now = null): void
 {
     $fields = clean_site_fields($db, $input);
     if (!$fields) return;
@@ -492,6 +492,12 @@ function update_site(PDO $db, int $id, array $input): void
 
     $set = implode(', ', array_map(fn ($column) => "{$column} = ?", array_keys($fields)));
     $db->prepare("UPDATE sites SET {$set} WHERE id = ?")->execute([...array_values($fields), $id]);
+    // A pause begins once, however often the site is saved as paused, and goes on until the first check after
+    // it is resumed (end_pauses()), so a site resumed and paused again before any check has one pause
+    if (!empty($fields['paused'])) {
+        $db->prepare('INSERT INTO pauses (site_id, started_at) SELECT ?, ? WHERE NOT EXISTS (SELECT 1 FROM pauses WHERE site_id = ? AND ended_at IS NULL)')
+            ->execute([$id, utc_now($now), $id]);
+    }
 
     // A change to what is checked (or a resumed site) is checked on the next run, not after the old interval;
     // a new URL is a new target for every check
@@ -500,6 +506,20 @@ function update_site(PDO $db, int $id, array $input): void
     } elseif (array_intersect_key($fields, array_flip(['keyword', 'check_path', 'interval_minutes', 'paused']))) {
         $db->prepare("UPDATE check_state SET next_at = NULL WHERE site_id = ? AND check_name = 'uptime'")->execute([$id]);
     }
+}
+
+/**
+ * End the pauses of sites that have just been checked. Until its first check
+ * a resumed site's status is the one from before its pause, so the time in
+ * between counts as paused, not as down.
+ *
+ * @param list<int> $siteIds
+ */
+function end_pauses(PDO $db, array $siteIds, int $now): void
+{
+    if (!$siteIds) return;
+    $db->prepare('UPDATE pauses SET ended_at = ? WHERE ended_at IS NULL AND site_id IN (' . implode(', ', array_map('intval', $siteIds)) . ')')
+        ->execute([utc_now($now)]);
 }
 
 /**

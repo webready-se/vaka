@@ -104,7 +104,7 @@ function save_site_form(PDO $db, array $config, array $form, ?int $id, string $u
     $columns = ['url' => 'url', 'group' => 'group_id', 'name' => 'name', 'keyword' => 'keyword', 'check_path' => 'check_path', 'interval' => 'interval_minutes', 'paused' => 'paused', 'disabled_checks' => 'disabled_checks'];
     $clean = clean_site_fields($db, $checked['input']);
     $changed = array_filter($checked['input'], fn ($value, $key) => $clean[$columns[$key]] != $old[$columns[$key]], ARRAY_FILTER_USE_BOTH);
-    update_site($db, $id, $changed);
+    update_site($db, $id, $changed, $now);
     $changes = describe_site_changes($db, $old, find_site($db, (string) $id), $config['uptime_interval']);
     if ($changes) add_event($db, $id, 'settings', ['status' => 'changed', 'previous' => '', 'message' => "Changed by {$user}: " . implode(', ', $changes)], utc_now($now));
     return ['id' => $id, 'changes' => $changes, 'errors' => []];

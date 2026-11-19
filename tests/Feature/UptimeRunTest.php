@@ -86,6 +86,19 @@ test('a missing keyword is down, and fixing it is up again', function () {
         ]);
 });
 
+test('a site paused while down is up again after the time it was watched down, and its pause ends at that check', function () {
+    $id = add_site($this->db, ['url' => 'http://127.0.0.1:8791', 'keyword' => 'Add to cart']);
+    run($this->db, $this->config, $this->now);
+    run($this->db, $this->config, $this->now + 60);
+    update_site($this->db, $id, ['paused' => true], $this->now + 120);
+    update_site($this->db, $id, ['paused' => false, 'keyword' => 'Welcome to the shop'], $this->now + 3 * 3600);
+    run($this->db, $this->config, $this->now + 3 * 3600 + 60);
+
+    expect(array_column(($this->events)(), 'message')[1])->toStartWith('Up again after 2 min: ')
+        ->and($this->db->query("SELECT started_at, ended_at FROM pauses WHERE site_id = {$id}")->fetchAll())
+        ->toBe([['started_at' => utc_now($this->now + 120), 'ended_at' => utc_now($this->now + 3 * 3600 + 60)]]);
+});
+
 test('a site is checked again only when its interval has passed, in a minute of its own', function () {
     add_site($this->db, ['url' => 'http://127.0.0.1:8791']);
     add_site($this->db, ['url' => 'http://127.0.0.1:8791/fast', 'interval' => '1']);

@@ -221,7 +221,10 @@ function collect_notices(PDO $db, array $config, int $now): array
             'kind' => $notice['kind'],
             'summary' => $row['summary'],
             'since' => $row['changed_at'],
-            'down_seconds' => $notice['kind'] === 'reminder' ? $now - strtotime($row['changed_at']) : json_decode($row['details'], true)['down_seconds'] ?? 0,
+            // A reminder after a pause tells the time the site was watched down, not the pause
+            'down_seconds' => $notice['kind'] === 'reminder'
+                ? $now - strtotime($row['changed_at']) - paused_seconds($db, $row['site_id'], strtotime($row['changed_at']), $now)
+                : json_decode($row['details'], true)['down_seconds'] ?? 0,
             'outages' => $outages,
             'remind_hours' => $config['remind_every_hours'],
             'server_key' => $key,

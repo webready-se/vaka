@@ -68,6 +68,25 @@ test('processes opening a new database at the same time all end up on the latest
     }
 });
 
+test('a site paused before pauses were kept counts as paused from its last check', function () {
+    // Before: a database at version 11, with one site paused and one watched, both checked
+    $db = new PDO('sqlite:' . temp_dir() . '/vaka.sqlite');
+    $db->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+    $db->setAttribute(PDO::ATTR_DEFAULT_FETCH_MODE, PDO::FETCH_ASSOC);
+    $db->exec('PRAGMA foreign_keys = ON');
+    run_migrations($db, array_filter(migrations(), fn (int $version) => $version <= 11, ARRAY_FILTER_USE_KEY));
+    $paused = add_site($db, ['url' => 'https://shop.example', 'paused' => true]);
+    $watched = add_site($db, ['url' => 'https://blog.example']);
+    $never = add_site($db, ['url' => 'https://new.example', 'paused' => true]);
+    $state = ['status' => 'fail', 'summary' => '', 'details' => [], 'fail_count' => 2, 'changed_at' => '2026-10-26T09:57:00Z'];
+    save_check_state($db, $paused, 'uptime', $state, '2026-10-26T10:30:00Z', '2026-10-26T10:31:00Z');
+    save_check_state($db, $watched, 'uptime', $state, '2026-11-19T08:00:00Z', '2026-11-19T08:01:00Z');
+
+    run_migrations($db);
+    expect($db->query('SELECT site_id, started_at, ended_at FROM pauses')->fetchAll())
+        ->toBe([['site_id' => $paused, 'started_at' => '2026-10-26T10:30:00Z', 'ended_at' => null]]);
+});
+
 test('a revoked token\'s number is never handed out again, and an older database keeps its tokens and their groups', function () {
     // Before: a database at version 10, with a token for two groups and one for a site
     $db = new PDO('sqlite:' . temp_dir() . '/vaka.sqlite');
