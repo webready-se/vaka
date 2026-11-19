@@ -88,7 +88,7 @@ config.php               Configuration: loads .env, resolves paths (Forge zero-d
 .env                     Optional environment config (gitignored)
 src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines functions only, no side effects
 src/config.php           parse_env(), load_env(), resolve_path(), int_list(), old_release_warning() (a release that is not current/'s: told on STDERR on every command, which still runs); timezone_setting() and time_format_setting() (TIMEZONE and TIME_FORMAT as in Puls: unset is the server's zone, a wrong value never stops a run and is shown), track_shared_setting() (TRACK_SHARED_URL: a plain address or off, said), clock_text()
-src/db.php               get_db(), enable_wal(), migrations(), run_migrations()
+src/db.php               get_db(), enable_wal(), migrations(), run_migrations(); backup_database() (VACUUM INTO a dated copy, checked with integrity_check, gzipped and read back, 0600, the newest BACKUP_KEEP kept; the same as Puls's)
 src/cli.php              parse_args(), allow_options(), prompt(), ask(), confirm(), choose(), print_table(), fail()
 src/sites.php            CHECKS, POLICIES, normalize_url(), clean_check_path() and uptime_url() (an uptime path on the site's own host, for uptime only), groups and sites (validation, storage, plain-words descriptions; update_site() starts a pause once, end_pauses() ends it at the first check after a resume); host_resolves() and unresolved_note() (a new address not in DNS waits for "Add anyway": a typo is caught before it alerts)
 src/import.php           parse_import_csv(), import_sites() (all or nothing, dry run)
@@ -98,6 +98,7 @@ src/commands/run.php     run, check, status
 src/commands/alerts.php  alert:test, server:list, server:label
 src/commands/silence.php maintenance:add, maintenance:list, maintenance:remove, snooze, unsnooze; group_or_site() and pick_group_or_site()
 src/commands/share.php   share:create, share:list (what each token reaches now), share:edit, share:revoke
+src/commands/backup.php  backup (the first one prints the nightly cron line, backup_cron_line(), and that the copies are on this server)
 src/http.php             fetch_many(): parallel GETs over curl_multi (redirects, body cap, final headers), user_agent()
 src/checks/uptime.php    evaluate_uptime() (with `problem` kind), next_uptime_state(), detect_cdn(), bot_check() (a bot check is not the site: uptime keeps its status, headers and exposed files say unknown), advice_for(), plain-words errors and durations
 src/checks/ssl.php       fetch_certificate() (verified, then unverified to describe a bad one), certificate_info(), host_matches(), evaluate_ssl(), ssl_notice() (thresholds once per certificate), ssl_renewal_late() and ssl_late_advice() (a certificate of 100 days or less with under a third left missed its renewal: a heads-up, never an alert)
@@ -130,6 +131,7 @@ docs/brand.md            What is Vaka's own on top of the design kit: the owl's 
 users.json               User credentials (bcrypt, created by the CLI, gitignored)
 data/vaka.sqlite         SQLite database (auto-created, gitignored)
 data/vaka.lock           Run lock (flock)
+data/backups/            `php vaka backup`'s copies (vaka-YYYY-MM-DD-HHMMSS.sqlite.gz, 0600)
 data/rdap-dns.json       IANA's RDAP bootstrap file, refreshed weekly
 composer.json            Platform requirements (PHP 8.3+, pdo_sqlite, curl, openssl) + Pest (dev only)
 phpunit.xml              Test configuration (Pest)
@@ -315,6 +317,7 @@ Vaka's own header check must grade Vaka itself A.
 | `php vaka server:list` | Servers (by IP or hand-set name) and their sites; CDN sites counted apart |
 | `php vaka user:add [<name>]` / `user:edit` / `user:remove` / `user:list` | Manage dashboard users |
 | `php vaka share:create [<group\|site>] [--groups=a,b] [--label=] [--expires=YYYY-MM-DD\|never]` / `share:list` / `share:edit [<#>]` / `share:revoke [<#>]` | Read tokens for the read API (`vaka_` and 64 hex), one per reader: a site, or one or more groups; 90 days unless `--expires` gives another last day or `never`, shown once, stored hashed; `share:edit` changes groups, last day or label and keeps the token |
+| `php vaka backup [<folder>] [--keep=7]` | A checked, compressed copy of the database in `data/backups/` (or the folder), the newest 7 kept; nightly from cron, copied off the server with rclone (docs/install.md#backups) |
 
 ## Development
 

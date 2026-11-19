@@ -201,7 +201,7 @@ Smaller words:
 Until 1.0 the scope is frozen: no new checks and no new kinds of advice, only fixes, this milestone and watching production. Why: the advice (CSP, mail) grew deeper faster than real use could confirm it, and every review of a new nuance found a real mistake in it, so each new area is more surface to get wrong before the promise is made.
 
 - [ ] Milestone 9's "What can do harm" done: `share:revoke -f`, the report's code spans, and an uptime path in `site:import` and `check`
-- [ ] `php vaka backup` (see Ideas), with the install docs on copying the backups off the server: without it, groups, webhooks, read tokens, maintenance windows and history live in one SQLite file that nothing copies
+- [x] `php vaka backup` (see Ideas), with the install docs on copying the backups off the server: without it, groups, webhooks, read tokens, maintenance windows and history live in one SQLite file that nothing copies. The same as Puls's; the first backup prints the nightly cron line and that the copies are on this server
 - [ ] The promise read through once: docs/api.md, the CLI, `.env.example` and the webhook JSON (docs/alerts.md), asking of every name whether we want to live with it for years; a rename happens now or not at all
 - [ ] An install from nothing with the docs alone, on shared hosting and on Forge, by a reader who follows each line to the letter (a developer review agent)
 - [ ] A security read of the login, sessions, CSRF, share links and the read API: the repository is public, and the database holds webhook secrets

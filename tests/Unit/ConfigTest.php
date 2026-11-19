@@ -129,6 +129,11 @@ test('cron_line runs Vaka from run_dir() with the given PHP, its output sent now
         ->and(cron_line('/srv/my sites/vaka', '/Users/anna/Library/Application Support/Herd/bin/php84'))->toBe("* * * * * '/Users/anna/Library/Application Support/Herd/bin/php84' '/srv/my sites/vaka/vaka' run >> /dev/null 2>&1");
 });
 
+test('backup_cron_line makes a backup every night, its report sent nowhere but an error kept for cron to mail', function () {
+    expect(backup_cron_line('/home/forge/vaka.example.com/releases/20261026120000', '/usr/bin/php8.5'))->toBe('30 3 * * * /usr/bin/php8.5 /home/forge/vaka.example.com/current/vaka backup > /dev/null')
+        ->and(backup_cron_line('/var/www/vaka', 'php', '/srv/my backups'))->toBe("30 3 * * * php /var/www/vaka/vaka backup '/srv/my backups' > /dev/null");
+});
+
 test('php_path names PHP by its full path, since cron has only a short PATH', function () {
     $dir = temp_dir();
     $versioned = 'php' . PHP_MAJOR_VERSION . '.' . PHP_MINOR_VERSION;
