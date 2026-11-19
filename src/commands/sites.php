@@ -225,6 +225,11 @@ function move_sites(PDO $db, array $config, array $sites, string $group, string 
     $more = count($names) - 15;
     $list = $more > 0 ? implode(', ', array_slice($names, 0, 15)) . " and {$more} more" : list_words($names);
     $into = strtolower(trim($group)) === 'none' ? null : find_group($db, $group);
+    // In the history of each site that moved, as a move from the dashboard is
+    $message = ($into === null ? 'Moved out of its group' : "Moved to group {$into['name']}") . ' on the command line' . ($where !== '' ? ", with every site{$where}" : '');
+    foreach ($sites as $site) {
+        if ($site['group_id'] !== ($into['id'] ?? null)) add_event($db, $site['id'], 'settings', ['status' => 'changed', 'previous' => '', 'message' => $message], utc_now());
+    }
     $to = $into === null
         ? 'out of ' . (count($sites) === 1 ? 'its' : 'their') . ' group'
         : 'to ' . $into['name'];
