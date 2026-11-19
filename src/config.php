@@ -127,13 +127,15 @@ function cron_line(string $root, string $php = 'php'): string
 }
 
 /**
- * The cron line for a backup every night at 03:30, to $dir when it is not
- * the default. Its report is sent nowhere, but an error (on STDERR) is not,
- * so cron mails it to the server's user where cron can send mail.
+ * The cron line for a backup every night at 03:30, to $dir and with --keep
+ * when they are not the defaults. Its report is sent nowhere, but an error
+ * (on STDERR) is not, so cron mails it to the server's user where cron can
+ * send mail.
  */
-function backup_cron_line(string $root, string $php = 'php', ?string $dir = null): string
+function backup_cron_line(string $root, string $php = 'php', ?string $dir = null, ?int $keep = null): string
 {
-    return '30 3 * * * ' . shell_path($php) . ' ' . shell_path(run_dir($root) . '/vaka') . ' backup' . ($dir !== null ? ' ' . shell_path($dir) : '') . ' > /dev/null';
+    return '30 3 * * * ' . shell_path($php) . ' ' . shell_path(run_dir($root) . '/vaka') . ' backup'
+        . ($dir !== null ? ' ' . shell_path($dir) : '') . ($keep !== null ? " --keep={$keep}" : '') . ' > /dev/null';
 }
 
 /** "se=whois.iis.se,nu=whois.iis.nu" as key => value, keys lowercased. Pairs without both halves are dropped. */

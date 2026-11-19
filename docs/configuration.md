@@ -132,4 +132,4 @@ A user limited to groups never sees other groups' sites, or sites without a grou
 
 | Command | What it does |
 |---------|--------------|
-| `php vaka backup [<folder>] [--keep=7]` | A checked, compressed copy of the database, in `backups/` next to it unless a folder is given, keeping the newest 7. Run it every night from cron, and copy the backups off the server: see [Install](install.md#backups) |
+| `php vaka backup [<folder>] [--keep=7]` | A checked, compressed copy of the database, in `backups/` next to it unless a folder is given (one that exists; a relative one is read from Vaka's folder), keeping the newest 7. It leaves out `users.json` and `.env`. Run it every night from cron, and copy the backups off the server: see [Install](install.md#backups) |

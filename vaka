@@ -137,9 +137,10 @@ function print_help(): void
       share:revoke <#>     Revoke a read token (its number, or the start of it)  --force
 
     Other
-      backup [<folder>]    A checked, compressed copy of the database, in backups/
-                           next to it unless a folder is given (every night from
-                           cron)  --keep=<number> (default 7)
+      backup [<folder>]    A checked, compressed copy of the database. Make one every
+                           night from cron: the first backup prints the line.
+                           In backups/ next to the database unless a folder is
+                           given  --keep=<number> (default 7)
       help                 Show this help
       version              Show the Vaka version
 
