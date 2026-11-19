@@ -162,6 +162,8 @@ function cmd_site_edit(array $config, array $args, array $opts): void
     if ($note !== null && !stream_isatty(STDIN)) fwrite(STDERR, "Warning: {$note} Changed anyway: check the spelling.\n");
     $updated = site_with_group($db, $site['id']);
     $changes = describe_site_changes($db, $site, $updated, $config['uptime_interval']);
+    // In the site's history, as a change from the dashboard is
+    if ($changes) add_event($db, $site['id'], 'settings', ['status' => 'changed', 'previous' => '', 'message' => 'Changed on the command line: ' . implode(', ', $changes)], utc_now());
     echo $changes
         ? 'Updated ' . readable_url($updated['url']) . ': ' . implode(', ', $changes) . ".\n"
         : 'Nothing changed for ' . readable_url($updated['url']) . ' (' . describe_site($updated, $config) . ").\n";

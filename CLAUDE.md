@@ -90,7 +90,7 @@ src/bootstrap.php        VAKA_VERSION + require_once of every src file; defines 
 src/config.php           parse_env(), load_env(), resolve_path(), int_list(), old_release_warning() (a release that is not current/'s: told on STDERR on every command, which still runs); timezone_setting() and time_format_setting() (TIMEZONE and TIME_FORMAT as in Puls: unset is the server's zone, a wrong value never stops a run and is shown), track_shared_setting() (TRACK_SHARED_URL: a plain address or off, said), clock_text()
 src/db.php               get_db(), enable_wal(), migrations(), run_migrations()
 src/cli.php              parse_args(), allow_options(), prompt(), ask(), confirm(), choose(), print_table(), fail()
-src/sites.php            CHECKS, POLICIES, normalize_url(), clean_check_path() and uptime_url() (an uptime path on the site's own host, for uptime only), groups and sites (validation, storage, plain-words descriptions); host_resolves() and unresolved_note() (a new address not in DNS waits for "Add anyway": a typo is caught before it alerts)
+src/sites.php            CHECKS, POLICIES, normalize_url(), clean_check_path() and uptime_url() (an uptime path on the site's own host, for uptime only), groups and sites (validation, storage, plain-words descriptions; update_site() starts a pause once, end_pauses() ends it at the first check after a resume); host_resolves() and unresolved_note() (a new address not in DNS waits for "Add anyway": a typo is caught before it alerts)
 src/import.php           parse_import_csv(), import_sites() (all or nothing, dry run)
 src/commands/groups.php  group:add, group:edit, group:remove, group:list
 src/commands/sites.php   site:add, site:edit, site:remove, site:list, site:import
@@ -113,7 +113,7 @@ src/alerts.php           server_key(), alert_decision(), notice_for() (flapping)
 src/notify.php           deliver(): Slack (escaped mrkdwn), JSON webhook, mail(); payload builders
 src/auth.php             users.json, client_ip(), login lockout, sessions, CSRF
 src/report.php           The read API as Markdown for an AI assistant (&format=md): read_api_markdown_site(), read_api_markdown_list(); md_attention() and md_improvements() (what to do, worst first), md_code() (text from a site in a one-line code span); md_token() (when the token stops working: in the guide, or in bold with the command that extends it in its last 14 days)
-src/stats.php            down_periods(), overlap_seconds(), planned_periods() (downtime inside a maintenance window is planned: left out of uptime), uptime_percent(), site_uptime(), daily_uptime() (per day: up, down_seconds, outages, planned_seconds), hourly_buckets()
+src/stats.php            down_periods(), merge_periods(), overlap_seconds(), without_periods(), planned_periods() (downtime inside a maintenance window is planned: left out of uptime), paused_periods() (time paused is neither up nor down: left out of uptime and of the down time "Up again after" and reminders tell), uptime_percent(), site_uptime(), daily_uptime() (per day: up, down_seconds, outages, planned_seconds, paused_seconds), hourly_buckets()
 src/web.php              handle_request() routing, CSP and security headers, login page, JSON API (overview, site, snooze; `advice` from advice_for()), read_api() with stable field names (api_site_fields(), CSV); show_shared_dashboard() and shared_tracker() (the Puls in TRACK_SHARED_URL counts shared pages: its script, and its origin in script-src and connect-src, on those pages only)
 src/commands/users.php   user:add, user:edit, user:remove, user:list
 public/index.php         Web front controller (three lines: bootstrap, config, handle_request())
@@ -183,6 +183,7 @@ share_tokens id, token_hash, prefix, site_id, label, expires_at, last_used_at, c
              (read tokens: SHA-256 of the token and its start, vaka_ and 8 characters, only; 90 days unless another last day or never is chosen;
              a site, or one or more groups in share_groups; go with their site, or their last group)
 share_groups token_id, group_id                                  (the groups a token reads)
+pauses       site_id, started_at, ended_at                       (when a site was paused, until the first check after it was resumed; ended_at null until then)
 ```
 
 Check status is one of `pending`, `ok`, `warn`, `fail`, `unknown`. Times are stored in UTC (ISO 8601); the dashboard shows local time.

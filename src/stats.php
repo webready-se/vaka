@@ -30,21 +30,71 @@ function period_seconds(array $periods): int
     return array_sum(array_map(fn ($period) => $period[1] - $period[0], $periods));
 }
 
-/** How many seconds of $periods fall inside $cover. Both are [start, end) pairs; the cover may overlap itself. */
-function overlap_seconds(array $periods, array $cover): int
+/** [start, end) pairs in time order, joined where they overlap or touch. */
+function merge_periods(array $periods): array
 {
-    usort($cover, fn ($a, $b) => $a[0] <=> $b[0]);
+    usort($periods, fn ($a, $b) => $a[0] <=> $b[0]);
     $merged = [];
-    foreach ($cover as [$start, $end]) {
+    foreach ($periods as [$start, $end]) {
         $last = count($merged) - 1;
         if ($last >= 0 && $start <= $merged[$last][1]) $merged[$last][1] = max($merged[$last][1], $end);
         else $merged[] = [$start, $end];
     }
+    return $merged;
+}
+
+/** How many seconds of $periods fall inside $cover. Both are [start, end) pairs; the cover may overlap itself. */
+function overlap_seconds(array $periods, array $cover): int
+{
+    $merged = merge_periods($cover);
     $total = 0;
     foreach ($periods as [$start, $end]) {
         foreach ($merged as [$coverStart, $coverEnd]) $total += max(0, min($end, $coverEnd) - max($start, $coverStart));
     }
     return $total;
+}
+
+/** $periods with the times in $cover taken out, as [start, end) pairs. */
+function without_periods(array $periods, array $cover): array
+{
+    $merged = merge_periods($cover);
+    $left = [];
+    foreach ($periods as [$start, $end]) {
+        foreach ($merged as [$coverStart, $coverEnd]) {
+            if ($coverEnd <= $start || $coverStart >= $end) continue;
+            if ($coverStart > $start) $left[] = [$start, $coverStart];
+            $start = $coverEnd;
+            if ($start >= $end) break;
+        }
+        if ($start < $end) $left[] = [$start, $end];
+    }
+    return $left;
+}
+
+/** The parts of $periods within [$from, $to). */
+function clip_periods(array $periods, int $from, int $to): array
+{
+    $clipped = array_map(fn ($period) => [max($from, $period[0]), min($to, $period[1])], $periods);
+    return array_values(array_filter($clipped, fn ($period) => $period[0] < $period[1]));
+}
+
+/**
+ * The times within [$from, $to) that a site was paused, merged: from its
+ * pause until the first check after it was resumed. Nothing was checked
+ * then, so that time is neither up nor down.
+ */
+function paused_periods(PDO $db, int $siteId, int $from, int $to): array
+{
+    $stmt = $db->prepare('SELECT started_at, ended_at FROM pauses WHERE site_id = ? AND started_at < ? AND (ended_at IS NULL OR ended_at > ?)');
+    $stmt->execute([$siteId, utc_now($to), utc_now($from)]);
+    $pauses = array_map(fn ($row) => [strtotime($row['started_at']), $row['ended_at'] === null ? $to : strtotime($row['ended_at'])], $stmt->fetchAll());
+    return merge_periods(clip_periods($pauses, $from, $to));
+}
+
+/** How long a site was paused within [$from, $to). */
+function paused_seconds(PDO $db, int $siteId, int $from, int $to): int
+{
+    return period_seconds(paused_periods($db, $siteId, $from, $to));
 }
 
 /**
@@ -78,7 +128,8 @@ function watched_since(PDO $db, array $site): ?int
  * downtime in its maintenance windows. The period starts no earlier than the
  * first check: before it nothing is known, so a site not checked yet has no
  * uptime (null), not 100%. Neither has a paused site, which nothing checks:
- * the dashboard's day bars and the list already show it as paused.
+ * the dashboard's day bars and the list already show it as paused. The time
+ * a site was paused before is left out the same way.
  */
 function site_uptime(PDO $db, array $site, int $seconds, int $now, string $timezone): ?float
 {
@@ -93,19 +144,21 @@ function site_uptime(PDO $db, array $site, int $seconds, int $now, string $timez
     $events = $db->prepare("SELECT status, created_at FROM events WHERE site_id = ? AND check_name = 'uptime' AND status IN ('ok', 'fail') AND created_at >= ? AND created_at < ? ORDER BY created_at, id");
     $events->execute([$site['id'], utc_now($from), utc_now($now)]);
 
-    $down = down_periods($events->fetchAll(), $before->fetchColumn() ?: 'ok', $from, $now);
+    $paused = paused_periods($db, $site['id'], $from, $now);
+    $down = without_periods(down_periods($events->fetchAll(), $before->fetchColumn() ?: 'ok', $from, $now), $paused);
     $planned = overlap_seconds($down, planned_periods(site_windows($db, $site), $from, $now, $timezone));
-    return uptime_percent(period_seconds($down) - $planned, $now - $from);
+    return uptime_percent(period_seconds($down) - $planned, $now - $from - period_seconds($paused));
 }
 
 /**
  * Each of the last $days local days (oldest first), from the site's events:
- * its uptime, the seconds it was down and in how many outages, and the
- * seconds it was down in a maintenance window (planned, not in the rest).
- * An outage wholly inside a window is not counted. A day before the first
- * check has nulls; today counts up to now.
+ * its uptime, the seconds it was down and in how many outages, the seconds
+ * it was down in a maintenance window (planned, not in the rest), and the
+ * seconds it was paused (neither up nor down, so not in its uptime: a day
+ * paused from start to end has none). An outage wholly inside a window is
+ * not counted. A day before the first check has nulls; today counts up to now.
  *
- * @return list<array{date: string, up: ?float, down_seconds: ?int, outages: ?int, planned_seconds: ?int}>
+ * @return list<array{date: string, up: ?float, down_seconds: ?int, outages: ?int, planned_seconds: ?int, paused_seconds: ?int}>
  */
 function daily_uptime(PDO $db, array $site, int $now, int $days, string $timezone): array
 {
@@ -123,13 +176,14 @@ function daily_uptime(PDO $db, array $site, int $now, int $days, string $timezon
     // Each event's time read once, not once for every day
     $events = array_map(fn ($event) => $event + ['at' => strtotime($event['created_at'])], $events->fetchAll());
     $windows = site_windows($db, $site);
+    $pauses = paused_periods($db, $site['id'], $first->getTimestamp(), $now);
 
     $result = [];
     for ($day = $first; $day <= $today; $day = $day->modify('+1 day')) {
         $from = max($day->getTimestamp(), $added);
         $to = min($day->modify('+1 day')->getTimestamp(), $now);
         if ($from >= $to) {
-            $result[] = ['date' => $day->format('Y-m-d'), 'up' => null, 'down_seconds' => null, 'outages' => null, 'planned_seconds' => null];
+            $result[] = ['date' => $day->format('Y-m-d'), 'up' => null, 'down_seconds' => null, 'outages' => null, 'planned_seconds' => null, 'paused_seconds' => null];
             continue;
         }
         $inDay = [];
@@ -138,16 +192,18 @@ function daily_uptime(PDO $db, array $site, int $now, int $days, string $timezon
             if ($event['at'] < $from) $statusAtStart = $event['status'];
             elseif ($event['at'] < $to) $inDay[] = $event;
         }
-        $down = down_periods($inDay, $statusAtStart, $from, $to);
+        $paused = clip_periods($pauses, $from, $to);
+        $down = without_periods(down_periods($inDay, $statusAtStart, $from, $to), $paused);
         $cover = planned_periods($windows, $from, $to, $timezone);
         $planned = overlap_seconds($down, $cover);
         $downSeconds = period_seconds($down) - $planned;
         $result[] = [
             'date' => $day->format('Y-m-d'),
-            'up' => uptime_percent($downSeconds, $to - $from),
+            'up' => uptime_percent($downSeconds, $to - $from - period_seconds($paused)),
             'down_seconds' => $downSeconds,
             'outages' => count(array_filter($down, fn ($period) => overlap_seconds([$period], $cover) < $period[1] - $period[0])),
             'planned_seconds' => $planned,
+            'paused_seconds' => period_seconds($paused),
         ];
     }
     return $result;

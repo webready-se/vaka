@@ -91,6 +91,17 @@ test('site:add, site:list and site:edit', function () {
         ->and($list)->toContain('Add to cart');
 });
 
+test('site:edit writes what it changed in the site\'s history, as the dashboard does', function () {
+    vaka(['site:add', 'https://shop.example'], $this->env);
+    vaka(['site:edit', 'shop.example', '--pause', '--interval=1'], $this->env);
+    // Nothing changed: nothing written
+    vaka(['site:edit', 'shop.example', '--pause'], $this->env);
+
+    $db = get_db($this->env['DB_PATH']);
+    expect($db->query("SELECT message FROM events WHERE check_name = 'settings'")->fetchAll(PDO::FETCH_COLUMN))
+        ->toBe(['Changed on the command line: checked every 1 min, paused']);
+});
+
 test('site:add --pause says the site is not checked until it is resumed', function () {
     $r = vaka(['site:add', 'https://shop.example', '--pause'], $this->env);
     expect($r['exit'])->toBe(0, $r['err'])

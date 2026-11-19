@@ -85,6 +85,21 @@ test('a site that stays down is reminded every 4 hours until it is up again', fu
         ->and(($this->texts)()[3])->toContain('is up again after 8 h 2 min');
 });
 
+test('a site still down after a pause is reminded with the time it was watched down, not the pause', function () {
+    add_group($this->db, ['name' => 'Customers', 'slack_webhook' => $this->slack]);
+    $id = add_site($this->db, ['url' => 'http://127.0.0.1:8792', 'group' => 'Customers']);
+    $config = ['remind_every_hours' => 4] + $this->config;
+
+    run($this->db, $config, $this->now);
+    run($this->db, $config, $this->now + 60);
+    update_site($this->db, $id, ['paused' => true], $this->now + 3600);
+    update_site($this->db, $id, ['paused' => false], $this->now + 30 * 3600);
+    run($this->db, $config, $this->now + 30 * 3600 + 60);
+
+    expect(($this->texts)())->toHaveCount(2)
+        ->and(($this->texts)()[1])->toContain('has been down for 1 h*');
+});
+
 test('a site that keeps going down and up gets three messages in all, not one per change', function () {
     add_group($this->db, ['name' => 'Customers', 'slack_webhook' => $this->slack]);
     $id = add_site($this->db, ['url' => 'http://127.0.0.1:8792', 'group' => 'Customers', 'interval' => '1']);

@@ -183,11 +183,12 @@ function bot_check_words(string $by): string
  * The uptime state after one more result. A site is down after $downAfter
  * failures in a row, counted from the first of them; until then it keeps
  * its status and is checked again soon. Returns the new state and the event
- * to record, if the status changed.
+ * to record, if the status changed. $pausedSeconds is how long a site that is
+ * down was paused since it went down, left out of how long it was down.
  *
  * @return array{state: array, event: ?array{status: string, previous: string, message: string}}
  */
-function next_uptime_state(array $state, array $result, int $downAfter, string $now): array
+function next_uptime_state(array $state, array $result, int $downAfter, string $now, int $pausedSeconds = 0): array
 {
     $previous = $state['status'];
     $details = $state['details'] ?? [];
@@ -213,7 +214,7 @@ function next_uptime_state(array $state, array $result, int $downAfter, string $
         $next['changed_at'] = $now;
         $message = 'First check: ';
         if ($previous === 'fail') {
-            $next['details']['down_seconds'] = strtotime($now) - strtotime($details['failing_since'] ?? $state['changed_at']);
+            $next['details']['down_seconds'] = strtotime($now) - strtotime($details['failing_since'] ?? $state['changed_at']) - $pausedSeconds;
             $message = 'Up again after ' . human_duration($next['details']['down_seconds']) . ': ';
         }
         return ['state' => $next, 'event' => ['status' => 'ok', 'previous' => $previous, 'message' => $message . lcfirst($result['summary'])]];

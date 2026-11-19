@@ -130,6 +130,7 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array $win
     $failing = [];
 
     $db->beginTransaction();
+    end_pauses($db, array_column($sites, 'id'), $now);
     $sample = $db->prepare('INSERT INTO samples (site_id, checked_at, status_code, ms, ok, ip) VALUES (?, ?, ?, ?, ?, ?)');
     $where = $db->prepare('UPDATE sites SET ip = ?, cdn = ? WHERE id = ?');
     foreach ($sites as $site) {
@@ -137,7 +138,9 @@ function check_uptime(PDO $db, array $config, array $sites, int $now, array $win
         $state = $site['state_status'] === null
             ? ['status' => 'pending', 'fail_count' => 0, 'changed_at' => null, 'details' => []]
             : ['status' => $site['state_status'], 'fail_count' => $site['state_fail_count'], 'changed_at' => $site['state_changed_at'], 'details' => json_decode($site['state_details'], true) ?: []];
-        $next = next_uptime_state($state, $result, $config['down_after_failures'], $checkedAt);
+        // A site down when it was paused: the pause is not time down, so "Up again after" leaves it out
+        $paused = $state['status'] === 'fail' ? paused_seconds($db, $site['id'], strtotime($state['details']['failing_since'] ?? $state['changed_at']), $now) : 0;
+        $next = next_uptime_state($state, $result, $config['down_after_failures'], $checkedAt, $paused);
 
         // A failing site is checked again on the next run, a healthy one in its own minute of its interval
         $nextAt = $next['state']['fail_count'] > 0 ? $now + 60 : next_uptime_slot($site['id'], site_interval($site, $config), $now);
