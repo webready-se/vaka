@@ -176,6 +176,14 @@ function plural(int $count, string $one, string $many): string
     return $count . ' ' . ($count === 1 ? $one : $many);
 }
 
+/** A file's size in the words people use: 512 bytes, 48 KB, 12.5 MB. */
+function bytes_text(int $bytes): string
+{
+    if ($bytes < 1024) return "{$bytes} bytes";
+    if ($bytes < 1048576) return round($bytes / 1024) . ' KB';
+    return round($bytes / 1048576, 1) . ' MB';
+}
+
 /** Print to stderr and exit with $code. */
 function fail(string $message, int $code = 1): never
 {

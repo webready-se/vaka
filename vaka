@@ -15,6 +15,7 @@ require __DIR__ . '/src/commands/alerts.php';
 require __DIR__ . '/src/commands/silence.php';
 require __DIR__ . '/src/commands/users.php';
 require __DIR__ . '/src/commands/share.php';
+require __DIR__ . '/src/commands/backup.php';
 $config = require __DIR__ . '/config.php';
 date_default_timezone_set($config['timezone']);
 // A wrong setting is told on every command, and never stops one
@@ -54,6 +55,7 @@ match ($command) {
     'share:list' => cmd_share_list($config, $args, $opts),
     'share:edit' => cmd_share_edit($config, $args, $opts),
     'share:revoke' => cmd_share_revoke($config, $args, $opts),
+    'backup' => cmd_backup($config, $args, $opts),
     'help', '--help', '-h' => print_help(),
     'version' => print_version(),
     default => fail("Unknown command: {$command}\nRun `php vaka help` to see every command."),
@@ -135,6 +137,10 @@ function print_help(): void
       share:revoke <#>     Revoke a read token (its number, or the start of it)  --force
 
     Other
+      backup [<folder>]    A checked, compressed copy of the database. Make one every
+                           night from cron: the first backup prints the line.
+                           In backups/ next to the database unless a folder is
+                           given  --keep=<number> (default 7)
       help                 Show this help
       version              Show the Vaka version
 

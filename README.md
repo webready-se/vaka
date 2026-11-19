@@ -116,7 +116,7 @@ Alerts go to Slack, a JSON webhook or email. Sites behind Cloudflare and other C
 
 ## Documentation
 
-- [Install](docs/install.md): Laravel Forge, shared hosting with and without SSH, cron, the heartbeat
+- [Install](docs/install.md): Laravel Forge, shared hosting with and without SSH, cron, the heartbeat, backups
 - [Configuration](docs/configuration.md): every `.env` setting and every CLI command
 - [Checks](docs/checks.md): what each check looks at and when it runs
 - [Alerts](docs/alerts.md): when alerts go out, where they go, policies, maintenance, snooze, and the JSON webhook's fields

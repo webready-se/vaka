@@ -297,3 +297,97 @@ function run_migrations(PDO $db, ?array $migrations = null): void
         throw $e;
     }
 }
+
+/** Backups `php vaka backup` keeps, unless --keep says otherwise. */
+const BACKUP_KEEP = 7;
+
+/**
+ * A backup's file name: vaka-2026-11-19-033000.sqlite.gz, so the newest sorts
+ * last. Without gzip it ends in .sqlite.
+ */
+const BACKUP_NAME = '/^vaka-\d{4}-\d{2}-\d{2}-\d{6}\.sqlite(\.gz)?$/';
+
+/**
+ * Write a copy of the database to $dir with VACUUM INTO, which reads one
+ * moment while runs and the dashboard go on writing, and leaves the free
+ * space out. Only the owner can read it, since it holds the groups' webhook
+ * URLs and every site's history. The copy is checked, then compressed with
+ * gzip where PHP has zlib, and the compressed file is read back against the
+ * copy. Only then are the backups beyond the newest $keep removed; a copy
+ * that fails a check is removed instead. The same as Puls's, without the
+ * login log.
+ *
+ * It is written under a name that starts with a dot and takes its own name
+ * when whole, so a job that copies vaka-* off the server never takes half a
+ * backup. What a backup that was stopped left behind is removed after a day.
+ * Two backups to the same folder take turns (.lock there): at the same
+ * second they wrote the same temporary file, and one reported a backup that
+ * neither had made.
+ *
+ * @return array{path: string, bytes: int, unpacked: ?int, removed: int, kept: int}
+ */
+function backup_database(PDO $db, string $dir, int $keep, ?bool $compress = null): array
+{
+    $compress ??= extension_loaded('zlib');
+    $dir = rtrim($dir, '/') ?: '/';
+    if ((!is_dir($dir) && !@mkdir($dir, 0700, true)) || !is_dir($dir) || !is_writable($dir)) {
+        throw new RuntimeException("Cannot write backups to {$dir}.");
+    }
+    $umask = umask(0077);
+    $lock = fopen("{$dir}/.lock", 'c');
+    if ($lock === false || !flock($lock, LOCK_EX)) {
+        umask($umask);
+        throw new RuntimeException("Cannot write backups to {$dir}.");
+    }
+    $name = 'vaka-' . date('Y-m-d-His') . '.sqlite';
+    $path = "{$dir}/{$name}" . ($compress ? '.gz' : '');
+    $copy = "{$dir}/.{$name}";
+    $packed = "{$copy}.gz";
+    $unpacked = null;
+    try {
+        if (file_exists("{$dir}/{$name}") || file_exists("{$dir}/{$name}.gz")) {
+            throw new RuntimeException("A backup from this second is there already: {$path}");
+        }
+        foreach (glob("{$dir}/.vaka-*") as $left) {
+            if (filemtime($left) < time() - 86400) unlink($left);
+        }
+
+        $db->prepare('VACUUM INTO ?')->execute([$copy]);
+        // The login log (who tried to log in, and from where) is for the lockout only and kept 30 days, so a copy
+        // kept longer leaves it out, its bytes overwritten too
+        $copied = new PDO('sqlite:' . $copy);
+        $copied->exec('PRAGMA secure_delete = ON');
+        $copied->exec('DELETE FROM audit_log');
+        $check = $copied->query('PRAGMA integrity_check')->fetchColumn();
+        $copied = null;
+        if ($check !== 'ok') {
+            throw new RuntimeException("The copy failed its check ({$check}), so it was removed and older backups kept.");
+        }
+        if ($compress) {
+            // A hash that cannot be read is false on both sides, which would look like a match
+            $read = copy($copy, "compress.zlib://{$packed}") ? hash_file('xxh128', "compress.zlib://{$packed}") : false;
+            if ($read === false || $read !== hash_file('xxh128', $copy)) {
+                throw new RuntimeException('The copy could not be compressed, so it was removed and older backups kept.');
+            }
+            $unpacked = (int) filesize($copy);
+        }
+        if (!rename($compress ? $packed : $copy, $path) || !chmod($path, 0600)) {
+            throw new RuntimeException("The copy could not be named {$path}, so it was removed and older backups kept.");
+        }
+
+        $backups = array_values(array_filter(scandir($dir), fn ($file) => preg_match(BACKUP_NAME, $file)));
+        rsort($backups);
+        $removed = 0;
+        foreach (array_slice($backups, max(1, $keep)) as $old) {
+            if (unlink("{$dir}/{$old}")) $removed++;
+        }
+        return ['path' => $path, 'bytes' => (int) filesize($path), 'unpacked' => $unpacked, 'removed' => $removed, 'kept' => count($backups) - $removed];
+    } finally {
+        umask($umask);
+        foreach ([$copy, $packed] as $temp) {
+            if (file_exists($temp)) unlink($temp);
+        }
+        flock($lock, LOCK_UN);
+        fclose($lock);
+    }
+}

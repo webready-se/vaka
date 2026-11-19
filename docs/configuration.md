@@ -127,3 +127,9 @@ A user limited to groups never sees other groups' sites, or sites without a grou
 | `php vaka share:list` | Every read token: what it reads, its label, the start of the token, when it expires and when it was last used |
 | `php vaka share:edit <#> [--groups=a,b] [--expires=YYYY-MM-DD\|never] [--label=]` | Change a read token's groups, last day or label, also one that has expired. The token stays the same, so nothing changes where it is kept. A token for one site stays one |
 | `php vaka share:revoke <#>` | Revoke a read token, by its number in `share:list` or the start of the token. It asks first, since a customer's link may hang on it (`--force` skips the question); without a number it lists the tokens by the same numbers as `share:list` |
+
+### Backups
+
+| Command | What it does |
+|---------|--------------|
+| `php vaka backup [<folder>] [--keep=7]` | A checked, compressed copy of the database, in `backups/` next to it unless a folder is given (one that exists; a relative one is read from Vaka's folder), keeping the newest 7. It leaves out `users.json` and `.env`. Run it every night from cron, and copy the backups off the server: see [Install](install.md#backups) |

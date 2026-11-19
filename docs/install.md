@@ -116,9 +116,64 @@ Three things tell you when Vaka itself stops:
 - **`/?health`** answers 200 while runs are recent and 503 when the last one is more than five minutes old, for any external monitor.
 - **The dashboard** says when Vaka last checked, and warns when it has stopped.
 
+## Backups
+
+Your sites can be added again from a CSV file, but the rest of what Vaka knows is only in its database (`data/vaka.sqlite`): the groups and where they alert (their webhook URLs), maintenance windows, server names, read tokens, snoozes and every site's history. A backup leaves out `users.json` (the logins) and `.env` (the settings, default alert addresses among them), which change only when you add a user or a setting: copy those off the server yourself when they do. It also leaves out the log of who tried to log in and from where, which is only there to lock out guessing and is kept for 30 days.
+
+`php vaka backup` copies the database as it is at one moment, so runs can go on meanwhile, checks the copy, compresses it with gzip and keeps the newest 7 in `data/backups/` (`--keep=14` keeps 14). A folder you give it instead must exist; a relative one is read from Vaka's folder, as `DB_PATH` is. Without PHP's zlib the copy is kept uncompressed. Only the owner can read the copies, since they hold the groups' webhook URLs.
+
+Run it once a night, as the user that runs `vaka run`. The first backup prints the line for your server, with the folder and `--keep` you gave it, to add with `crontab -e`, such as:
+
+```cron
+30 3 * * * /usr/bin/php8.4 /var/www/vaka/vaka backup > /dev/null
+```
+
+`> /dev/null` drops its report. An error still goes to cron, which mails it to that user where the server can send mail, and many cannot. To be told when the backups stop, make a check at [Healthchecks.io](https://healthchecks.io) (a second one beside Vaka's heartbeat; period 1 day, grace 1 hour) and end the line with a ping to it, sent only when the backup worked:
+
+```cron
+30 3 * * * /usr/bin/php8.4 /var/www/vaka/vaka backup > /dev/null && curl -fsS -m 10 --retry 3 https://hc-ping.com/<your check>
+```
+
+On Forge, add the job under the server's **Scheduler**:
+
+- **Command:** `php /home/forge/vaka.example.com/current/vaka backup > /dev/null && curl -fsS -m 10 --retry 3 https://hc-ping.com/<your check>` (end it after `> /dev/null` without a check)
+- **User:** `forge`
+- **Frequency:** Custom, `30 3 * * *`
+- **Name:** `Vaka: nightly backup`
+
+### Off the server
+
+The copies are on the same server as the database, so they help against a broken database or a mistake, not against losing the server, which is when you need them most. To have them then too, copy them somewhere else after each backup with [rclone](https://rclone.org/). It speaks to Dropbox, Google Drive, S3, Backblaze B2 and many more, so storage you already pay for will often do. rclone is one file, which can live in `~/bin` without root.
+
+Set it up once with `rclone config`, as the user the job runs as, and name the remote `backups`. With Dropbox, first create an app of your own at [dropbox.com/developers/apps](https://www.dropbox.com/developers/apps), with access to an App folder only, and give `rclone config` its key and secret: the server then reaches that one folder, not the whole account. The server has no browser, so `rclone config` asks you to run `rclone authorize "dropbox" "<key>" "<secret>"` on your own computer and paste what it prints.
+
+Then replace the job's command with this line, which makes the backup, copies the backups off the server, removes the ones older than 30 days there, and pings only when a backup from the last hour is there off the server, so a failed backup, a failed copy and an expired token all stop the ping. rclone goes by its full path, since cron's `PATH` is short:
+
+```text
+php /home/forge/vaka.example.com/current/vaka backup > /dev/null && /home/forge/bin/rclone copy /home/forge/vaka.example.com/data/backups backups:vaka --include 'vaka-*' && /home/forge/bin/rclone delete --min-age 30d backups:vaka && /home/forge/bin/rclone lsf backups:vaka --max-age 1h --include 'vaka-*' | grep -q . && curl -fsS -m 10 --retry 3 https://hc-ping.com/<your check>
+```
+
+In plain cron it goes after `30 3 * * *`, with your paths. `rclone copy` never removes anything there, so the copies off the server outlive the 7 on it, and `--include 'vaka-*'` leaves out a backup still being written. Check it once with `rclone ls backups:vaka`.
+
+Anyone who can read the copies can post to the groups' Slack channels and webhooks: on the server only its user can, but off it, anyone with access to that storage. rclone's [crypt](https://rclone.org/crypt/) remote encrypts them on the way, and a webhook that leaks can be replaced in Slack and then in Vaka with `php vaka group:edit`.
+
+### Restoring
+
+First stop the jobs that write to the database: `run` and `backup` (on Forge, pause them under Scheduler). The dashboard writes only when someone logs in or changes something, so restore when nobody does. Then, in Vaka's folder (`/home/forge/vaka.example.com` on Forge, where `data/` is) and as the user that runs `vaka run`, so the restored file has the same owner, pick a backup (`ls data/backups` lists them, the newest last) and run this with its name:
+
+```bash
+gunzip -c data/backups/vaka-2026-11-19-033000.sqlite.gz > data/restore.sqlite && chmod 600 data/restore.sqlite && flock data/vaka.lock sh -c 'mkdir -p data/before-restore && mv data/vaka.sqlite* data/before-restore/ && mv data/restore.sqlite data/vaka.sqlite'
+```
+
+It unpacks the copy beside the database first, so a wrong name stops it before anything is touched; waits for a run still going (`data/vaka.lock`); and moves the old database with its `-wal` and `-shm` files to `data/before-restore/`, so a wrong pick can be undone. A copy that ends in `.sqlite` (made without zlib) is copied instead: `cp data/backups/<name> data/restore.sqlite` in place of the `gunzip`.
+
+Check that it is the one you wanted with `php vaka status`, then start the jobs again: the next run checks what has become due since the copy was made. Remove `data/before-restore/` once you are sure.
+
+A copy from off the server comes back first with `rclone copy backups:vaka/<name> data/backups/`; on a new server, after `rclone config` there.
+
 ## Upgrading
 
-Read the [changelog](../CHANGELOG.md) first: Vaka is still 0.x, so a version may need a step of yours, and the changelog says which. Then copy the files from the new release over the old ones (or pull and deploy), and keep `data/`, `.env` and `users.json`. Database changes are applied on first use.
+Read the [changelog](../CHANGELOG.md) first: Vaka is still 0.x, so a version may need a step of yours, and the changelog says which. Make a [backup](#backups) with the version you have (`php vaka backup`): database changes are applied the first time the new version opens the database, and cannot be undone. Then copy the files from the new release over the old ones (or pull and deploy), and keep `data/`, `.env` and `users.json`. Database changes are applied on first use.
 
 ## Trying it without real sites
 

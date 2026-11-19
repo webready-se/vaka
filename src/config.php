@@ -114,12 +114,28 @@ function php_path(array $dirs = ['/usr/bin', '/usr/local/bin']): string
     return str_starts_with(PHP_SAPI, 'cli') && PHP_BINARY !== '' ? PHP_BINARY : 'php';
 }
 
+/** A path as one word for a shell: one with a space (PHP under Application Support on a Mac) is quoted, or the shell splits it. */
+function shell_path(string $path): string
+{
+    return preg_match('#^[\w./+-]+$#', $path) ? $path : escapeshellarg($path);
+}
+
 /** The cron line that runs Vaka every minute from run_dir(), its output sent nowhere: run prints a line every minute, which cron would mail. */
 function cron_line(string $root, string $php = 'php'): string
 {
-    // A path with a space (PHP under Application Support on a Mac) is quoted, or the shell splits it
-    $word = fn (string $path) => preg_match('#^[\w./+-]+$#', $path) ? $path : escapeshellarg($path);
-    return '* * * * * ' . $word($php) . ' ' . $word(run_dir($root) . '/vaka') . ' run >> /dev/null 2>&1';
+    return '* * * * * ' . shell_path($php) . ' ' . shell_path(run_dir($root) . '/vaka') . ' run >> /dev/null 2>&1';
+}
+
+/**
+ * The cron line for a backup every night at 03:30, to $dir and with --keep
+ * when they are not the defaults. Its report is sent nowhere, but an error
+ * (on STDERR) is not, so cron mails it to the server's user where cron can
+ * send mail.
+ */
+function backup_cron_line(string $root, string $php = 'php', ?string $dir = null, ?int $keep = null): string
+{
+    return '30 3 * * * ' . shell_path($php) . ' ' . shell_path(run_dir($root) . '/vaka') . ' backup'
+        . ($dir !== null ? ' ' . shell_path($dir) : '') . ($keep !== null ? " --keep={$keep}" : '') . ' > /dev/null';
 }
 
 /** "se=whois.iis.se,nu=whois.iis.nu" as key => value, keys lowercased. Pairs without both halves are dropped. */
